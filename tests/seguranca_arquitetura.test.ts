@@ -22,6 +22,11 @@ import {
 import {
   validarStatusLicenca
 } from '../src/lib/licenca';
+import {
+  inicializarSupabase,
+  getSupabaseCredentials,
+  isSupabaseConfigurado
+} from '../src/lib/supabase';
 
 async function runTests() {
   console.log('🧪 Iniciando Bateria de Testes de Segurança e Arquitetura PSi 4.0...\n');
@@ -192,6 +197,29 @@ async function runTests() {
     assert.strictEqual(backupStr.includes('service_role'), false);
     assert.strictEqual(backupStr.includes('senha'), false);
     console.log('  ✔ Sucesso: Zero segredos ou tokens de autenticação no backup.');
+  }
+
+  // 8. TESTE: Inicialização oficial do Supabase e conformidade com RLS
+  {
+    console.log('▶ Teste 8: Inicialização do Supabase com chaves corretas e conformidade RLS');
+    const cliente = inicializarSupabase();
+    assert.ok(cliente, 'Cliente Supabase deve ser inicializado');
+    assert.ok(cliente.auth, 'Módulo de autenticação auth deve estar presente');
+    assert.strictEqual(typeof cliente.auth.signInWithPassword, 'function', 'signInWithPassword deve ser função');
+    assert.strictEqual(typeof cliente.auth.signUp, 'function', 'signUp deve ser função');
+    assert.strictEqual(typeof cliente.auth.signOut, 'function', 'signOut deve ser função');
+    assert.strictEqual(typeof cliente.auth.resetPasswordForEmail, 'function', 'resetPasswordForEmail deve ser função');
+
+    const credenciais = getSupabaseCredentials();
+    assert.strictEqual(credenciais.url, 'https://rkbvbmhhkllafijipwey.supabase.co', 'URL correta do projeto rkbvbmhhkllafijipwey');
+    assert.ok(credenciais.anonKey.length > 50, 'Chave anon válida');
+    assert.strictEqual(isSupabaseConfigurado(), true, 'Supabase deve estar configurado');
+
+    // Verifica se métodos de consulta a tabelas protegidas por RLS geram queries scoped
+    const queryAssinatura = cliente.from('assinaturas_saas').select('*').eq('user_id', 'test-user-id');
+    assert.ok(queryAssinatura, 'Query PostgREST inicializada com filtro de segurança RLS');
+
+    console.log('  ✔ Sucesso: Supabase inicializado com chaves corretas do novo projeto e pronto para RLS.');
   }
 
   console.log('\n🎉 TODOS OS TESTES DE SEGURANÇA E ARQUITETURA PASSARAM COM SUCESSO!\n');

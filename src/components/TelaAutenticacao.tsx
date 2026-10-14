@@ -250,15 +250,31 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
             </div>
           </div>
 
-          {/* Banner de Banco Não Conectado */}
-          {!supabaseAtivo && (
+          {/* Status do Banco e Autenticação */}
+          {supabaseAtivo ? (
+            <div className="p-2.5 rounded-xl border border-emerald-500/20 bg-emerald-500/5 text-xs flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-[11px] text-muted-foreground">
+                  Banco Ativo: <strong className="text-foreground font-mono">rkbvbmhhkllafijipwey</strong> (Supabase Auth)
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalBancoAberto(true)}
+                className="text-[10px] text-primary hover:underline font-medium"
+              >
+                Gerenciar
+              </button>
+            </div>
+          ) : (
             <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200 text-xs flex items-start justify-between gap-3">
               <div className="flex items-start gap-2">
                 <AlertCircle className="size-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
                 <div>
                   <strong className="block font-semibold">Nenhum banco de dados conectado</strong>
                   <span className="text-[11px] opacity-90">
-                    Defina seu projeto Supabase, Firebase ou Cloud SQL para habilitar o login em nuvem.
+                    Defina seu projeto Supabase para habilitar o login em nuvem.
                   </span>
                 </div>
               </div>
