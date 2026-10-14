@@ -1,0 +1,373 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400;1,500&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --radius-lg: 1rem;
+  --radius-md: 0.75rem;
+  --radius-sm: 0.5rem;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Cormorant Garamond", "Playfair Display", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+}
+
+:root {
+  /* Warm Paper / Elegant Parchment Light Theme */
+  --background: 40 20% 97%; /* #fbfaf7 */
+  --foreground: 30 15% 15%; /* #252321 */
+  --card: 0 0% 100%; /* #ffffff */
+  --card-foreground: 30 15% 15%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 30 15% 15%;
+  --primary: 39 49% 48%; /* Antique Gold #b38a43 */
+  --primary-foreground: 40 20% 97%;
+  --primary-deep: 39 49% 35%;
+  --secondary: 40 15% 94%; /* #f5f2ec */
+  --secondary-foreground: 30 15% 15%;
+  --muted: 40 15% 94%;
+  --muted-foreground: 30 10% 45%;
+  --accent: 39 49% 94%;
+  --accent-foreground: 39 49% 35%;
+  --destructive: 0 72% 50%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 35 15% 88%; /* #e3dfd9 */
+  --input: 35 15% 88%;
+  --ring: 39 49% 48%;
+  --sidebar-background: 40 15% 94%; /* Cream Sidebar */
+  --sidebar-foreground: 30 15% 20%;
+  --sidebar-primary: 39 49% 48%;
+  --sidebar-primary-foreground: 40 20% 97%;
+  --sidebar-accent: 39 49% 90%;
+  --sidebar-accent-foreground: 39 49% 30%;
+  --sidebar-border: 35 15% 88%;
+  --sidebar-ring: 39 49% 48%;
+  --gradient-primary: linear-gradient(135deg, hsl(39 49% 48%), hsl(39 49% 35%));
+  --shadow-elegant: 0 10px 30px -12px hsl(39 49% 35% / 0.12);
+  --shadow-card: 0 1px 3px hsl(35 15% 50% / 0.08);
+}
+
+.dark {
+  /* Sophisticated Dark Theme - Deep Obsidian & Rich Gold */
+  --background: 240 9% 4%; /* #0a0a0c */
+  --foreground: 32 23% 85%; /* #e0d8cf */
+  --card: 240 8% 9%; /* #16161a */
+  --card-foreground: 32 23% 85%;
+  --popover: 240 8% 9%;
+  --popover-foreground: 32 23% 85%;
+  --primary: 39 49% 56%; /* Gold #c5a059 */
+  --primary-foreground: 240 9% 4%;
+  --primary-deep: 39 49% 40%;
+  --secondary: 240 9% 11%; /* #1a1a1f */
+  --secondary-foreground: 32 23% 85%;
+  --muted: 240 9% 11%;
+  --muted-foreground: 32 15% 65%;
+  --accent: 240 9% 11%;
+  --accent-foreground: 39 49% 56%;
+  --destructive: 0 65% 50%;
+  --destructive-foreground: 32 23% 85%;
+  --border: 240 5% 17%; /* #2a2a2e */
+  --input: 240 5% 17%;
+  --ring: 39 49% 56%;
+  --sidebar-background: 240 9% 4%;
+  --sidebar-foreground: 32 23% 85%;
+  --sidebar-primary: 39 49% 56%;
+  --sidebar-primary-foreground: 240 9% 4%;
+  --sidebar-accent: 240 9% 11%;
+  --sidebar-accent-foreground: 39 49% 56%;
+  --sidebar-border: 240 5% 17%;
+  --sidebar-ring: 39 49% 56%;
+  --gradient-primary: linear-gradient(135deg, hsl(39 49% 56%), hsl(39 49% 40%));
+  --shadow-elegant: 0 10px 30px -12px hsl(39 49% 20% / 0.5);
+  --shadow-card: 0 1px 2px hsl(0 0% 0% / 0.4);
+}
+
+/* PALETTES DE COR CUSTOMIZADAS - MAPED TO SOPHISTICATED AESTHETICS */
+
+/* Verde Clínico (Green Accent) */
+[data-palette="verde-claro"] {
+  --primary: 142 71% 38%;
+  --ring: 142 71% 38%;
+  --sidebar-primary: 142 71% 38%;
+  --sidebar-ring: 142 71% 38%;
+  --accent: 142 55% 92%;
+  --accent-foreground: 142 71% 25%;
+  --gradient-primary: linear-gradient(135deg, hsl(142 71% 38%), hsl(142 71% 25%));
+  --shadow-elegant: 0 10px 30px -12px hsl(142 71% 38% / 0.15);
+}
+.dark[data-palette="verde-claro"] {
+  --primary: 142 65% 48%; /* Safe green */
+  --ring: 142 65% 48%;
+  --sidebar-primary: 142 65% 48%;
+  --gradient-primary: linear-gradient(135deg, hsl(142 65% 48%), hsl(142 70% 30%));
+}
+
+/* Rosa Terapêutico (Warm Rose Accent) */
+[data-palette="verde-escuro"] {
+  --primary: 345 75% 55%;
+  --ring: 345 75% 55%;
+  --sidebar-primary: 345 75% 55%;
+  --sidebar-ring: 345 75% 55%;
+  --accent: 345 70% 94%;
+  --accent-foreground: 345 80% 25%;
+  --gradient-primary: linear-gradient(135deg, hsl(345 75% 55%), hsl(345 80% 40%));
+  --shadow-elegant: 0 10px 30px -12px hsl(345 75% 40% / 0.15);
+}
+.dark[data-palette="verde-escuro"] {
+  --primary: 345 80% 65%;
+  --ring: 345 80% 65%;
+  --sidebar-primary: 345 80% 65%;
+  --gradient-primary: linear-gradient(135deg, hsl(345 80% 65%), hsl(345 85% 45%));
+}
+
+/* Roxo Psicanálise (Deep Amethyst Accent) */
+[data-palette="roxo"] {
+  --primary: 270 65% 55%;
+  --ring: 270 65% 55%;
+  --sidebar-primary: 270 65% 55%;
+  --sidebar-ring: 270 65% 55%;
+  --accent: 270 60% 94%;
+  --accent-foreground: 270 70% 30%;
+  --gradient-primary: linear-gradient(135deg, hsl(270 65% 55%), hsl(285 70% 40%));
+  --shadow-elegant: 0 10px 30px -12px hsl(270 65% 35% / 0.15);
+}
+.dark[data-palette="roxo"] {
+  --primary: 270 75% 65%;
+  --ring: 270 75% 65%;
+  --sidebar-primary: 270 75% 65%;
+  --gradient-primary: linear-gradient(135deg, hsl(270 75% 65%), hsl(285 80% 48%));
+}
+
+/* Azul Neutro (Steel Blue Accent) */
+[data-palette="azul"] {
+  --primary: 217 91% 50%;
+  --ring: 217 91% 50%;
+  --sidebar-primary: 217 91% 50%;
+  --sidebar-ring: 217 91% 50%;
+  --accent: 217 90% 94%;
+  --accent-foreground: 217 91% 30%;
+  --gradient-primary: linear-gradient(135deg, hsl(217 91% 50%), hsl(230 85% 35%));
+  --shadow-elegant: 0 10px 30px -12px hsl(217 91% 35% / 0.15);
+}
+.dark[data-palette="azul"] {
+  --primary: 217 91% 62%;
+  --ring: 217 91% 62%;
+  --sidebar-primary: 217 91% 62%;
+  --gradient-primary: linear-gradient(135deg, hsl(217 91% 62%), hsl(230 85% 45%));
+}
+
+/* Dourado Escuta (Sophisticated Gold Theme) */
+[data-palette="dourado"] {
+  --background: 40 20% 97%;
+  --foreground: 30 15% 15%;
+  --card: 0 0% 100%;
+  --card-foreground: 30 15% 15%;
+  --primary: 39 49% 48%; /* Rich Antique Gold */
+  --ring: 39 49% 48%;
+  --sidebar-primary: 39 49% 48%;
+  --sidebar-ring: 39 49% 48%;
+  --accent: 39 49% 94%;
+  --accent-foreground: 39 49% 30%;
+  --border: 35 15% 88%;
+  --gradient-primary: linear-gradient(135deg, hsl(39 49% 48%), hsl(39 49% 35%));
+  --shadow-elegant: 0 10px 30px -12px hsl(39 49% 35% / 0.12);
+}
+.dark[data-palette="dourado"] {
+  --background: 240 9% 4%;
+  --foreground: 32 23% 85%;
+  --card: 240 8% 9%;
+  --card-foreground: 32 23% 85%;
+  --primary: 39 49% 56%; /* Sophisticated Gold */
+  --ring: 39 49% 56%;
+  --sidebar-primary: 39 49% 56%;
+  --sidebar-ring: 39 49% 56%;
+  --accent: 240 9% 11%;
+  --accent-foreground: 39 49% 56%;
+  --border: 240 5% 17%;
+  --gradient-primary: linear-gradient(135deg, hsl(39 49% 56%), hsl(39 49% 40%));
+}
+
+/* Preto Carbon (Minimalist Obsidian Accent) */
+[data-palette="carbon"] {
+  --primary: 0 0% 15%;
+  --ring: 0 0% 15%;
+  --sidebar-primary: 0 0% 15%;
+  --sidebar-ring: 0 0% 15%;
+  --accent: 0 0% 94%;
+  --accent-foreground: 0 0% 10%;
+  --gradient-primary: linear-gradient(135deg, hsl(0 0% 20%), hsl(0 0% 5%));
+  --shadow-elegant: 0 10px 30px -12px hsl(0 0% 0% / 0.15);
+}
+.dark[data-palette="carbon"] {
+  --primary: 0 0% 90%;
+  --primary-foreground: 240 9% 4%;
+  --ring: 0 0% 90%;
+  --sidebar-primary: 0 0% 90%;
+  --gradient-primary: linear-gradient(135deg, hsl(0 0% 85%), hsl(0 0% 60%));
+}
+
+/* Terracota Argila (Clay/Terracotta Accent) */
+[data-palette="terracota"] {
+  --primary: 24 64% 50%;
+  --ring: 24 64% 50%;
+  --sidebar-primary: 24 64% 50%;
+  --sidebar-ring: 24 64% 50%;
+  --accent: 24 60% 95%;
+  --accent-foreground: 24 64% 30%;
+  --gradient-primary: linear-gradient(135deg, hsl(24 64% 50%), hsl(24 70% 38%));
+  --shadow-elegant: 0 10px 30px -12px hsl(24 64% 38% / 0.15);
+}
+.dark[data-palette="terracota"] {
+  --primary: 24 70% 60%;
+  --ring: 24 70% 60%;
+  --sidebar-primary: 24 70% 60%;
+  --gradient-primary: linear-gradient(135deg, hsl(24 70% 60%), hsl(24 75% 45%));
+}
+
+/* Turquesa Mente (Teal/Mindful Turquoise Accent) */
+[data-palette="turquesa"] {
+  --primary: 174 65% 41%;
+  --ring: 174 65% 41%;
+  --sidebar-primary: 174 65% 41%;
+  --sidebar-ring: 174 65% 41%;
+  --accent: 174 50% 94%;
+  --accent-foreground: 174 65% 25%;
+  --gradient-primary: linear-gradient(135deg, hsl(174 65% 41%), hsl(174 70% 28%));
+  --shadow-elegant: 0 10px 30px -12px hsl(174 65% 28% / 0.15);
+}
+.dark[data-palette="turquesa"] {
+  --primary: 174 60% 51%;
+  --ring: 174 60% 51%;
+  --sidebar-primary: 174 60% 51%;
+  --gradient-primary: linear-gradient(135deg, hsl(174 60% 51%), hsl(174 65% 36%));
+}
+
+/* Vinho Clássico (Burgundy/Classic Wine Accent) */
+[data-palette="vinho"] {
+  --primary: 335 65% 35%;
+  --ring: 335 65% 35%;
+  --sidebar-primary: 335 65% 35%;
+  --sidebar-ring: 335 65% 35%;
+  --accent: 335 50% 94%;
+  --accent-foreground: 335 65% 22%;
+  --gradient-primary: linear-gradient(135deg, hsl(335 65% 35%), hsl(335 70% 22%));
+  --shadow-elegant: 0 10px 30px -12px hsl(335 65% 22% / 0.15);
+}
+.dark[data-palette="vinho"] {
+  --primary: 335 55% 55%;
+  --ring: 335 55% 55%;
+  --sidebar-primary: 335 55% 55%;
+  --gradient-primary: linear-gradient(135deg, hsl(335 55% 55%), hsl(335 60% 38%));
+}
+
+/* Lavanda Calm (Lavender/Soft Violet Accent) */
+[data-palette="lavanda"] {
+  --primary: 255 55% 57%;
+  --ring: 255 55% 57%;
+  --sidebar-primary: 255 55% 57%;
+  --sidebar-ring: 255 55% 57%;
+  --accent: 255 45% 94%;
+  --accent-foreground: 255 55% 30%;
+  --gradient-primary: linear-gradient(135deg, hsl(255 55% 57%), hsl(255 60% 42%));
+  --shadow-elegant: 0 10px 30px -12px hsl(255 55% 42% / 0.15);
+}
+.dark[data-palette="lavanda"] {
+  --primary: 255 65% 70%;
+  --ring: 255 65% 70%;
+  --sidebar-primary: 255 65% 70%;
+  --gradient-primary: linear-gradient(135deg, hsl(255 65% 70%), hsl(255 70% 50%));
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-sans);
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ELEGANT TYPOGRAPHY OVERRIDES FOR CLINICAL ATMOSPHERE */
+h1, h2, h3, h4, .font-serif, .serif-brand {
+  font-family: var(--font-serif);
+}
+
+h1, h2, h3 {
+  letter-spacing: -0.02em;
+}
+
+/* CUSTOM STYLES */
+.card-premium {
+  border-radius: 1rem;
+  border: 1px solid hsl(var(--border));
+  background-color: hsl(var(--card));
+  box-shadow: var(--shadow-card);
+}
+
+.card-premium-hover {
+  border-radius: 1rem;
+  border: 1px solid hsl(var(--border));
+  background-color: hsl(var(--card));
+  box-shadow: var(--shadow-card);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-premium-hover:hover {
+  transform: translateY(-2px);
+  border-color: hsl(var(--primary) / 0.4);
+  box-shadow: var(--shadow-elegant);
+}
+
+.btn-emerald {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.75rem;
+  padding: 0.5rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: hsl(var(--primary-foreground));
+  background: var(--gradient-primary);
+  box-shadow: var(--shadow-elegant);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-emerald:hover {
+  opacity: 0.95;
+  transform: translateY(-1px);
+}
+
+.gradient-emerald {
+  background: var(--gradient-primary);
+}
+
+.gradient-text-emerald {
+  background: var(--gradient-primary);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}

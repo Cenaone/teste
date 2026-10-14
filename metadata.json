@@ -1,0 +1,10 @@
+{
+  "name": "PSi4.0",
+  "description": "Plataforma premium de CRM, prontuário e gestão de relacionamento para Psicanalistas.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

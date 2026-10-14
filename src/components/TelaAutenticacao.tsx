@@ -1,0 +1,565 @@
+import React, { useState } from 'react';
+import {
+  fazerLoginSupabaseAuth,
+  cadastrarContaSupabaseAuth,
+  solicitarRecuperacaoSenhaOficial,
+  isSupabaseConfigurado
+} from '../lib/supabase';
+import {
+  Lock,
+  Mail,
+  Key,
+  Eye,
+  EyeOff,
+  Activity,
+  AlertCircle,
+  ShieldCheck,
+  Sparkles,
+  Sun,
+  Moon,
+  Info,
+  CheckCircle2,
+  Database,
+  SlidersHorizontal
+} from 'lucide-react';
+import ModalConfigBancoDados from './ModalConfigBancoDados';
+
+interface TelaAutenticacaoProps {
+  onLoginSucesso: (usuario: { id: string; email: string; nomeCompleto: string; crp?: string }) => void;
+  temaEscuro?: boolean;
+  onToggleTema?: () => void;
+}
+
+export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
+  onLoginSucesso,
+  temaEscuro,
+  onToggleTema
+}) => {
+  const [aba, setAba] = useState<'login' | 'cadastro' | 'recuperar'>('login');
+
+  // Estados de Login
+  const [emailLogin, setEmailLogin] = useState('');
+  const [senhaLogin, setSenhaLogin] = useState('');
+  const [mostrarSenhaLogin, setMostrarSenhaLogin] = useState(false);
+  const [erroLogin, setErroLogin] = useState('');
+  const [carregandoLogin, setCarregandoLogin] = useState(false);
+
+  // Estados de Cadastro
+  const [nomeCadastro, setNomeCadastro] = useState('');
+  const [emailCadastro, setEmailCadastro] = useState('');
+  const [crpCadastro, setCrpCadastro] = useState('');
+  const [senhaCadastro, setSenhaCadastro] = useState('');
+  const [confirmarSenhaCadastro, setConfirmarSenhaCadastro] = useState('');
+  const [mostrarSenhaCadastro, setMostrarSenhaCadastro] = useState(false);
+  const [erroCadastro, setErroCadastro] = useState('');
+  const [sucessoCadastro, setSucessoCadastro] = useState('');
+  const [carregandoCadastro, setCarregandoCadastro] = useState(false);
+
+  // Estados de Recuperação
+  const [emailRecuperacao, setEmailRecuperacao] = useState('');
+  const [erroRecuperacao, setErroRecuperacao] = useState('');
+  const [sucessoRecuperacao, setSucessoRecuperacao] = useState('');
+  const [carregandoRecuperacao, setCarregandoRecuperacao] = useState(false);
+
+  // Estados de Configuração de Banco
+  const [modalBancoAberto, setModalBancoAberto] = useState(false);
+  const [versaoConfig, setVersaoConfig] = useState(0);
+
+  const supabaseAtivo = isSupabaseConfigurado();
+
+  // -------------------------------------------------------------
+  // HANDLER: LOGIN (Supabase Auth oficial)
+  // -------------------------------------------------------------
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErroLogin('');
+
+    const emailClean = emailLogin.trim().toLowerCase();
+    const senhaClean = senhaLogin.trim();
+
+    if (!emailClean) {
+      setErroLogin('Por favor, informe seu e-mail de acesso.');
+      return;
+    }
+    if (!senhaClean) {
+      setErroLogin('Por favor, digite sua senha de acesso.');
+      return;
+    }
+
+    if (!supabaseAtivo) {
+      setErroLogin('Configuração do Supabase ausente. Defina VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no ambiente.');
+      return;
+    }
+
+    setCarregandoLogin(true);
+
+    try {
+      const res = await fazerLoginSupabaseAuth(emailClean, senhaClean);
+      setCarregandoLogin(false);
+
+      if (res.ok && res.user) {
+        onLoginSucesso({
+          id: res.user.id,
+          email: res.user.email,
+          nomeCompleto: res.user.metadata?.nome_completo || res.user.email?.split('@')[0],
+          crp: res.user.metadata?.crp
+        });
+      } else {
+        setErroLogin(res.erro || 'Falha ao autenticar. Verifique seu e-mail e senha.');
+      }
+    } catch (err: any) {
+      setCarregandoLogin(false);
+      setErroLogin(err.message || 'Erro ao conectar com o serviço de autenticação.');
+    }
+  };
+
+  // -------------------------------------------------------------
+  // HANDLER: CADASTRO (Supabase Auth oficial)
+  // -------------------------------------------------------------
+  const handleCadastro = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErroCadastro('');
+    setSucessoCadastro('');
+
+    const nomeClean = nomeCadastro.trim();
+    const emailClean = emailCadastro.trim().toLowerCase();
+
+    if (!nomeClean) {
+      setErroCadastro('Por favor, informe seu nome completo.');
+      return;
+    }
+    if (!emailClean || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailClean)) {
+      setErroCadastro('Por favor, informe um endereço de e-mail válido.');
+      return;
+    }
+    if (!senhaCadastro || senhaCadastro.length < 8) {
+      setErroCadastro('A senha deve conter no mínimo 8 caracteres.');
+      return;
+    }
+    if (senhaCadastro !== confirmarSenhaCadastro) {
+      setErroCadastro('A confirmação de senha não coincide com a senha digitada.');
+      return;
+    }
+
+    setCarregandoCadastro(true);
+    try {
+      const res = await cadastrarContaSupabaseAuth(emailClean, senhaCadastro, {
+        nomeCompleto: nomeClean,
+        crp: crpCadastro.trim() || undefined
+      });
+      setCarregandoCadastro(false);
+
+      if (res.ok) {
+        setSucessoCadastro('Conta criada com sucesso no Supabase! Verifique seu e-mail se a confirmação estiver ativada ou faça login agora.');
+        setTimeout(() => {
+          setAba('login');
+          setEmailLogin(emailClean);
+          setSucessoCadastro('');
+        }, 2500);
+      } else {
+        setErroCadastro(res.erro || 'Erro ao criar conta no servidor.');
+      }
+    } catch (err: any) {
+      setCarregandoCadastro(false);
+      setErroCadastro(err.message || 'Erro inesperado.');
+    }
+  };
+
+  // -------------------------------------------------------------
+  // HANDLER: RECUPERAR SENHA (Oficial via e-mail do Supabase Auth)
+  // -------------------------------------------------------------
+  const handleRecuperarSenha = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErroRecuperacao('');
+    setSucessoRecuperacao('');
+
+    const emailClean = emailRecuperacao.trim().toLowerCase();
+    if (!emailClean) {
+      setErroRecuperacao('Por favor, digite seu e-mail cadastrado.');
+      return;
+    }
+
+    setCarregandoRecuperacao(true);
+    try {
+      const res = await solicitarRecuperacaoSenhaOficial(emailClean);
+      setCarregandoRecuperacao(false);
+      if (res.ok) {
+        setSucessoRecuperacao(res.mensagem);
+      } else {
+        setErroRecuperacao(res.mensagem);
+      }
+    } catch (err: any) {
+      setCarregandoRecuperacao(false);
+      setErroRecuperacao(err.message || 'Erro ao solicitar recuperação.');
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-stone-100 dark:bg-stone-950 text-stone-900 dark:text-stone-100 flex flex-col justify-between p-4 sm:p-6 transition-colors duration-200">
+      {/* Top Header */}
+      <header className="flex items-center justify-between max-w-6xl mx-auto w-full py-2">
+        <div className="flex items-center gap-3">
+          <div className="size-9 rounded-xl gradient-emerald grid place-items-center text-primary-foreground shadow-md">
+            <Activity className="size-5" strokeWidth={2.5} />
+          </div>
+          <div>
+            <div className="font-bold text-base tracking-tight leading-none text-foreground">PSi 4.0</div>
+            <div className="text-[10px] uppercase font-bold tracking-wider text-primary">Micro SaaS Clínico</div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setModalBancoAberto(true)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
+              supabaseAtivo
+                ? 'border-border bg-card hover:bg-muted text-foreground'
+                : 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20'
+            }`}
+            title="Configurar ou Alterar Banco de Dados"
+          >
+            <Database className={`size-3.5 ${supabaseAtivo ? 'text-emerald-500' : 'text-amber-500'}`} />
+            <span className="hidden sm:inline">
+              {supabaseAtivo ? 'Banco Conectado' : 'Configurar Banco'}
+            </span>
+            <span className="sm:hidden">Banco</span>
+          </button>
+
+          {onToggleTema && (
+            <button
+              onClick={onToggleTema}
+              className="p-2 rounded-xl border border-border bg-card text-muted-foreground hover:text-foreground transition-all"
+              title="Alternar Tema"
+            >
+              {temaEscuro ? <Sun className="size-4" /> : <Moon className="size-4" />}
+            </button>
+          )}
+        </div>
+      </header>
+
+      {/* Main Card */}
+      <main className="flex-1 flex items-center justify-center my-8">
+        <div className="w-full max-w-md bg-card border border-border rounded-2xl shadow-xl overflow-hidden p-6 sm:p-8 space-y-6 animate-in fade-in zoom-in-95 duration-200">
+          
+          {/* Architecture Badge */}
+          <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 text-xs text-muted-foreground flex items-start gap-2.5">
+            <ShieldCheck className="size-4 text-emerald-600 shrink-0 mt-0.5" />
+            <div>
+              <strong className="text-foreground">Arquitetura Híbrida Segura:</strong> A autenticação e assinatura ocorrem na nuvem. Prontuários, pacientes e financeiro clínico ficam 100% no seu dispositivo criptografados com AES-GCM.
+            </div>
+          </div>
+
+          {/* Banner de Banco Não Conectado */}
+          {!supabaseAtivo && (
+            <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200 text-xs flex items-start justify-between gap-3">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="size-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                <div>
+                  <strong className="block font-semibold">Nenhum banco de dados conectado</strong>
+                  <span className="text-[11px] opacity-90">
+                    Defina seu projeto Supabase, Firebase ou Cloud SQL para habilitar o login em nuvem.
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalBancoAberto(true)}
+                className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-[11px] shrink-0 transition-colors shadow-xs"
+              >
+                Configurar
+              </button>
+            </div>
+          )}
+
+          {/* Abas */}
+          <div className="flex border-b border-border">
+            <button
+              onClick={() => setAba('login')}
+              className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${
+                aba === 'login'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Acessar Conta
+            </button>
+            <button
+              onClick={() => setAba('cadastro')}
+              className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${
+                aba === 'cadastro'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Criar Conta
+            </button>
+            <button
+              onClick={() => setAba('recuperar')}
+              className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${
+                aba === 'recuperar'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Recuperar
+            </button>
+          </div>
+
+          {/* FORM: LOGIN */}
+          {aba === 'login' && (
+            <form onSubmit={handleLogin} className="space-y-4">
+              {erroLogin && (
+                <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-start gap-2">
+                  <AlertCircle className="size-4 shrink-0 mt-0.5" />
+                  <span>{erroLogin}</span>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  <Mail className="size-3.5" />
+                  E-mail do Assinante
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={emailLogin}
+                  onChange={e => setEmailLogin(e.target.value)}
+                  placeholder="seu-email@dominio.com"
+                  className="w-full h-11 px-3.5 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  <Key className="size-3.5" />
+                  Senha da Conta
+                </label>
+                <div className="relative">
+                  <input
+                    type={mostrarSenhaLogin ? 'text' : 'password'}
+                    required
+                    value={senhaLogin}
+                    onChange={e => setSenhaLogin(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full h-11 px-3.5 pr-10 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setMostrarSenhaLogin(!mostrarSenhaLogin)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1"
+                  >
+                    {mostrarSenhaLogin ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={carregandoLogin}
+                className="w-full h-11 gradient-emerald text-primary-foreground font-bold text-sm rounded-xl shadow-md hover:opacity-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {carregandoLogin ? (
+                  <span>Conectando com segurança...</span>
+                ) : (
+                  <>
+                    <Lock className="size-4" />
+                    <span>Entrar no Setting</span>
+                  </>
+                )}
+              </button>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => setAba('recuperar')}
+                  className="text-xs text-muted-foreground hover:text-primary transition-colors underline"
+                >
+                  Esqueceu sua senha?
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* FORM: CADASTRO */}
+          {aba === 'cadastro' && (
+            <form onSubmit={handleCadastro} className="space-y-4">
+              {erroCadastro && (
+                <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-start gap-2">
+                  <AlertCircle className="size-4 shrink-0 mt-0.5" />
+                  <span>{erroCadastro}</span>
+                </div>
+              )}
+              {sucessoCadastro && (
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs flex items-start gap-2">
+                  <CheckCircle2 className="size-4 shrink-0 mt-0.5" />
+                  <span>{sucessoCadastro}</span>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Nome Completo
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={nomeCadastro}
+                  onChange={e => setNomeCadastro(e.target.value)}
+                  placeholder="Dra. / Dr. / Analista"
+                  className="w-full h-10 px-3.5 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  E-mail Oficial
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={emailCadastro}
+                  onChange={e => setEmailCadastro(e.target.value)}
+                  placeholder="analista@dominio.com"
+                  className="w-full h-10 px-3.5 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Registro Profissional (Opcional)
+                </label>
+                <input
+                  type="text"
+                  value={crpCadastro}
+                  onChange={e => setCrpCadastro(e.target.value)}
+                  placeholder="Ex: CRP 06/123456 ou Sociedade"
+                  className="w-full h-10 px-3.5 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Senha da Conta (Mínimo 8 dígitos)
+                </label>
+                <div className="relative">
+                  <input
+                    type={mostrarSenhaCadastro ? 'text' : 'password'}
+                    required
+                    value={senhaCadastro}
+                    onChange={e => setSenhaCadastro(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full h-10 px-3.5 pr-10 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setMostrarSenhaCadastro(!mostrarSenhaCadastro)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1"
+                  >
+                    {mostrarSenhaCadastro ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Confirmar Senha
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={confirmarSenhaCadastro}
+                  onChange={e => setConfirmarSenhaCadastro(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full h-10 px-3.5 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={carregandoCadastro}
+                className="w-full h-11 gradient-emerald text-primary-foreground font-bold text-sm rounded-xl shadow-md hover:opacity-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {carregandoCadastro ? 'Cadastrando no servidor...' : 'Criar Conta de Assinante'}
+              </button>
+            </form>
+          )}
+
+          {/* FORM: RECUPERAR SENHA */}
+          {aba === 'recuperar' && (
+            <form onSubmit={handleRecuperarSenha} className="space-y-4">
+              <div className="text-xs text-muted-foreground leading-relaxed">
+                Informe o e-mail cadastrado. O servidor oficial de autenticação enviará um link seguro para você redefinir sua senha na nuvem.
+              </div>
+
+              {erroRecuperacao && (
+                <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-start gap-2">
+                  <AlertCircle className="size-4 shrink-0 mt-0.5" />
+                  <span>{erroRecuperacao}</span>
+                </div>
+              )}
+              {sucessoRecuperacao && (
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs flex items-start gap-2">
+                  <CheckCircle2 className="size-4 shrink-0 mt-0.5" />
+                  <span>{sucessoRecuperacao}</span>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  E-mail da Conta
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={emailRecuperacao}
+                  onChange={e => setEmailRecuperacao(e.target.value)}
+                  placeholder="seu-email@dominio.com"
+                  className="w-full h-11 px-3.5 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={carregandoRecuperacao}
+                className="w-full h-11 gradient-emerald text-primary-foreground font-bold text-sm rounded-xl shadow-md hover:opacity-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {carregandoRecuperacao ? 'Enviando pelo servidor...' : 'Enviar Link de Recuperação'}
+              </button>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => setAba('login')}
+                  className="text-xs text-muted-foreground hover:text-primary transition-colors underline"
+                >
+                  Voltar para o login
+                </button>
+              </div>
+            </form>
+          )}
+
+        </div>
+      </main>
+
+      {/* Footer */}
+      <footer className="text-center py-4 border-t border-border max-w-6xl mx-auto w-full text-xs text-muted-foreground">
+        PSi 4.0 &copy; {new Date().getFullYear()} &bull; Arquitetura Híbrida: Nuvem para Contas/Licenças e Cofre Local Criptografado para Prontuários.
+      </footer>
+
+      {/* Modal de Configuração / Alteração de Banco de Dados */}
+      <ModalConfigBancoDados
+        aberto={modalBancoAberto}
+        onFechar={() => setModalBancoAberto(false)}
+        onConfiguracaoAtualizada={() => {
+          setVersaoConfig(v => v + 1);
+          setErroLogin('');
+          setErroCadastro('');
+        }}
+      />
+    </div>
+  );
+};
+
+export default TelaAutenticacao;
