@@ -5,6 +5,13 @@ export const SQL_MIGRACAO_NOVO_SUPABASE = `-- ==================================
 -- Supabase Dashboard > SQL Editor > New query > Run
 -- ==============================================================================
 
+-- 0. LIMPEZA DE TRIGGERS CORROMPIDOS (Evita "Database error saving new user")
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP TRIGGER IF EXISTS on_auth_user_created_usuarios ON auth.users;
+DROP FUNCTION IF EXISTS public.handle_new_user() CASCADE;
+
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+
 -- 1. TABELA DE LICENÇAS E ASSINATURAS DO SAAS (NUVEM)
 CREATE TABLE IF NOT EXISTS public.assinaturas_saas (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

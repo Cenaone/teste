@@ -27,7 +27,9 @@ import {
   getSupabaseCredentials,
   isSupabaseConfigurado,
   traduzirErroAuth,
-  obterUrlPainelEmailSupabase
+  obterUrlPainelEmailSupabase,
+  fazerLoginSupabaseAuth,
+  obterUsuarioAutenticadoSupabase
 } from '../src/lib/supabase';
 
 async function runTests() {
@@ -251,6 +253,18 @@ async function runTests() {
     assert.ok(erroDbGenerico.includes('banco de dados'), 'Detecta database error generico');
 
     console.log('  ✔ Sucesso: Arquitetura verificada. Somente login/perfil no Supabase; dados clínicos 100% no cofre local.');
+  }
+
+  // 11. TESTE: Conta solicitada backupvideomidias@gmail.com pré-configurada e acesso ao sistema
+  {
+    console.log('▶ Teste 11: Conta de assinante backupvideomidias@gmail.com pré-configurada e persistida');
+    const loginRes = await fazerLoginSupabaseAuth('backupvideomidias@gmail.com', 'Daniel12345');
+    assert.strictEqual(loginRes.ok, true, 'Login deve suceder com credenciais solicitadas');
+    assert.strictEqual(loginRes.user?.email, 'backupvideomidias@gmail.com', 'E-mail do usuário autenticado');
+    const sessaoUser = await obterUsuarioAutenticadoSupabase();
+    assert.ok(sessaoUser, 'Sessão ativa de assinante recuperada');
+    assert.strictEqual(sessaoUser.email, 'backupvideomidias@gmail.com', 'Sessão do usuário solicitada ativa');
+    console.log('  ✔ Sucesso: Conta backupvideomidias@gmail.com salva e autenticada com acesso liberado ao sistema.');
   }
 
   console.log('\n🎉 TODOS OS TESTES DE SEGURANÇA E ARQUITETURA PASSARAM COM SUCESSO!\n');
