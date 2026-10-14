@@ -3,7 +3,8 @@ import {
   fazerLoginSupabaseAuth,
   cadastrarContaSupabaseAuth,
   solicitarRecuperacaoSenhaOficial,
-  isSupabaseConfigurado
+  isSupabaseConfigurado,
+  obterUrlPainelEmailSupabase
 } from '../lib/supabase';
 import {
   Lock,
@@ -20,9 +21,95 @@ import {
   Info,
   CheckCircle2,
   Database,
-  SlidersHorizontal
+  SlidersHorizontal,
+  ExternalLink,
+  AlertTriangle,
+  ArrowRight
 } from 'lucide-react';
 import ModalConfigBancoDados from './ModalConfigBancoDados';
+
+function isErroRateLimit(msg: string): boolean {
+  if (!msg) return false;
+  const m = msg.toLowerCase();
+  return (
+    m.includes('rate limit') ||
+    m.includes('limite de envio') ||
+    m.includes('over_email_send_rate_limit') ||
+    m.includes('too many requests')
+  );
+}
+
+function isErroEmailNaoConfirmado(msg: string): boolean {
+  if (!msg) return false;
+  const m = msg.toLowerCase();
+  return m.includes('confirm') || m.includes('confirmar');
+}
+
+interface GuiaConfiguracaoEmailSupabaseProps {
+  titulo?: string;
+  onTentarLogin?: () => void;
+  mostrarBotaoLogin?: boolean;
+}
+
+const GuiaConfiguracaoEmailSupabase: React.FC<GuiaConfiguracaoEmailSupabaseProps> = ({
+  titulo = 'Como resolver o "Email rate limit exceeded" no Supabase:',
+  onTentarLogin,
+  mostrarBotaoLogin
+}) => {
+  const painelEmailUrl = obterUrlPainelEmailSupabase();
+
+  return (
+    <div className="p-3.5 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-950 dark:text-amber-100 text-xs space-y-2.5 animate-in fade-in duration-200 text-left">
+      <div className="flex items-start gap-2">
+        <AlertTriangle className="size-4 text-amber-600 shrink-0 mt-0.5" />
+        <div>
+          <strong className="block font-bold text-amber-900 dark:text-amber-300">
+            {titulo}
+          </strong>
+          <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">
+            O plano gratuito do Supabase limita o envio de confirmação a apenas <strong>3 e-mails por hora</strong>. Para permitir cadastros imediatos sem restrição de e-mails:
+          </p>
+        </div>
+      </div>
+
+      <div className="bg-card/90 border border-border rounded-xl p-3 space-y-2 text-[11px]">
+        <div className="flex items-center justify-between gap-2 border-b border-border/50 pb-2 flex-wrap">
+          <span className="font-semibold text-foreground">Ajuste rápido em 15 segundos:</span>
+          <a
+            href={painelEmailUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary text-primary-foreground font-semibold hover:opacity-90 transition-opacity text-[11px]"
+          >
+            <span>Abrir Painel do Supabase</span>
+            <ExternalLink className="size-3" />
+          </a>
+        </div>
+        <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+          <li>Na página aberta do seu projeto, abra o provedor <strong>Email</strong>.</li>
+          <li>Desmarque a caixa <strong>&quot;Confirm email&quot;</strong> (desativar).</li>
+          <li>Clique no botão verde <strong>Save</strong> no final da página.</li>
+        </ol>
+      </div>
+
+      <div className="flex items-center justify-between flex-wrap gap-2 pt-0.5">
+        <span className="text-[10px] text-muted-foreground">
+          Após salvar no Supabase, os acessos e cadastros funcionam na hora sem disparar e-mails.
+        </span>
+        {mostrarBotaoLogin && onTentarLogin && (
+          <button
+            type="button"
+            onClick={onTentarLogin}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-foreground text-xs font-semibold shadow-xs transition-colors"
+          >
+            <span>Tentar Fazer Login</span>
+            <ArrowRight className="size-3.5 text-primary" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
 
 interface TelaAutenticacaoProps {
   onLoginSucesso: (usuario: { id: string; email: string; nomeCompleto: string; crp?: string }) => void;
@@ -150,12 +237,25 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
       setCarregandoCadastro(false);
 
       if (res.ok) {
-        setSucessoCadastro('Conta criada com sucesso no Supabase! Verifique seu e-mail se a confirmação estiver ativada ou faça login agora.');
-        setTimeout(() => {
-          setAba('login');
-          setEmailLogin(emailClean);
-          setSucessoCadastro('');
-        }, 2500);
+        if (res.user && !res.precisaConfirmarEmail) {
+          setSucessoCadastro('Conta criada e autenticada com sucesso no Supabase! Entrando no sistema...');
+          setTimeout(() => {
+            onLoginSucesso({
+              id: res.user.id,
+              email: res.user.email,
+              nomeCompleto: res.user.user_metadata?.nome_completo || nomeClean,
+              crp: res.user.user_metadata?.crp || crpCadastro
+            });
+          }, 900);
+        } else {
+          setSucessoCadastro('Conta criada com sucesso no Supabase! Verifique seu e-mail se a confirmação estiver ativada ou faça login agora.');
+          setTimeout(() => {
+            setAba('login');
+            setEmailLogin(emailClean);
+            setSenhaLogin(senhaCadastro);
+            setSucessoCadastro('');
+          }, 2000);
+        }
       } else {
         setErroCadastro(res.erro || 'Erro ao criar conta no servidor.');
       }
@@ -326,9 +426,14 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
           {aba === 'login' && (
             <form onSubmit={handleLogin} className="space-y-4">
               {erroLogin && (
-                <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-start gap-2">
-                  <AlertCircle className="size-4 shrink-0 mt-0.5" />
-                  <span>{erroLogin}</span>
+                <div className="space-y-3">
+                  <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-start gap-2">
+                    <AlertCircle className="size-4 shrink-0 mt-0.5" />
+                    <span>{erroLogin}</span>
+                  </div>
+                  {(isErroRateLimit(erroLogin) || isErroEmailNaoConfirmado(erroLogin)) && (
+                    <GuiaConfiguracaoEmailSupabase titulo="Acesso com e-mail pendente ou limite no Supabase" />
+                  )}
                 </div>
               )}
 
@@ -402,9 +507,23 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
           {aba === 'cadastro' && (
             <form onSubmit={handleCadastro} className="space-y-4">
               {erroCadastro && (
-                <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-start gap-2">
-                  <AlertCircle className="size-4 shrink-0 mt-0.5" />
-                  <span>{erroCadastro}</span>
+                <div className="space-y-3">
+                  <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-start gap-2">
+                    <AlertCircle className="size-4 shrink-0 mt-0.5" />
+                    <span>{erroCadastro}</span>
+                  </div>
+                  {(isErroRateLimit(erroCadastro) || isErroEmailNaoConfirmado(erroCadastro)) && (
+                    <GuiaConfiguracaoEmailSupabase
+                      titulo="Como resolver o Email rate limit exceeded no Supabase"
+                      mostrarBotaoLogin={Boolean(emailCadastro && senhaCadastro)}
+                      onTentarLogin={() => {
+                        setEmailLogin(emailCadastro);
+                        setSenhaLogin(senhaCadastro);
+                        setErroLogin('');
+                        setAba('login');
+                      }}
+                    />
+                  )}
                 </div>
               )}
               {sucessoCadastro && (
@@ -510,9 +629,21 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
               </div>
 
               {erroRecuperacao && (
-                <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-start gap-2">
-                  <AlertCircle className="size-4 shrink-0 mt-0.5" />
-                  <span>{erroRecuperacao}</span>
+                <div className="space-y-3">
+                  <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-start gap-2">
+                    <AlertCircle className="size-4 shrink-0 mt-0.5" />
+                    <span>{erroRecuperacao}</span>
+                  </div>
+                  {isErroRateLimit(erroRecuperacao) && (
+                    <GuiaConfiguracaoEmailSupabase
+                      titulo="Limite de e-mails de recuperação atingido no Supabase"
+                      mostrarBotaoLogin={Boolean(emailRecuperacao)}
+                      onTentarLogin={() => {
+                        setEmailLogin(emailRecuperacao);
+                        setAba('login');
+                      }}
+                    />
+                  )}
                 </div>
               )}
               {sucessoRecuperacao && (

@@ -231,13 +231,37 @@ export function isSupabaseConfigurado(): boolean {
   return Boolean(isValidSupabaseUrl(url) && isValidSupabaseKey(anonKey));
 }
 
-function traduzirErroAuth(erroMsg: string): string {
+export function extrairRefProjetoSupabase(url?: string): string {
+  try {
+    const raw = url || getSupabaseCredentials().url || DEFAULT_SUPABASE_URL;
+    const clean = limparUrlSupabase(raw);
+    const host = new URL(clean).hostname;
+    return host.split('.')[0] || 'rkbvbmhhkllafijipwey';
+  } catch {
+    return 'rkbvbmhhkllafijipwey';
+  }
+}
+
+export function obterUrlPainelEmailSupabase(url?: string): string {
+  const ref = extrairRefProjetoSupabase(url);
+  return `https://supabase.com/dashboard/project/${ref}/auth/providers`;
+}
+
+export function traduzirErroAuth(erroMsg: string): string {
   const msgLower = (erroMsg || '').toLowerCase();
+  if (
+    msgLower.includes('rate limit') ||
+    msgLower.includes('over_email_send_rate_limit') ||
+    msgLower.includes('too many requests') ||
+    msgLower.includes('email rate limit')
+  ) {
+    return 'Limite de envio de e-mails atingido no Supabase (Email rate limit exceeded). O servidor gratuito do Supabase permite apenas 3 e-mails/hora. Para liberar cadastros e logins imediatos sem dependência de envio de e-mails: acesse o Painel do Supabase > Authentication > Providers > Email e desmarque a opção "Confirm email".';
+  }
   if (msgLower.includes('invalid login credentials') || msgLower.includes('invalid credentials')) {
     return 'E-mail ou senha incorretos. Por favor, verifique seus dados.';
   }
   if (msgLower.includes('email not confirmed')) {
-    return 'E-mail cadastrado, mas ainda pendente de confirmação. Verifique a caixa de entrada do seu e-mail ou confirme o cadastro no Supabase.';
+    return 'E-mail cadastrado, mas ainda pendente de confirmação. Para permitir o login imediato sem confirmação, desmarque "Confirm email" no painel do Supabase (Authentication > Providers > Email).';
   }
   if (msgLower.includes('user already registered')) {
     return 'Este endereço de e-mail já possui cadastro. Faça login ou solicite recuperação de senha.';
@@ -248,10 +272,69 @@ function traduzirErroAuth(erroMsg: string): string {
   if (msgLower.includes('signup requires a valid password')) {
     return 'É necessário fornecer uma senha válida para o cadastro.';
   }
-  if (msgLower.includes('failed to fetch') || msgLower.includes('networkerror') || msgLower.includes('network request failed')) {
+  if (
+    msgLower.includes('failed to fetch') ||
+    msgLower.includes('networkerror') ||
+    msgLower.includes('network request failed')
+  ) {
     return 'Falha de comunicação com o servidor Supabase. Verifique sua conexão com a internet.';
   }
+  if (msgLower.includes('database error saving new user') || msgLower.includes('database error')) {
+    return 'Erro de banco de dados no Supabase ao salvar usuário (Database error). Isso costuma ocorrer quando uma trigger SQL personalizada em auth.users falha. Execute o script SQL atualizado com tratamento de exceções no SQL Editor do Supabase ou remova triggers corrompidas.';
+  }
   return erroMsg || 'Erro inesperado no serviço de autenticação.';
+}
+
+/**
+ * Garante de forma resiliente e não-bloqueante que os dados da conta de assinante
+ * (perfil em public.usuarios e assinatura em public.assinaturas_saas) existam no Supabase.
+ * Se as tabelas ainda não tiverem sido criadas no banco, falha silenciosamente sem quebrar a autenticação.
+ */
+export async function garantirRegistroAssinanteNuvem(
+  cliente: SupabaseClient,
+  userId: string,
+  email: string,
+  metadados: { nomeCompleto?: string; crp?: string }
+): Promise<void> {
+  if (!cliente || !userId) return;
+
+  try {
+    // 1. Sincroniza em public.usuarios (se existir tabela)
+    await cliente.from('usuarios').upsert(
+      {
+        id: userId,
+        email: email.trim().toLowerCase(),
+        nome: metadados.nomeCompleto || email.split('@')[0],
+        crp: metadados.crp || null,
+        role: 'psicologo',
+        status: 'ativo',
+        atualizado_em: new Date().toISOString()
+      },
+      { onConflict: 'id' }
+    );
+  } catch (err) {
+    console.warn('[Supabase Sync] public.usuarios não acessível no momento:', err);
+  }
+
+  try {
+    // 2. Sincroniza em public.assinaturas_saas (se existir tabela)
+    const { data: existente } = await cliente
+      .from('assinaturas_saas')
+      .select('id')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (!existente) {
+      await cliente.from('assinaturas_saas').insert({
+        user_id: userId,
+        plano: 'individual',
+        status: 'ativa',
+        valido_ate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+      });
+    }
+  } catch (err) {
+    console.warn('[Supabase Sync] public.assinaturas_saas não acessível no momento:', err);
+  }
 }
 
 /**
@@ -281,6 +364,15 @@ export async function fazerLoginSupabaseAuth(
     }
 
     if (data?.user) {
+      const nomeMeta = data.user.user_metadata?.nome_completo || data.user.email?.split('@')[0];
+      const crpMeta = data.user.user_metadata?.crp;
+
+      // Sincroniza em segundo plano no banco de dados sem travar a navegação
+      garantirRegistroAssinanteNuvem(cliente, data.user.id, data.user.email || email, {
+        nomeCompleto: nomeMeta,
+        crp: crpMeta
+      });
+
       return {
         ok: true,
         user: {
@@ -300,13 +392,21 @@ export async function fazerLoginSupabaseAuth(
 
 /**
  * Cadastra uma nova conta de assinante no Supabase Auth oficial com metadados de identificação.
- * As políticas de RLS no banco garantem que novos usuários acessem apenas seus próprios dados.
+ * As credenciais são salvas com segurança em auth.users e sincronizadas com as tabelas do projeto.
  */
 export async function cadastrarContaSupabaseAuth(
   email: string,
   senha: string,
   metadados: { nomeCompleto: string; crp?: string }
-): Promise<{ ok: boolean; id?: string; precisaConfirmarEmail?: boolean; erro?: string }> {
+): Promise<{
+  ok: boolean;
+  id?: string;
+  user?: any;
+  session?: any;
+  precisaConfirmarEmail?: boolean;
+  erro?: string;
+  isRateLimit?: boolean;
+}> {
   const cliente = getSupabase();
   if (!cliente) {
     return {
@@ -328,27 +428,44 @@ export async function cadastrarContaSupabaseAuth(
     });
 
     if (error) {
-      return { ok: false, erro: traduzirErroAuth(error.message) };
+      const msg = error.message || '';
+      const isRateLimit =
+        msg.toLowerCase().includes('rate limit') ||
+        msg.toLowerCase().includes('over_email_send_rate_limit');
+      return { ok: false, erro: traduzirErroAuth(msg), isRateLimit };
     }
 
     const userId = data?.user?.id;
     // Se não retornou session e há user, significa que confirmação de e-mail está habilitada no projeto
     const precisaConfirmarEmail = Boolean(data?.user && !data?.session);
 
+    // Se houve sessão imediata (confirmação desativada), assegura o registro no banco
+    if (data?.user && data?.session) {
+      garantirRegistroAssinanteNuvem(cliente, data.user.id, data.user.email || email, metadados);
+    }
+
     return {
       ok: true,
       id: userId,
+      user: data?.user,
+      session: data?.session,
       precisaConfirmarEmail
     };
   } catch (err: any) {
-    return { ok: false, erro: traduzirErroAuth(err.message) };
+    const msg = err?.message || '';
+    const isRateLimit =
+      msg.toLowerCase().includes('rate limit') ||
+      msg.toLowerCase().includes('over_email_send_rate_limit');
+    return { ok: false, erro: traduzirErroAuth(msg), isRateLimit };
   }
 }
 
 /**
  * Recuperação de senha oficial via Supabase Auth (envia e-mail com link de redefinição pelo servidor).
  */
-export async function solicitarRecuperacaoSenhaOficial(email: string): Promise<{ ok: boolean; mensagem: string }> {
+export async function solicitarRecuperacaoSenhaOficial(
+  email: string
+): Promise<{ ok: boolean; mensagem: string; isRateLimit?: boolean }> {
   const cliente = getSupabase();
   if (!cliente) {
     return {
@@ -363,7 +480,11 @@ export async function solicitarRecuperacaoSenhaOficial(email: string): Promise<{
     });
 
     if (error) {
-      return { ok: false, mensagem: traduzirErroAuth(error.message) };
+      const msg = error.message || '';
+      const isRateLimit =
+        msg.toLowerCase().includes('rate limit') ||
+        msg.toLowerCase().includes('over_email_send_rate_limit');
+      return { ok: false, mensagem: traduzirErroAuth(msg), isRateLimit };
     }
 
     return {
@@ -371,7 +492,11 @@ export async function solicitarRecuperacaoSenhaOficial(email: string): Promise<{
       mensagem: 'Instruções oficiais de recuperação enviadas para seu e-mail cadastrado pelo servidor.'
     };
   } catch (err: any) {
-    return { ok: false, mensagem: traduzirErroAuth(err.message) };
+    const msg = err?.message || '';
+    const isRateLimit =
+      msg.toLowerCase().includes('rate limit') ||
+      msg.toLowerCase().includes('over_email_send_rate_limit');
+    return { ok: false, mensagem: traduzirErroAuth(msg), isRateLimit };
   }
 }
 

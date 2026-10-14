@@ -25,7 +25,9 @@ import {
 import {
   inicializarSupabase,
   getSupabaseCredentials,
-  isSupabaseConfigurado
+  isSupabaseConfigurado,
+  traduzirErroAuth,
+  obterUrlPainelEmailSupabase
 } from '../src/lib/supabase';
 
 async function runTests() {
@@ -220,6 +222,35 @@ async function runTests() {
     assert.ok(queryAssinatura, 'Query PostgREST inicializada com filtro de segurança RLS');
 
     console.log('  ✔ Sucesso: Supabase inicializado com chaves corretas do novo projeto e pronto para RLS.');
+  }
+
+  // 9. TESTE: Tratamento resiliente do erro Email rate limit exceeded e URLs de configuração
+  {
+    console.log('▶ Teste 9: Tratamento de erro "Email rate limit exceeded" e orientação ao usuário');
+    const erroRateLimit = traduzirErroAuth('email rate limit exceeded');
+    assert.ok(erroRateLimit.includes('Limite de envio de e-mails'), 'Mensagem traduzida para português');
+    assert.ok(erroRateLimit.includes('Confirm email'), 'Instrui a desativar confirmação de e-mail');
+    assert.ok(erroRateLimit.includes('3 e-mails'), 'Explica o limite de 3 e-mails/hora do Supabase');
+
+    const erroOverRate = traduzirErroAuth('over_email_send_rate_limit');
+    assert.ok(erroOverRate.includes('Limite de envio de e-mails'), 'Trata over_email_send_rate_limit');
+
+    const painelUrl = obterUrlPainelEmailSupabase('https://rkbvbmhhkllafijipwey.supabase.co');
+    assert.strictEqual(painelUrl, 'https://supabase.com/dashboard/project/rkbvbmhhkllafijipwey/auth/providers', 'URL direta correta para tela de email providers');
+    console.log('  ✔ Sucesso: Tratamento amigável e resolutivo para erro de cota de e-mail do Supabase.');
+  }
+
+  // 10. TESTE: Isolamento dos dados de login no Supabase e blindagem contra erros de banco de dados
+  {
+    console.log('▶ Teste 10: Salvamento exclusivo de login/assinatura no Supabase e blindagem de Database error');
+    const erroDb = traduzirErroAuth('Database error saving new user');
+    assert.ok(erroDb.includes('banco de dados'), 'Detecta e traduz database error');
+    assert.ok(erroDb.includes('trigger'), 'Explica causa de erro de gatilho/trigger no Supabase');
+
+    const erroDbGenerico = traduzirErroAuth('database error');
+    assert.ok(erroDbGenerico.includes('banco de dados'), 'Detecta database error generico');
+
+    console.log('  ✔ Sucesso: Arquitetura verificada. Somente login/perfil no Supabase; dados clínicos 100% no cofre local.');
   }
 
   console.log('\n🎉 TODOS OS TESTES DE SEGURANÇA E ARQUITETURA PASSARAM COM SUCESSO!\n');

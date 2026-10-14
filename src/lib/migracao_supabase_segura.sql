@@ -118,31 +118,44 @@ WITH CHECK (auth.uid() = user_id);
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 BEGIN
-  INSERT INTO public.usuarios (id, email, nome, crp, role, status)
-  VALUES (
-    new.id,
-    new.email,
-    coalesce(new.raw_user_meta_data->>'nome_completo', split_part(new.email, '@', 1)),
-    new.raw_user_meta_data->>'crp',
-    'psicologo',
-    'ativo'
-  )
-  ON CONFLICT (id) DO UPDATE SET
-    nome = EXCLUDED.nome,
-    crp = coalesce(EXCLUDED.crp, public.usuarios.crp);
+  -- 1. Sincroniza dados do perfil de assinante em public.usuarios de forma segura
+  BEGIN
+    INSERT INTO public.usuarios (id, email, nome, crp, role, status)
+    VALUES (
+      new.id,
+      new.email,
+      coalesce(new.raw_user_meta_data->>'nome_completo', split_part(new.email, '@', 1)),
+      new.raw_user_meta_data->>'crp',
+      'psicologo',
+      'ativo'
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      nome = EXCLUDED.nome,
+      crp = coalesce(EXCLUDED.crp, public.usuarios.crp),
+      atualizado_em = timezone('utc'::text, now());
+  EXCEPTION WHEN OTHERS THEN
+    -- Não aborta o cadastro em auth.users caso a tabela ainda não exista ou esteja sendo alterada
+    RAISE WARNING 'Aviso ao provisionar usuario em public.usuarios: %', SQLERRM;
+  END;
 
-  INSERT INTO public.assinaturas_saas (user_id, plano, status, valido_ate)
-  VALUES (
-    new.id,
-    'individual',
-    'ativa',
-    now() + interval '30 days'
-  )
-  ON CONFLICT (user_id) DO NOTHING;
+  -- 2. Sincroniza assinatura SaaS inicial de 30 dias de teste
+  BEGIN
+    INSERT INTO public.assinaturas_saas (user_id, plano, status, valido_ate)
+    VALUES (
+      new.id,
+      'individual',
+      'ativa',
+      now() + interval '30 days'
+    )
+    ON CONFLICT (user_id) DO NOTHING;
+  EXCEPTION WHEN OTHERS THEN
+    -- Não aborta o cadastro em auth.users para evitar "Database error saving new user"
+    RAISE WARNING 'Aviso ao provisionar assinatura em public.assinaturas_saas: %', SQLERRM;
+  END;
 
   RETURN new;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created

@@ -3,6 +3,7 @@ import {
   Database,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   Server,
   Cloud,
   HardDrive,
@@ -24,7 +25,8 @@ import {
   salvarCredenciaisSupabase,
   testarConexaoSupabase,
   isSupabaseConfigurado,
-  limparUrlSupabase
+  limparUrlSupabase,
+  obterUrlPainelEmailSupabase
 } from '../lib/supabase';
 import { SQL_MIGRACAO_NOVO_SUPABASE } from '../lib/sqlScript';
 
@@ -297,7 +299,24 @@ export const ModalConfigBancoDados: React.FC<ModalConfigBancoDadosProps> = ({
                     )}
                   </li>
                   <li>
-                    Em <strong>Project Settings &gt; API</strong>, copie a <strong>Project URL</strong> e a chave <strong>anon public</strong> e cole nos campos abaixo:
+                    Em <strong>Project Settings &gt; API</strong>, copie a <strong>Project URL</strong> e a chave <strong>anon public</strong> e cole nos campos abaixo.
+                  </li>
+                  <li className="space-y-1 pt-1">
+                    <span className="font-semibold text-amber-700 dark:text-amber-400 block">
+                      Evite o erro &quot;Email rate limit exceeded&quot;:
+                    </span>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">
+                      O Supabase gratuito limita o envio de confirmação a apenas 3 e-mails/hora. Em <strong>Authentication &gt; Providers &gt; Email</strong>, desmarque a opção <strong>Confirm email</strong> e clique em <strong>Save</strong> para permitir cadastros imediatos sem restrições.
+                    </p>
+                    <a
+                      href={obterUrlPainelEmailSupabase(url)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline font-semibold"
+                    >
+                      <span>Abrir Configuração de Email do Supabase</span>
+                      <ExternalLink className="size-3" />
+                    </a>
                   </li>
                 </ol>
               </div>
