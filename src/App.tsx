@@ -55,6 +55,7 @@ import {
   BarChart,
   Settings,
   Shield,
+  ShieldCheck,
   Download,
   Upload,
   Database,
@@ -162,7 +163,17 @@ const SECTIONS = [
 export default function App() {
   // Authentication & Account State (Nuvem - Supabase Auth)
   const [usuarioAutenticado, setUsuarioAutenticado] = useState(false);
-  const [contaUsuario, setContaUsuario] = useState<{ id: string; email: string; nomeCompleto: string; crp?: string } | null>(null);
+  const [contaUsuario, setContaUsuario] = useState<{
+    id: string;
+    email: string;
+    nomeCompleto: string;
+    crp?: string;
+    isAdmin?: boolean;
+    role?: string;
+    status?: string;
+    plano?: string;
+    validoAte?: string;
+  } | null>(null);
 
   // Cofre Criptográfico Local (Web Crypto AES-GCM 256)
   const [cofreConfigurado, setCofreConfigurado] = useState(false);
@@ -199,9 +210,13 @@ export default function App() {
 
   // Active Panel Section State
   const [secaoAtiva, setSecaoAtiva] = useState('dashboard');
-  const podeGerenciarAcessos = Boolean(contaUsuario?.isAdmin);
+  const podeGerenciarAcessos = Boolean(
+    contaUsuario?.isAdmin ||
+    contaUsuario?.role === 'admin' ||
+    contaUsuario?.email?.toLowerCase() === 'sup.fin.adm@gmail.com'
+  );
   const secoesDisponiveis = podeGerenciarAcessos
-    ? [...SECTIONS, { id: 'admin_users', label: 'Gestão SaaS & Contas', icon: Shield, category: 'Configurações' }]
+    ? [...SECTIONS, { id: 'admin_users', label: 'Validação de Acessos & Assinaturas', icon: ShieldCheck, category: 'Configurações' }]
     : SECTIONS;
 
   // DB States Clínicos (Armazenados exclusivamente no Cofre Local do Usuário)
@@ -2239,9 +2254,21 @@ export default function App() {
           {secaoAtiva === 'consultorio' && (
             <div className="max-w-2xl">
               <Card className="p-6 space-y-6">
-                <div>
-                  <h3 className="font-bold text-foreground text-base">Dados do Consultório / Clínica</h3>
-                  <p className="text-xs text-muted-foreground">Configurações para preenchimento de variáveis.</p>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-bold text-foreground text-base">Dados do Consultório / Clínica</h3>
+                    <p className="text-xs text-muted-foreground">Configurações para preenchimento de variáveis.</p>
+                  </div>
+                  {podeGerenciarAcessos && (
+                    <button
+                      type="button"
+                      onClick={() => setSecaoAtiva('admin_users')}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-primary/30 bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 transition-all shrink-0"
+                    >
+                      <ShieldCheck className="size-3.5" />
+                      <span>Painel de Validação de Acessos</span>
+                    </button>
+                  )}
                 </div>
 
                 <div className="grid sm:grid-cols-2 gap-4">

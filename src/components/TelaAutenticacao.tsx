@@ -355,7 +355,11 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
             id: res.user.id,
             email: res.user.email,
             nomeCompleto: res.user.metadata?.nome_completo || res.user.email?.split('@')[0],
-            crp: res.user.metadata?.crp
+            crp: res.user.metadata?.crp,
+            isAdmin: res.user.isAdmin,
+            role: res.user.role,
+            status: res.user.status,
+            plano: res.user.plano
           },
           senhaClean
         );
@@ -405,27 +409,33 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
       setCarregandoCadastro(false);
 
       if (res.ok) {
-        if (res.user && !res.precisaConfirmarEmail) {
-          setSucessoCadastro('Conta salva com sucesso no banco de dados do Supabase! Entrando no sistema...');
+        const isAdmin = emailClean === 'sup.fin.adm@gmail.com';
+        if (isAdmin && res.user && !res.precisaConfirmarEmail) {
+          setSucessoCadastro('Conta de Administrador criada com sucesso! Entrando no sistema...');
           setTimeout(() => {
             onLoginSucesso(
               {
                 id: res.user.id,
                 email: res.user.email,
                 nomeCompleto: res.user.user_metadata?.nome_completo || nomeClean,
-                crp: res.user.user_metadata?.crp || crpCadastro
+                crp: res.user.user_metadata?.crp || crpCadastro,
+                isAdmin: true,
+                role: 'admin',
+                status: 'ativo'
               },
               senhaCadastro
             );
           }, 900);
         } else {
-          setSucessoCadastro('Conta registrada no Supabase (auth.users)! Caso "Confirm email" esteja ativo no seu projeto, confirme o e-mail ou faça login.');
+          setSucessoCadastro(
+            'Cadastro realizado com sucesso! Sua conta foi enviada para validação e aprovação do Administrador. Assim que a sua assinatura mensal for ativada pelo administrador, seu acesso estará liberado.'
+          );
           setTimeout(() => {
             setAba('login');
             setEmailLogin(emailClean);
             setSenhaLogin(senhaCadastro);
             setSucessoCadastro('');
-          }, 3000);
+          }, 4500);
         }
       } else {
         setErroCadastro(res.erro || 'Erro ao criar conta no servidor.');

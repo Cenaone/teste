@@ -301,6 +301,60 @@ async function runTests() {
     console.log('  ✔ Sucesso: Validação de requisitos de senha (8+, maiúsculas, minúsculas, números, especiais), confirmação e fluxo Supabase integrados.');
   }
 
+  // 13. TESTE: Perfil de Administrador, aprovação de usuários e controle de acessos SaaS
+  {
+    console.log('▶ Teste 13: Perfil de Administrador, aprovação e controle de acessos SaaS mensais');
+    
+    // 13.1 Login do Super Administrador
+    const loginAdmin = await fazerLoginSupabaseAuth('sup.fin.adm@gmail.com', 'AdminPsi2026!');
+    assert.strictEqual(loginAdmin.ok, true, 'Super Administrador deve autenticar com sucesso');
+    assert.strictEqual(loginAdmin.user?.role, 'admin', 'Perfil do usuário deve ser admin');
+    assert.strictEqual(loginAdmin.user?.isAdmin, true, 'Flag isAdmin deve ser true');
+
+    // 13.2 Listagem de usuários pelo administrador
+    const {
+      listarUsuariosAdmin,
+      aprovarUsuarioAdmin,
+      alternarStatusAcessoUsuario,
+      renovarAssinaturaUsuario,
+      criarUsuarioManualAdmin
+    } = await import('../src/lib/supabase');
+
+    const lista = await listarUsuariosAdmin();
+    assert.ok(Array.isArray(lista) && lista.length >= 2, 'Lista de usuários deve conter administrador e assinantes');
+    const adminEncontrado = lista.find(u => u.email.toLowerCase() === 'sup.fin.adm@gmail.com');
+    assert.ok(adminEncontrado, 'Administrador sup.fin.adm@gmail.com presente na base');
+    assert.strictEqual(adminEncontrado?.role, 'admin', 'Role admin confirmada');
+
+    // 13.3 Criação de usuário em estado pendente e aprovação com concessão de 30 dias
+    const novoSub = await criarUsuarioManualAdmin({
+      nome: 'Dra. Psicóloga Teste',
+      email: `teste_mensal_${Date.now()}@clinica.com`,
+      senha: 'SenhaValida123!',
+      crp: '06/987654',
+      plano: 'mensal',
+      diasValidade: 30,
+      role: 'psicologo'
+    });
+    assert.strictEqual(novoSub.ok, true, 'Novo assinante criado');
+    assert.ok(novoSub.usuario?.id, 'ID do assinante gerado');
+
+    // 13.4 Desativação de acesso (cliente com mensalidade atrasada)
+    const resDesativar = await alternarStatusAcessoUsuario(novoSub.usuario!.id, 'inativo');
+    assert.strictEqual(resDesativar.ok, true, 'Acesso do assinante desativado');
+
+    // 13.5 Reativação / Aprovação de acesso após pagamento da mensalidade
+    const resReativar = await aprovarUsuarioAdmin(novoSub.usuario!.id, 30, 'mensal');
+    assert.strictEqual(resReativar.ok, true, 'Acesso do assinante reativado com validade de 30 dias');
+
+    // 13.6 Renovação de mensalidade (+30 dias)
+    const resRenovar = await renovarAssinaturaUsuario(novoSub.usuario!.id, 30);
+    assert.strictEqual(resRenovar.ok, true, 'Renovação de 30 dias confirmada');
+    assert.ok(resRenovar.novaValidade, 'Nova validade gerada');
+
+    console.log('  ✔ Sucesso: Perfil de Administrador (sup.fin.adm@gmail.com) operacional com aprovação, ativação e desativação de assinaturas mensais.');
+  }
+
   console.log('\n🎉 TODOS OS TESTES DE SEGURANÇA E ARQUITETURA PASSARAM COM SUCESSO!\n');
 }
 

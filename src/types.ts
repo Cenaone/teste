@@ -108,13 +108,24 @@ export interface AgendamentoClinico {
   observacao?: string;
 }
 
+export type StatusAcessoSaaS = 'ativo' | 'inativo' | 'pendente';
+export type PlanoSaaS = 'mensal' | 'anual' | 'semestral' | 'individual' | 'saas_pro';
+
 export interface UsuarioConta {
   id: string; // UUID imutável da conta Supabase
   email: string;
   nomeCompleto: string;
   crp?: string;
+  role?: 'admin' | 'psicologo';
+  status?: StatusAcessoSaaS;
   aprovado?: boolean;
   isAdmin?: boolean;
+  plano?: PlanoSaaS;
+  validoAte?: string;
+  diasRestantes?: number;
   criadoEm?: string;
+  telefone?: string;
+  aprovadoEm?: string;
+  aprovadoPor?: string;
 }
 
