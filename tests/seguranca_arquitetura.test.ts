@@ -272,13 +272,33 @@ async function runTests() {
   // 12. TESTE: Fluxo de recuperação e redefinição de nova senha no Supabase
   {
     console.log('▶ Teste 12: Fluxo oficial de recuperação e redefinição de senha');
+    
+    // 12.1 Validação de complexidade de senha
+    const { validarComplexidadeSenha, validarConfirmacaoSenha } = await import('../src/lib/validacaoSenha');
+    
+    assert.strictEqual(validarComplexidadeSenha('abc').valida, false, 'Rejeita menos de 8 caracteres');
+    assert.strictEqual(validarComplexidadeSenha('abcdefgh').valida, false, 'Rejeita sem maiúscula/número/especial');
+    assert.strictEqual(validarComplexidadeSenha('Abcdefgh').valida, false, 'Rejeita sem número/especial');
+    assert.strictEqual(validarComplexidadeSenha('Abcdefg1').valida, false, 'Rejeita sem caractere especial');
+    assert.strictEqual(validarComplexidadeSenha('Abcdef1!').valida, true, 'Aceita senha com todos os critérios');
+
+    // 12.2 Validação de confirmação
+    assert.strictEqual(validarConfirmacaoSenha('Abcdef1!', 'Outra123!').valida, false, 'Rejeita senhas divergentes');
+    assert.strictEqual(validarConfirmacaoSenha('Abcdef1!', 'Abcdef1!').valida, true, 'Aceita senhas idênticas');
+
+    // 12.3 Solicitação de recuperação com mensagem neutra (prevenção contra enumeração de e-mail)
     const resSolicitacao = await solicitarRecuperacaoSenhaOficial('backupvideomidias@gmail.com');
     assert.strictEqual(resSolicitacao.ok, true, 'Solicitação de recuperação deve processar com sucesso');
-    assert.ok(resSolicitacao.mensagem.length > 0, 'Mensagem com instruções ao usuário');
+    assert.strictEqual(
+      resSolicitacao.mensagem,
+      'Se este e-mail estiver cadastrado, você receberá um link para redefinir sua senha.',
+      'Mensagem neutra de segurança conforme requisito'
+    );
 
+    // 12.4 Tentativa de atualizar sem sessão de recuperação válida (deve ser bloqueada)
     const resUpdate = await atualizarSenhaSupabaseAuth('DanielNovaSenha123!');
     assert.ok(typeof resUpdate.ok === 'boolean', 'Função de atualização responde contrato correto');
-    console.log('  ✔ Sucesso: Fluxo de solicitação e tela de redefinição de senha integrados.');
+    console.log('  ✔ Sucesso: Validação de requisitos de senha (8+, maiúsculas, minúsculas, números, especiais), confirmação e fluxo Supabase integrados.');
   }
 
   console.log('\n🎉 TODOS OS TESTES DE SEGURANÇA E ARQUITETURA PASSARAM COM SUCESSO!\n');

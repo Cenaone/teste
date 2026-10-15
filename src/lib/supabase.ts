@@ -642,59 +642,97 @@ export async function solicitarRecuperacaoSenhaOficial(
   if (cliente) {
     try {
       const redirectUrl = typeof window !== 'undefined'
-        ? `${window.location.origin}${window.location.pathname}#redefinir`
+        ? `${window.location.origin}/reset-password`
         : undefined;
 
       const { error } = await cliente.auth.resetPasswordForEmail(emailClean, {
         redirectTo: redirectUrl
       });
 
-      if (!error) {
-        return {
-          ok: true,
-          mensagem: 'Link seguro de recuperação enviado para seu e-mail! Ao abrir o link, você poderá cadastrar sua nova senha de acesso.'
-        };
+      if (error) {
+        const msg = error.message || '';
+        const isRateLimit = msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('over_email_send_rate_limit');
+        if (isRateLimit) {
+          return {
+            ok: false,
+            mensagem: 'Limite de solicitações de e-mail atingido no servidor. Aguarde alguns minutos antes de tentar novamente.',
+            isRateLimit: true
+          };
+        }
       }
 
-      const msg = error.message || '';
-      const isRateLimit = msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('over_email_send_rate_limit');
-
-      // Se for rate limit ou erro de servidor, verifica se a conta existe no cadastro
-      const contas = obterContasAssinantes();
-      const contaExistente = contas.find((c) => c.email.toLowerCase() === emailClean);
-      if (contaExistente) {
-        return {
-          ok: true,
-          mensagem: 'Conta identificada com sucesso no sistema! Se a cota de e-mails gratuitos do Supabase estiver excedida, você também pode acessar o sistema com sua senha cadastrada ou desativar o "Confirm email" no painel Supabase.',
-          isRateLimit
-        };
-      }
-
-      return { ok: false, mensagem: traduzirErroAuth(msg), isRateLimit };
+      // Mensagem padrão neutra de segurança (OWASP - prevenção de enumeração de contas)
+      return {
+        ok: true,
+        mensagem: 'Se este e-mail estiver cadastrado, você receberá um link para redefinir sua senha.'
+      };
     } catch (err: any) {
-      const msg = err?.message || '';
-      const isRateLimit = msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('over_email_send_rate_limit');
-      return { ok: false, mensagem: traduzirErroAuth(msg), isRateLimit };
+      console.warn('[Supabase resetPasswordForEmail exception]:', err);
     }
   }
 
-  const contas = obterContasAssinantes();
-  const contaExistente = contas.find((c) => c.email.toLowerCase() === emailClean);
-  if (contaExistente) {
-    return {
-      ok: true,
-      mensagem: 'Conta de assinante localizada com sucesso! Você pode realizar o login no sistema com suas credenciais cadastradas.'
-    };
-  }
-
   return {
-    ok: false,
-    mensagem: 'Nenhuma conta cadastrada foi encontrada com este endereço de e-mail.'
+    ok: true,
+    mensagem: 'Se este e-mail estiver cadastrado, você receberá um link para redefinir sua senha.'
   };
 }
 
 /**
+ * Valida previamente se existe uma sessão válida de recuperação do Supabase Auth.
+ * Previne alterações de senha sem um link ou token de recuperação legítimo.
+ */
+export async function validarSessaoRecuperacaoAtiva(): Promise<{
+  valida: boolean;
+  email?: string;
+  motivo?: string;
+}> {
+  const cliente = getSupabase();
+  if (!cliente) {
+    return { valida: false, motivo: 'Serviço de autenticação (Supabase) não configurado.' };
+  }
+
+  try {
+    const { data: { session }, error } = await cliente.auth.getSession();
+    if (error) {
+      return { valida: false, motivo: error.message };
+    }
+
+    if (session && session.user) {
+      return {
+        valida: true,
+        email: session.user.email
+      };
+    }
+
+    // Se o usuário acessou o link do e-mail com fragmento hash (#access_token=...&type=recovery)
+    // ou query (?code=... ou ?type=recovery), a biblioteca Supabase processa a sessão.
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash || '';
+      const search = window.location.search || '';
+      if (
+        (hash.includes('access_token=') && hash.includes('type=recovery')) ||
+        (search.includes('code=') && search.includes('type=recovery')) ||
+        hash.includes('type=recovery')
+      ) {
+        return { valida: true };
+      }
+    }
+
+    return {
+      valida: false,
+      motivo: 'Link de recuperação expirado ou inválido. Solicite um novo link de recuperação.'
+    };
+  } catch (err: any) {
+    return {
+      valida: false,
+      motivo: err?.message || 'Erro ao validar link de recuperação.'
+    };
+  }
+}
+
+/**
  * Atualiza a senha da conta de acesso no Supabase Auth após o usuário receber o link de recuperação.
+ * Realiza validação prévia da sessão de recuperação gerada pelo Supabase.
  */
 export async function atualizarSenhaSupabaseAuth(
   novaSenha: string
@@ -702,6 +740,15 @@ export async function atualizarSenhaSupabaseAuth(
   const cliente = getSupabase();
   if (!cliente) {
     return { ok: false, erro: 'Serviço de banco de dados (Supabase) não configurado.' };
+  }
+
+  // Validação prévia da sessão de recuperação
+  const checagem = await validarSessaoRecuperacaoAtiva();
+  if (!checagem.valida) {
+    return {
+      ok: false,
+      erro: checagem.motivo || 'Link de recuperação expirado ou inválido. Solicite um novo link de recuperação.'
+    };
   }
 
   try {

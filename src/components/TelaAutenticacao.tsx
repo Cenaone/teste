@@ -4,10 +4,15 @@ import {
   cadastrarContaSupabaseAuth,
   solicitarRecuperacaoSenhaOficial,
   atualizarSenhaSupabaseAuth,
+  validarSessaoRecuperacaoAtiva,
   isSupabaseConfigurado,
   obterUrlPainelEmailSupabase,
   getSupabase
 } from '../lib/supabase';
+import {
+  validarComplexidadeSenha,
+  validarConfirmacaoSenha
+} from '../lib/validacaoSenha';
 import {
   Lock,
   Mail,
@@ -245,32 +250,50 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
   const [erroRedefinir, setErroRedefinir] = useState('');
   const [sucessoRedefinir, setSucessoRedefinir] = useState('');
   const [carregandoRedefinir, setCarregandoRedefinir] = useState(false);
+  const [sessaoRecuperacaoValida, setSessaoRecuperacaoValida] = useState<boolean | null>(null);
+  const [motivoSessaoInvalida, setMotivoSessaoInvalida] = useState('');
 
   // Estados de Configuração de Banco
   const [modalBancoAberto, setModalBancoAberto] = useState(false);
   const [versaoConfig, setVersaoConfig] = useState(0);
   const supabaseAtivo = isSupabaseConfigurado();
 
-  // Detecção automática de redirecionamento do link de recuperação de senha
+  // Detecção automática de redirecionamento do link de recuperação de senha (/reset-password)
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const hash = window.location.hash || '';
-      const search = window.location.search || '';
-      if (
-        hash.includes('type=recovery') ||
-        search.includes('type=recovery') ||
-        hash.includes('redefinir') ||
-        search.includes('code=')
-      ) {
-        setAba('redefinir');
+    const checarRotaRecuperacao = async () => {
+      if (typeof window !== 'undefined') {
+        const pathname = window.location.pathname || '';
+        const hash = window.location.hash || '';
+        const search = window.location.search || '';
+
+        const isRotaReset =
+          pathname.includes('/reset-password') ||
+          pathname.includes('/redefinir-senha') ||
+          hash.includes('reset-password') ||
+          hash.includes('type=recovery') ||
+          search.includes('type=recovery') ||
+          search.includes('code=');
+
+        if (isRotaReset) {
+          setAba('redefinir');
+          const checagem = await validarSessaoRecuperacaoAtiva();
+          setSessaoRecuperacaoValida(checagem.valida);
+          if (!checagem.valida) {
+            setMotivoSessaoInvalida(checagem.motivo || 'Link de recuperação expirado ou inválido. Solicite um novo link de recuperação.');
+          }
+        }
       }
-    }
+    };
+
+    checarRotaRecuperacao();
 
     const cliente = getSupabase();
     if (cliente) {
-      const { data: { subscription } } = cliente.auth.onAuthStateChange((event, session) => {
+      const { data: { subscription } } = cliente.auth.onAuthStateChange(async (event, session) => {
         if (event === 'PASSWORD_RECOVERY') {
           setAba('redefinir');
+          setSessaoRecuperacaoValida(true);
+          setMotivoSessaoInvalida('');
           if (session?.user?.email) {
             setEmailLogin(session.user.email);
           }
@@ -281,6 +304,20 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
       };
     }
   }, []);
+
+  // Ao entrar na aba redefinir, valida a integridade da sessão de recuperação
+  useEffect(() => {
+    if (aba === 'redefinir') {
+      validarSessaoRecuperacaoAtiva().then(res => {
+        setSessaoRecuperacaoValida(res.valida);
+        if (!res.valida) {
+          setMotivoSessaoInvalida(res.motivo || 'Link de recuperação expirado ou inválido. Solicite um novo link de recuperação.');
+        } else {
+          setMotivoSessaoInvalida('');
+        }
+      });
+    }
+  }, [aba]);
 
   // -------------------------------------------------------------
   // HANDLER: LOGIN (Supabase Auth oficial)
@@ -436,13 +473,21 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
     setErroRedefinir('');
     setSucessoRedefinir('');
 
-    if (!novaSenha || novaSenha.length < 8) {
-      setErroRedefinir('A nova senha deve conter no mínimo 8 caracteres.');
+    // Validações obrigatórias:
+    // - Mínimo de 8 caracteres
+    // - Letras maiúsculas e minúsculas
+    // - Pelo menos um número
+    // - Pelo menos um caractere especial
+    const validacao = validarComplexidadeSenha(novaSenha);
+    if (!validacao.valida) {
+      setErroRedefinir(validacao.erro || 'A senha não atende aos requisitos de complexidade.');
       return;
     }
 
-    if (novaSenha !== confirmarNovaSenha) {
-      setErroRedefinir('A confirmação não coincide com a nova senha digitada.');
+    // Confirmação idêntica à nova senha
+    const conf = validarConfirmacaoSenha(novaSenha, confirmarNovaSenha);
+    if (!conf.valida) {
+      setErroRedefinir(conf.erro || 'A confirmação não coincide com a nova senha digitada.');
       return;
     }
 
@@ -451,14 +496,8 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
       const res = await atualizarSenhaSupabaseAuth(novaSenha);
       setCarregandoRedefinir(false);
       if (res.ok) {
-        setSucessoRedefinir('Sua senha foi redefinida com sucesso no banco de dados! Redirecionando para o login...');
+        setSucessoRedefinir('Senha atualizada com sucesso! Agora você pode acessar sua conta.');
         setSenhaLogin(novaSenha);
-        setTimeout(() => {
-          setAba('login');
-          setSucessoRedefinir('');
-          setNovaSenha('');
-          setConfirmarNovaSenha('');
-        }, 2200);
       } else {
         setErroRedefinir(res.erro || 'Falha ao atualizar a senha no Supabase.');
       }
@@ -483,23 +522,6 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setModalBancoAberto(true)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
-              supabaseAtivo
-                ? 'border-border bg-card hover:bg-muted text-foreground'
-                : 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20'
-            }`}
-            title="Configurar ou Alterar Banco de Dados"
-          >
-            <Database className={`size-3.5 ${supabaseAtivo ? 'text-emerald-500' : 'text-amber-500'}`} />
-            <span className="hidden sm:inline">
-              {supabaseAtivo ? 'Banco Conectado' : 'Configurar Banco'}
-            </span>
-            <span className="sm:hidden">Banco</span>
-          </button>
-
           {onToggleTema && (
             <button
               onClick={onToggleTema}
@@ -537,16 +559,14 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
             >
               Criar Conta
             </button>
-            <button
-              onClick={() => setAba('recuperar')}
-              className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 ${
-                aba === 'recuperar'
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              Recuperar
-            </button>
+            {aba === 'recuperar' && (
+              <button
+                onClick={() => setAba('recuperar')}
+                className="flex-1 py-2.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 border-primary text-primary"
+              >
+                Recuperar Senha
+              </button>
+            )}
             {aba === 'redefinir' && (
               <button
                 onClick={() => setAba('redefinir')}
@@ -612,6 +632,18 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
                     {mostrarSenhaLogin ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                   </button>
                 </div>
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAba('recuperar');
+                      if (emailLogin) setEmailRecuperacao(emailLogin);
+                    }}
+                    className="text-xs text-primary hover:underline font-medium transition-colors cursor-pointer"
+                  >
+                    Esqueceu sua senha?
+                  </button>
+                </div>
               </div>
 
               <button
@@ -628,16 +660,6 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
                   </>
                 )}
               </button>
-
-              <div className="text-center pt-2">
-                <button
-                  type="button"
-                  onClick={() => setAba('recuperar')}
-                  className="text-xs text-muted-foreground hover:text-primary transition-colors underline"
-                >
-                  Esqueceu sua senha?
-                </button>
-              </div>
             </form>
           )}
 
@@ -769,41 +791,39 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
             </form>
           )}
 
-          {/* FORM: RECUPERAR SENHA */}
+          {/* FORM: RECUPERAR SENHA (Item 2) */}
           {aba === 'recuperar' && (
             <form onSubmit={handleRecuperarSenha} className="space-y-4">
-              <div className="text-xs text-muted-foreground leading-relaxed">
-                Informe o e-mail cadastrado. O servidor oficial de autenticação enviará um link seguro para você redefinir sua senha na nuvem.
+              <div className="space-y-1 text-left">
+                <h3 className="text-base font-bold text-foreground">
+                  Recuperar minha senha
+                </h3>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Informe seu e-mail cadastrado para receber um link seguro de redefinição de senha.
+                </p>
               </div>
 
               {erroRecuperacao && (
-                <div className="space-y-3">
-                  <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-start gap-2">
-                    <AlertCircle className="size-4 shrink-0 mt-0.5" />
-                    <span>{erroRecuperacao}</span>
-                  </div>
-                  {isErroRateLimit(erroRecuperacao) && (
-                    <GuiaConfiguracaoEmailSupabase
-                      titulo="Limite de e-mails de recuperação atingido no Supabase"
-                      mostrarBotaoLogin={Boolean(emailRecuperacao)}
-                      onTentarLogin={() => {
-                        setEmailLogin(emailRecuperacao);
-                        setAba('login');
-                      }}
-                    />
-                  )}
-                </div>
-              )}
-              {sucessoRecuperacao && (
-                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs flex items-start gap-2">
-                  <CheckCircle2 className="size-4 shrink-0 mt-0.5" />
-                  <span>{sucessoRecuperacao}</span>
+                <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-start gap-2 text-left">
+                  <AlertCircle className="size-4 shrink-0 mt-0.5" />
+                  <span>{erroRecuperacao}</span>
                 </div>
               )}
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  E-mail da Conta
+              {sucessoRecuperacao && (
+                <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs flex items-start gap-2.5 leading-relaxed text-left">
+                  <CheckCircle2 className="size-4 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold block mb-0.5">Solicitação processada</span>
+                    <span>{sucessoRecuperacao}</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-1.5 text-left">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  <Mail className="size-3.5" />
+                  E-mail cadastrado
                 </label>
                 <input
                   type="email"
@@ -820,17 +840,14 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
                 disabled={carregandoRecuperacao}
                 className="w-full h-11 gradient-emerald text-primary-foreground font-bold text-sm rounded-xl shadow-md hover:opacity-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                {carregandoRecuperacao ? 'Enviando pelo servidor...' : 'Enviar Link de Recuperação'}
+                {carregandoRecuperacao ? (
+                  <span>Enviando link seguro...</span>
+                ) : (
+                  <span>Enviar link de recuperação</span>
+                )}
               </button>
 
               <div className="text-center pt-2 space-y-2">
-                <button
-                  type="button"
-                  onClick={() => setAba('redefinir')}
-                  className="text-xs text-primary hover:underline font-semibold block w-full text-center"
-                >
-                  Já recebeu o link por e-mail? Clique aqui para definir sua nova senha
-                </button>
                 <button
                   type="button"
                   onClick={() => setAba('login')}
@@ -842,85 +859,161 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
             </form>
           )}
 
-          {/* FORM: REDEFINIR SENHA (Após o usuário abrir o link recebido por e-mail) */}
+          {/* FORM: REDEFINIR SENHA (Item 5: /reset-password) */}
           {aba === 'redefinir' && (
-            <form onSubmit={handleAtualizarSenha} className="space-y-4">
-              <div className="text-xs text-muted-foreground leading-relaxed">
-                Defina sua <strong>nova senha de acesso</strong> para atualizar sua conta no banco de dados do Supabase. A senha deve conter no mínimo 8 caracteres.
+            <div className="space-y-4">
+              <div className="space-y-1 text-left">
+                <h3 className="text-base font-bold text-foreground">
+                  Criar nova senha
+                </h3>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Defina uma nova senha forte para acessar sua conta com segurança.
+                </p>
               </div>
 
-              {erroRedefinir && (
-                <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-start gap-2">
-                  <AlertCircle className="size-4 shrink-0 mt-0.5" />
-                  <span>{erroRedefinir}</span>
-                </div>
-              )}
-
-              {sucessoRedefinir && (
-                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs flex items-start gap-2">
-                  <CheckCircle2 className="size-4 shrink-0 mt-0.5" />
-                  <span>{sucessoRedefinir}</span>
-                </div>
-              )}
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                  <Key className="size-3.5" />
-                  Nova Senha de Acesso
-                </label>
-                <div className="relative">
-                  <input
-                    type={mostrarNovaSenha ? 'text' : 'password'}
-                    required
-                    autoFocus
-                    value={novaSenha}
-                    onChange={e => setNovaSenha(e.target.value)}
-                    placeholder="Mínimo 8 caracteres"
-                    className="w-full h-11 px-3.5 pr-10 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  />
+              {sessaoRecuperacaoValida === false ? (
+                <div className="space-y-3 p-4 rounded-xl bg-destructive/10 border border-destructive/20 text-xs text-left">
+                  <div className="flex items-start gap-2.5 text-destructive font-semibold">
+                    <AlertCircle className="size-4 shrink-0 mt-0.5" />
+                    <span>Acesso de recuperação não autorizado</span>
+                  </div>
+                  <p className="text-muted-foreground leading-relaxed">
+                    {motivoSessaoInvalida || 'Link de recuperação expirado ou inválido. Solicite um novo link de recuperação.'}
+                  </p>
                   <button
                     type="button"
-                    onClick={() => setMostrarNovaSenha(!mostrarNovaSenha)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1"
+                    onClick={() => setAba('recuperar')}
+                    className="w-full py-2.5 px-3 rounded-lg bg-primary text-primary-foreground font-semibold text-xs hover:opacity-90 transition-opacity"
                   >
-                    {mostrarNovaSenha ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    Solicitar novo link de recuperação
+                  </button>
+                  <div className="text-center pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setAba('login')}
+                      className="text-xs text-muted-foreground hover:text-primary transition-colors underline"
+                    >
+                      Voltar para o login
+                    </button>
+                  </div>
+                </div>
+              ) : sucessoRedefinir ? (
+                <div className="space-y-4 animate-in fade-in duration-200 text-left">
+                  <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs flex items-start gap-3 leading-relaxed">
+                    <CheckCircle2 className="size-5 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="block font-semibold text-sm mb-0.5">Senha atualizada com sucesso!</strong>
+                      <span>Agora você pode acessar sua conta.</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAba('login');
+                      setSucessoRedefinir('');
+                      setNovaSenha('');
+                      setConfirmarNovaSenha('');
+                    }}
+                    className="w-full h-11 gradient-emerald text-primary-foreground font-bold text-sm rounded-xl shadow-md hover:opacity-95 transition-all flex items-center justify-center gap-2"
+                  >
+                    <ArrowRight className="size-4" />
+                    <span>Voltar para o login</span>
                   </button>
                 </div>
-              </div>
+              ) : (
+                <form onSubmit={handleAtualizarSenha} className="space-y-4">
+                  {erroRedefinir && (
+                    <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-start gap-2 text-left">
+                      <AlertCircle className="size-4 shrink-0 mt-0.5" />
+                      <span>{erroRedefinir}</span>
+                    </div>
+                  )}
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                  <Key className="size-3.5" />
-                  Confirmar Nova Senha
-                </label>
-                <input
-                  type={mostrarNovaSenha ? 'text' : 'password'}
-                  required
-                  value={confirmarNovaSenha}
-                  onChange={e => setConfirmarNovaSenha(e.target.value)}
-                  placeholder="Repita a nova senha"
-                  className="w-full h-11 px-3.5 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                />
-              </div>
+                  <div className="space-y-1.5 text-left">
+                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                      <Key className="size-3.5" />
+                      Nova senha
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={mostrarNovaSenha ? 'text' : 'password'}
+                        required
+                        autoFocus
+                        value={novaSenha}
+                        onChange={e => setNovaSenha(e.target.value)}
+                        placeholder="••••••••"
+                        className="w-full h-11 px-3.5 pr-10 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setMostrarNovaSenha(!mostrarNovaSenha)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1"
+                      >
+                        {mostrarNovaSenha ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                      </button>
+                    </div>
+                  </div>
 
-              <button
-                type="submit"
-                disabled={carregandoRedefinir}
-                className="w-full h-11 gradient-emerald text-primary-foreground font-bold text-sm rounded-xl shadow-md hover:opacity-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {carregandoRedefinir ? 'Atualizando senha no Supabase...' : 'Salvar Nova Senha'}
-              </button>
+                  <div className="space-y-1.5 text-left">
+                    <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                      <Key className="size-3.5" />
+                      Confirmar nova senha
+                    </label>
+                    <input
+                      type={mostrarNovaSenha ? 'text' : 'password'}
+                      required
+                      value={confirmarNovaSenha}
+                      onChange={e => setConfirmarNovaSenha(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full h-11 px-3.5 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-mono"
+                    />
+                  </div>
 
-              <div className="text-center pt-2">
-                <button
-                  type="button"
-                  onClick={() => setAba('login')}
-                  className="text-xs text-muted-foreground hover:text-primary transition-colors underline"
-                >
-                  Cancelar e voltar para o login
-                </button>
-              </div>
-            </form>
+                  {/* Checklist visual de critérios de segurança */}
+                  <div className="p-3 rounded-xl bg-muted/40 border border-border text-xs space-y-1.5 text-left">
+                    <div className="font-semibold text-muted-foreground text-[10px] uppercase tracking-wider">
+                      Critérios de Segurança Obrigatórios:
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-[11px]">
+                      <div className={`flex items-center gap-1.5 ${novaSenha.length >= 8 ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-muted-foreground'}`}>
+                        <CheckCircle2 className="size-3.5 shrink-0" />
+                        <span>Mínimo de 8 caracteres</span>
+                      </div>
+                      <div className={`flex items-center gap-1.5 ${/[A-Z]/.test(novaSenha) && /[a-z]/.test(novaSenha) ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-muted-foreground'}`}>
+                        <CheckCircle2 className="size-3.5 shrink-0" />
+                        <span>Maiúsculas e minúsculas</span>
+                      </div>
+                      <div className={`flex items-center gap-1.5 ${/[0-9]/.test(novaSenha) ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-muted-foreground'}`}>
+                        <CheckCircle2 className="size-3.5 shrink-0" />
+                        <span>Pelo menos um número</span>
+                      </div>
+                      <div className={`flex items-center gap-1.5 ${/[^A-Za-z0-9]/.test(novaSenha) ? 'text-emerald-600 dark:text-emerald-400 font-medium' : 'text-muted-foreground'}`}>
+                        <CheckCircle2 className="size-3.5 shrink-0" />
+                        <span>Caractere especial (!@#$)</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={carregandoRedefinir}
+                    className="w-full h-11 gradient-emerald text-primary-foreground font-bold text-sm rounded-xl shadow-md hover:opacity-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {carregandoRedefinir ? 'Salvando nova senha...' : 'Salvar nova senha'}
+                  </button>
+
+                  <div className="text-center pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setAba('login')}
+                      className="text-xs text-muted-foreground hover:text-primary transition-colors underline"
+                    >
+                      Voltar para o login
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
           )}
 
         </div>
