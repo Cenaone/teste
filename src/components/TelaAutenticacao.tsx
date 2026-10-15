@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   fazerLoginSupabaseAuth,
   cadastrarContaSupabaseAuth,
   solicitarRecuperacaoSenhaOficial,
+  atualizarSenhaSupabaseAuth,
   isSupabaseConfigurado,
-  obterUrlPainelEmailSupabase
+  obterUrlPainelEmailSupabase,
+  getSupabase
 } from '../lib/supabase';
 import {
   Lock,
@@ -197,7 +199,10 @@ GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;`;
 };
 
 interface TelaAutenticacaoProps {
-  onLoginSucesso: (usuario: { id: string; email: string; nomeCompleto: string; crp?: string }) => void;
+  onLoginSucesso: (
+    usuario: { id: string; email: string; nomeCompleto: string; crp?: string },
+    senhaUtilizada?: string
+  ) => void;
   temaEscuro?: boolean;
   onToggleTema?: () => void;
 }
@@ -207,36 +212,75 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
   temaEscuro,
   onToggleTema
 }) => {
-  const [aba, setAba] = useState<'login' | 'cadastro' | 'recuperar'>('login');
+  const [aba, setAba] = useState<'login' | 'cadastro' | 'recuperar' | 'redefinir'>('login');
 
-  // Estados de Login (Pré-configurados com a conta do assinante)
-  const [emailLogin, setEmailLogin] = useState('backupvideomidias@gmail.com');
-  const [senhaLogin, setSenhaLogin] = useState('Daniel12345');
+  // Estados de Login
+  const [emailLogin, setEmailLogin] = useState('');
+  const [senhaLogin, setSenhaLogin] = useState('');
   const [mostrarSenhaLogin, setMostrarSenhaLogin] = useState(false);
   const [erroLogin, setErroLogin] = useState('');
   const [carregandoLogin, setCarregandoLogin] = useState(false);
 
   // Estados de Cadastro
-  const [nomeCadastro, setNomeCadastro] = useState('Dr. Daniel');
-  const [emailCadastro, setEmailCadastro] = useState('backupvideomidias@gmail.com');
-  const [crpCadastro, setCrpCadastro] = useState('06/123456');
-  const [senhaCadastro, setSenhaCadastro] = useState('Daniel12345');
-  const [confirmarSenhaCadastro, setConfirmarSenhaCadastro] = useState('Daniel12345');
+  const [nomeCadastro, setNomeCadastro] = useState('');
+  const [emailCadastro, setEmailCadastro] = useState('');
+  const [crpCadastro, setCrpCadastro] = useState('');
+  const [senhaCadastro, setSenhaCadastro] = useState('');
+  const [confirmarSenhaCadastro, setConfirmarSenhaCadastro] = useState('');
   const [mostrarSenhaCadastro, setMostrarSenhaCadastro] = useState(false);
   const [erroCadastro, setErroCadastro] = useState('');
   const [sucessoCadastro, setSucessoCadastro] = useState('');
   const [carregandoCadastro, setCarregandoCadastro] = useState(false);
 
   // Estados de Recuperação
-  const [emailRecuperacao, setEmailRecuperacao] = useState('backupvideomidias@gmail.com');
+  const [emailRecuperacao, setEmailRecuperacao] = useState('');
   const [erroRecuperacao, setErroRecuperacao] = useState('');
   const [sucessoRecuperacao, setSucessoRecuperacao] = useState('');
   const [carregandoRecuperacao, setCarregandoRecuperacao] = useState(false);
+
+  // Estados de Redefinição de Senha (após o link recebido por e-mail)
+  const [novaSenha, setNovaSenha] = useState('');
+  const [confirmarNovaSenha, setConfirmarNovaSenha] = useState('');
+  const [mostrarNovaSenha, setMostrarNovaSenha] = useState(false);
+  const [erroRedefinir, setErroRedefinir] = useState('');
+  const [sucessoRedefinir, setSucessoRedefinir] = useState('');
+  const [carregandoRedefinir, setCarregandoRedefinir] = useState(false);
 
   // Estados de Configuração de Banco
   const [modalBancoAberto, setModalBancoAberto] = useState(false);
   const [versaoConfig, setVersaoConfig] = useState(0);
   const supabaseAtivo = isSupabaseConfigurado();
+
+  // Detecção automática de redirecionamento do link de recuperação de senha
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash || '';
+      const search = window.location.search || '';
+      if (
+        hash.includes('type=recovery') ||
+        search.includes('type=recovery') ||
+        hash.includes('redefinir') ||
+        search.includes('code=')
+      ) {
+        setAba('redefinir');
+      }
+    }
+
+    const cliente = getSupabase();
+    if (cliente) {
+      const { data: { subscription } } = cliente.auth.onAuthStateChange((event, session) => {
+        if (event === 'PASSWORD_RECOVERY') {
+          setAba('redefinir');
+          if (session?.user?.email) {
+            setEmailLogin(session.user.email);
+          }
+        }
+      });
+      return () => {
+        subscription.unsubscribe();
+      };
+    }
+  }, []);
 
   // -------------------------------------------------------------
   // HANDLER: LOGIN (Supabase Auth oficial)
@@ -269,12 +313,15 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
       setCarregandoLogin(false);
 
       if (res.ok && res.user) {
-        onLoginSucesso({
-          id: res.user.id,
-          email: res.user.email,
-          nomeCompleto: res.user.metadata?.nome_completo || res.user.email?.split('@')[0],
-          crp: res.user.metadata?.crp
-        });
+        onLoginSucesso(
+          {
+            id: res.user.id,
+            email: res.user.email,
+            nomeCompleto: res.user.metadata?.nome_completo || res.user.email?.split('@')[0],
+            crp: res.user.metadata?.crp
+          },
+          senhaClean
+        );
       } else {
         setErroLogin(res.erro || 'Falha ao autenticar. Verifique seu e-mail e senha.');
       }
@@ -324,12 +371,15 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
         if (res.user && !res.precisaConfirmarEmail) {
           setSucessoCadastro('Conta salva com sucesso no banco de dados do Supabase! Entrando no sistema...');
           setTimeout(() => {
-            onLoginSucesso({
-              id: res.user.id,
-              email: res.user.email,
-              nomeCompleto: res.user.user_metadata?.nome_completo || nomeClean,
-              crp: res.user.user_metadata?.crp || crpCadastro
-            });
+            onLoginSucesso(
+              {
+                id: res.user.id,
+                email: res.user.email,
+                nomeCompleto: res.user.user_metadata?.nome_completo || nomeClean,
+                crp: res.user.user_metadata?.crp || crpCadastro
+              },
+              senhaCadastro
+            );
           }, 900);
         } else {
           setSucessoCadastro('Conta registrada no Supabase (auth.users)! Caso "Confirm email" esteja ativo no seu projeto, confirme o e-mail ou faça login.');
@@ -375,6 +425,46 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
     } catch (err: any) {
       setCarregandoRecuperacao(false);
       setErroRecuperacao(err.message || 'Erro ao solicitar recuperação.');
+    }
+  };
+
+  // -------------------------------------------------------------
+  // HANDLER: ATUALIZAR NOVA SENHA (Oficial via Supabase Auth)
+  // -------------------------------------------------------------
+  const handleAtualizarSenha = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErroRedefinir('');
+    setSucessoRedefinir('');
+
+    if (!novaSenha || novaSenha.length < 8) {
+      setErroRedefinir('A nova senha deve conter no mínimo 8 caracteres.');
+      return;
+    }
+
+    if (novaSenha !== confirmarNovaSenha) {
+      setErroRedefinir('A confirmação não coincide com a nova senha digitada.');
+      return;
+    }
+
+    setCarregandoRedefinir(true);
+    try {
+      const res = await atualizarSenhaSupabaseAuth(novaSenha);
+      setCarregandoRedefinir(false);
+      if (res.ok) {
+        setSucessoRedefinir('Sua senha foi redefinida com sucesso no banco de dados! Redirecionando para o login...');
+        setSenhaLogin(novaSenha);
+        setTimeout(() => {
+          setAba('login');
+          setSucessoRedefinir('');
+          setNovaSenha('');
+          setConfirmarNovaSenha('');
+        }, 2200);
+      } else {
+        setErroRedefinir(res.erro || 'Falha ao atualizar a senha no Supabase.');
+      }
+    } catch (err: any) {
+      setCarregandoRedefinir(false);
+      setErroRedefinir(err.message || 'Erro inesperado ao salvar nova senha.');
     }
   };
 
@@ -425,53 +515,6 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
       {/* Main Card */}
       <main className="flex-1 flex items-center justify-center my-8">
         <div className="w-full max-w-md bg-card border border-border rounded-2xl shadow-xl overflow-hidden p-6 sm:p-8 space-y-6 animate-in fade-in zoom-in-95 duration-200">
-          
-          {/* Architecture Badge */}
-          <div className="bg-primary/5 border border-primary/20 rounded-xl p-3 text-xs text-muted-foreground flex items-start gap-2.5">
-            <ShieldCheck className="size-4 text-emerald-600 shrink-0 mt-0.5" />
-            <div>
-              <strong className="text-foreground">Arquitetura Híbrida Segura:</strong> A autenticação e assinatura ocorrem na nuvem. Prontuários, pacientes e financeiro clínico ficam 100% no seu dispositivo criptografados com AES-GCM.
-            </div>
-          </div>
-
-          {/* Status do Banco e Autenticação */}
-          {supabaseAtivo ? (
-            <div className="p-2.5 rounded-xl border border-emerald-500/20 bg-emerald-500/5 text-xs flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-[11px] text-muted-foreground">
-                  Banco Ativo: <strong className="text-foreground font-mono">rkbvbmhhkllafijipwey</strong> (Supabase Auth)
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setModalBancoAberto(true)}
-                className="text-[10px] text-primary hover:underline font-medium"
-              >
-                Gerenciar
-              </button>
-            </div>
-          ) : (
-            <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200 text-xs flex items-start justify-between gap-3">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="size-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
-                <div>
-                  <strong className="block font-semibold">Nenhum banco de dados conectado</strong>
-                  <span className="text-[11px] opacity-90">
-                    Defina seu projeto Supabase para habilitar o login em nuvem.
-                  </span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setModalBancoAberto(true)}
-                className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-[11px] shrink-0 transition-colors shadow-xs"
-              >
-                Configurar
-              </button>
-            </div>
-          )}
-
           {/* Abas */}
           <div className="flex border-b border-border">
             <button
@@ -482,7 +525,7 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
                   : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
-              Acessar Conta
+              Acessar
             </button>
             <button
               onClick={() => setAba('cadastro')}
@@ -504,36 +547,19 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
             >
               Recuperar
             </button>
+            {aba === 'redefinir' && (
+              <button
+                onClick={() => setAba('redefinir')}
+                className="flex-1 py-2.5 text-xs font-bold uppercase tracking-wider transition-all border-b-2 border-primary text-primary"
+              >
+                Nova Senha
+              </button>
+            )}
           </div>
 
           {/* FORM: LOGIN */}
           {aba === 'login' && (
             <form onSubmit={handleLogin} className="space-y-4">
-              {/* Badge de Conta de Assinante Configurada */}
-              <div className="p-2.5 rounded-xl border border-primary/25 bg-primary/5 flex items-center justify-between gap-2 text-xs">
-                <div className="flex items-center gap-2 overflow-hidden">
-                  <CheckCircle2 className="size-4 text-primary shrink-0" />
-                  <div className="truncate text-left">
-                    <span className="font-semibold text-foreground text-[11px] block truncate">
-                      Conta de Assinante Pronta
-                    </span>
-                    <span className="text-[10px] text-muted-foreground block truncate">
-                      backupvideomidias@gmail.com
-                    </span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEmailLogin('backupvideomidias@gmail.com');
-                    setSenhaLogin('Daniel12345');
-                  }}
-                  className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-primary/10 hover:bg-primary/20 text-primary shrink-0 transition-colors"
-                >
-                  Preencher
-                </button>
-              </div>
-
               {erroLogin && (
                 <div className="space-y-3">
                   <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-start gap-2">
@@ -797,11 +823,18 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
                 {carregandoRecuperacao ? 'Enviando pelo servidor...' : 'Enviar Link de Recuperação'}
               </button>
 
-              <div className="text-center pt-2">
+              <div className="text-center pt-2 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setAba('redefinir')}
+                  className="text-xs text-primary hover:underline font-semibold block w-full text-center"
+                >
+                  Já recebeu o link por e-mail? Clique aqui para definir sua nova senha
+                </button>
                 <button
                   type="button"
                   onClick={() => setAba('login')}
-                  className="text-xs text-muted-foreground hover:text-primary transition-colors underline"
+                  className="text-xs text-muted-foreground hover:text-primary transition-colors underline block w-full text-center"
                 >
                   Voltar para o login
                 </button>
@@ -809,22 +842,93 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
             </form>
           )}
 
-          {/* Garantia de Sigilo e Arquitetura Híbrida */}
-          <div className="pt-3 border-t border-border/60 text-center space-y-1">
-            <div className="flex items-center justify-center gap-1.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-              <ShieldCheck className="size-3.5" />
-              <span>Arquitetura Híbrida: Login no Banco &bull; Dados Clínicos 100% Locais</span>
-            </div>
-            <p className="text-[10px] text-muted-foreground leading-tight">
-              Somente suas credenciais de acesso e perfil são mantidos no Supabase. Seus prontuários, notas e pacientes ficam salvos exclusivamente no cofre criptografado AES-GCM deste dispositivo, garantindo sigilo profissional estrito e total conformidade com a LGPD e o CFP.
-            </p>
-          </div>
+          {/* FORM: REDEFINIR SENHA (Após o usuário abrir o link recebido por e-mail) */}
+          {aba === 'redefinir' && (
+            <form onSubmit={handleAtualizarSenha} className="space-y-4">
+              <div className="text-xs text-muted-foreground leading-relaxed">
+                Defina sua <strong>nova senha de acesso</strong> para atualizar sua conta no banco de dados do Supabase. A senha deve conter no mínimo 8 caracteres.
+              </div>
+
+              {erroRedefinir && (
+                <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-start gap-2">
+                  <AlertCircle className="size-4 shrink-0 mt-0.5" />
+                  <span>{erroRedefinir}</span>
+                </div>
+              )}
+
+              {sucessoRedefinir && (
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs flex items-start gap-2">
+                  <CheckCircle2 className="size-4 shrink-0 mt-0.5" />
+                  <span>{sucessoRedefinir}</span>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  <Key className="size-3.5" />
+                  Nova Senha de Acesso
+                </label>
+                <div className="relative">
+                  <input
+                    type={mostrarNovaSenha ? 'text' : 'password'}
+                    required
+                    autoFocus
+                    value={novaSenha}
+                    onChange={e => setNovaSenha(e.target.value)}
+                    placeholder="Mínimo 8 caracteres"
+                    className="w-full h-11 px-3.5 pr-10 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setMostrarNovaSenha(!mostrarNovaSenha)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1"
+                  >
+                    {mostrarNovaSenha ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  <Key className="size-3.5" />
+                  Confirmar Nova Senha
+                </label>
+                <input
+                  type={mostrarNovaSenha ? 'text' : 'password'}
+                  required
+                  value={confirmarNovaSenha}
+                  onChange={e => setConfirmarNovaSenha(e.target.value)}
+                  placeholder="Repita a nova senha"
+                  className="w-full h-11 px-3.5 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={carregandoRedefinir}
+                className="w-full h-11 gradient-emerald text-primary-foreground font-bold text-sm rounded-xl shadow-md hover:opacity-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {carregandoRedefinir ? 'Atualizando senha no Supabase...' : 'Salvar Nova Senha'}
+              </button>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => setAba('login')}
+                  className="text-xs text-muted-foreground hover:text-primary transition-colors underline"
+                >
+                  Cancelar e voltar para o login
+                </button>
+              </div>
+            </form>
+          )}
+
         </div>
       </main>
 
       {/* Footer */}
       <footer className="text-center py-4 border-t border-border max-w-6xl mx-auto w-full text-xs text-muted-foreground">
-        PSi 4.0 &copy; {new Date().getFullYear()} &bull; Arquitetura Híbrida: Nuvem para Contas/Licenças e Cofre Local Criptografado para Prontuários.
+        PSi 4.0 &copy; {new Date().getFullYear()} &bull; Gestão e Prontuários para Psicólogos.
       </footer>
 
       {/* Modal de Configuração / Alteração de Banco de Dados */}

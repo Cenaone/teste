@@ -297,15 +297,9 @@ export default function App() {
   }, []);
 
   // Verifica existência de metadados do cofre para a conta autenticada
-  const verificarCofreUsuario = async (accountId: string) => {
+  const verificarCofreUsuario = async (accountId: string, senhaTentativa?: string) => {
     try {
       const meta = await carregarMetadadosCofre(accountId);
-      if (meta && meta.vaultHash) {
-        setCofreConfigurado(true);
-      } else {
-        setCofreConfigurado(false);
-      }
-      setSolicitandoDesbloqueio(true);
 
       // Consulta licença SaaS na nuvem
       const licenca = await consultarLicencaAssinante(accountId);
@@ -314,6 +308,43 @@ export default function App() {
         const st = validarStatusLicenca(licenca);
         setStatusLicenca(st);
       }
+
+      // Se foi fornecida senha na autenticação, tenta auto-desbloqueio ou auto-criação do cofre
+      if (senhaTentativa) {
+        if (meta && meta.vaultHash) {
+          const valida = await validarSenhaCofre(senhaTentativa, meta.vaultSalt, meta.vaultHash);
+          if (valida) {
+            const chaveiro = await derivarChaveCofre(senhaTentativa, base64ToBuffer(meta.vaultSalt));
+            setChaveiroCofre(chaveiro);
+            const dadosCofre = await carregarTodasColecoesCofre(accountId, chaveiro);
+            setAnalisandos(dadosCofre.analisandos || []);
+            setModalidades(dadosCofre.modalidades || MODALIDADES_PADRAO);
+            setSessoes(dadosCofre.sessoes || []);
+            setHonorarios(dadosCofre.honorarios || []);
+            setModelos(dadosCofre.modelos || MODELOS_MENSAGENS_PADRAO);
+            setTransmissoes(dadosCofre.transmissoes || CAMPANHAS_PADRAO);
+            setPerfil(dadosCofre.perfil || PERFIL_PADRAO);
+            setConsultorio(dadosCofre.consultorio || CONSULTORIO_PADRAO);
+            setAgendamentos(dadosCofre.agendamentos || []);
+            setCofreConfigurado(true);
+            setCofreDesbloqueado(true);
+            setSolicitandoDesbloqueio(false);
+            redefinirTimerInatividade();
+            return;
+          }
+        } else {
+          // Cofre ainda não inicializado para esta conta: inicializa automaticamente com a senha do login!
+          await handleCriarSenhaCofre(senhaTentativa);
+          return;
+        }
+      }
+
+      if (meta && meta.vaultHash) {
+        setCofreConfigurado(true);
+      } else {
+        setCofreConfigurado(false);
+      }
+      setSolicitandoDesbloqueio(true);
 
       // Inventaria dados legados no navegador para oferecer migração
       const inv = inventariarDadosLegadosLocalStorage();
@@ -795,10 +826,10 @@ export default function App() {
   if (!usuarioAutenticado || !contaUsuario) {
     return (
       <TelaAutenticacao
-        onLoginSucesso={async (usuario) => {
+        onLoginSucesso={async (usuario, senhaUtilizada) => {
           setContaUsuario(usuario);
           setUsuarioAutenticado(true);
-          await verificarCofreUsuario(usuario.id);
+          await verificarCofreUsuario(usuario.id, senhaUtilizada);
         }}
         temaEscuro={temaEscuro}
         onToggleTema={() => setTemaEscuro(!temaEscuro)}

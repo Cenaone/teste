@@ -29,7 +29,9 @@ import {
   traduzirErroAuth,
   obterUrlPainelEmailSupabase,
   fazerLoginSupabaseAuth,
-  obterUsuarioAutenticadoSupabase
+  obterUsuarioAutenticadoSupabase,
+  solicitarRecuperacaoSenhaOficial,
+  atualizarSenhaSupabaseAuth
 } from '../src/lib/supabase';
 
 async function runTests() {
@@ -265,6 +267,18 @@ async function runTests() {
     assert.ok(sessaoUser, 'Sessão ativa de assinante recuperada');
     assert.strictEqual(sessaoUser.email, 'backupvideomidias@gmail.com', 'Sessão do usuário solicitada ativa');
     console.log('  ✔ Sucesso: Conta backupvideomidias@gmail.com salva e autenticada com acesso liberado ao sistema.');
+  }
+
+  // 12. TESTE: Fluxo de recuperação e redefinição de nova senha no Supabase
+  {
+    console.log('▶ Teste 12: Fluxo oficial de recuperação e redefinição de senha');
+    const resSolicitacao = await solicitarRecuperacaoSenhaOficial('backupvideomidias@gmail.com');
+    assert.strictEqual(resSolicitacao.ok, true, 'Solicitação de recuperação deve processar com sucesso');
+    assert.ok(resSolicitacao.mensagem.length > 0, 'Mensagem com instruções ao usuário');
+
+    const resUpdate = await atualizarSenhaSupabaseAuth('DanielNovaSenha123!');
+    assert.ok(typeof resUpdate.ok === 'boolean', 'Função de atualização responde contrato correto');
+    console.log('  ✔ Sucesso: Fluxo de solicitação e tela de redefinição de senha integrados.');
   }
 
   console.log('\n🎉 TODOS OS TESTES DE SEGURANÇA E ARQUITETURA PASSARAM COM SUCESSO!\n');

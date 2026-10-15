@@ -641,14 +641,18 @@ export async function solicitarRecuperacaoSenhaOficial(
 
   if (cliente) {
     try {
+      const redirectUrl = typeof window !== 'undefined'
+        ? `${window.location.origin}${window.location.pathname}#redefinir`
+        : undefined;
+
       const { error } = await cliente.auth.resetPasswordForEmail(emailClean, {
-        redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/redefinir-senha` : undefined
+        redirectTo: redirectUrl
       });
 
       if (!error) {
         return {
           ok: true,
-          mensagem: 'Instruções oficiais de recuperação enviadas para seu e-mail cadastrado pelo servidor.'
+          mensagem: 'Link seguro de recuperação enviado para seu e-mail! Ao abrir o link, você poderá cadastrar sua nova senha de acesso.'
         };
       }
 
@@ -687,6 +691,47 @@ export async function solicitarRecuperacaoSenhaOficial(
     ok: false,
     mensagem: 'Nenhuma conta cadastrada foi encontrada com este endereço de e-mail.'
   };
+}
+
+/**
+ * Atualiza a senha da conta de acesso no Supabase Auth após o usuário receber o link de recuperação.
+ */
+export async function atualizarSenhaSupabaseAuth(
+  novaSenha: string
+): Promise<{ ok: boolean; erro?: string }> {
+  const cliente = getSupabase();
+  if (!cliente) {
+    return { ok: false, erro: 'Serviço de banco de dados (Supabase) não configurado.' };
+  }
+
+  try {
+    const { data, error } = await cliente.auth.updateUser({
+      password: novaSenha
+    });
+
+    if (error) {
+      return { ok: false, erro: traduzirErroAuth(error.message) };
+    }
+
+    if (data?.user?.email) {
+      atualizarSenhaContaAssinante(data.user.email, novaSenha);
+    }
+
+    return { ok: true };
+  } catch (err: any) {
+    return {
+      ok: false,
+      erro: err?.message || 'Erro inesperado ao salvar nova senha no Supabase.'
+    };
+  }
+}
+
+export function atualizarSenhaContaAssinante(email: string, novaSenha: string): void {
+  const contas = obterContasAssinantes();
+  const c = contas.find(item => item.email.toLowerCase() === email.trim().toLowerCase());
+  if (c) {
+    salvarContaAssinante({ ...c, senhaTexto: novaSenha });
+  }
 }
 
 /**

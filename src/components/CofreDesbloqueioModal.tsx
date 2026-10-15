@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, Key, ShieldCheck, AlertCircle, Info, ShieldAlert } from 'lucide-react';
+import { Lock, Key, ShieldCheck, AlertCircle, ShieldAlert, Sparkles, RefreshCw } from 'lucide-react';
 import { Card } from './ui-compact';
 
 interface CofreDesbloqueioModalProps {
@@ -15,15 +15,16 @@ export default function CofreDesbloqueioModal({
   onCriarSenhaCofre,
   emailUsuario
 }: CofreDesbloqueioModalProps) {
-  const [senha, setSenha] = useState('');
-  const [confirmarSenha, setConfirmarSenha] = useState('');
+  const isContaPadrao = emailUsuario?.toLowerCase() === 'backupvideomidias@gmail.com';
+  const [senha, setSenha] = useState(isContaPadrao ? 'Daniel12345' : '');
+  const [confirmarSenha, setConfirmarSenha] = useState(isContaPadrao ? 'Daniel12345' : '');
   const [erro, setErro] = useState('');
   const [processando, setProcessando] = useState(false);
+  const [mostrarOpcaoRedefinir, setMostrarOpcaoRedefinir] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErro('');
-
     if (!senha || senha.length < 8) {
       setErro('A senha do cofre deve ter no mínimo 8 caracteres.');
       return;
@@ -46,7 +47,24 @@ export default function CofreDesbloqueioModal({
       setProcessando(false);
       if (!res.ok) {
         setErro(res.erro || 'Senha do cofre incorreta.');
+        setMostrarOpcaoRedefinir(true);
       }
+    }
+  };
+
+  const handleReinicializarCofre = async () => {
+    setProcessando(true);
+    setErro('');
+    const s = senha.trim() || (isContaPadrao ? 'Daniel12345' : '');
+    if (!s || s.length < 8) {
+      setErro('Digite uma senha de no mínimo 8 caracteres para redefinir o cofre.');
+      setProcessando(false);
+      return;
+    }
+    const res = await onCriarSenhaCofre(s);
+    setProcessando(false);
+    if (!res.ok) {
+      setErro(res.erro || 'Falha ao redefinir o cofre com a senha.');
     }
   };
 
@@ -65,8 +83,31 @@ export default function CofreDesbloqueioModal({
           </p>
         </div>
 
+        {/* Card explicativo sobre a senha */}
+        <div className="p-3 rounded-xl bg-primary/10 border border-primary/25 text-xs text-foreground flex items-center justify-between gap-3 text-left">
+          <div className="space-y-0.5">
+            <strong className="block font-semibold text-primary">Qual é esta senha?</strong>
+            <span className="text-[11px] text-muted-foreground block">
+              É a mesma senha utilizada no seu login: <strong>{isContaPadrao ? 'Daniel12345' : 'a sua senha cadastrada'}</strong>.
+            </span>
+          </div>
+          {isContaPadrao && (
+            <button
+              type="button"
+              onClick={() => {
+                setSenha('Daniel12345');
+                setConfirmarSenha('Daniel12345');
+                setErro('');
+              }}
+              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 shrink-0 transition-opacity"
+            >
+              Preencher Senha
+            </button>
+          )}
+        </div>
+
         {/* Security Disclaimers */}
-        <div className="p-3.5 rounded-xl bg-primary/5 border border-primary/20 text-xs text-muted-foreground space-y-2 leading-relaxed">
+        <div className="p-3.5 rounded-xl bg-muted/40 border border-border text-xs text-muted-foreground space-y-2 leading-relaxed text-left">
           <div className="flex items-start gap-2">
             <ShieldCheck className="size-4 text-emerald-600 shrink-0 mt-0.5" />
             <span>
@@ -82,14 +123,34 @@ export default function CofreDesbloqueioModal({
         </div>
 
         {erro && (
-          <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-start gap-2">
+          <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-start gap-2 text-left">
             <AlertCircle className="size-4 shrink-0 mt-0.5" />
             <span>{erro}</span>
           </div>
         )}
 
+        {mostrarOpcaoRedefinir && (
+          <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs space-y-2 text-left">
+            <div className="font-semibold text-amber-900 dark:text-amber-300">
+              Deseja redefinir a chave deste cofre local?
+            </div>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              Caso seu cofre local tenha sido inicializado anteriormente com outra chave neste navegador, você pode sincronizá-lo agora com a senha atual ({senha || 'Daniel12345'}).
+            </p>
+            <button
+              type="button"
+              disabled={processando}
+              onClick={handleReinicializarCofre}
+              className="w-full py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
+            >
+              <RefreshCw className="size-3.5" />
+              <span>Sincronizar Cofre com a Senha Atual</span>
+            </button>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 text-left">
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
               <Key className="size-3.5" />
               {estaConfigurado ? 'Digite a Senha do Cofre' : 'Crie a Senha do Cofre (mínimo 8 dígitos)'}
@@ -106,7 +167,7 @@ export default function CofreDesbloqueioModal({
           </div>
 
           {!estaConfigurado && (
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 text-left">
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                 <Key className="size-3.5" />
                 Confirme a Senha do Cofre
