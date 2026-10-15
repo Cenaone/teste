@@ -295,12 +295,14 @@ export async function garantirRegistroAssinanteNuvem(
   userId: string,
   email: string,
   metadados: { nomeCompleto?: string; crp?: string }
-): Promise<void> {
-  if (!cliente || !userId) return;
+): Promise<{ ok: boolean; erro?: string }> {
+  if (!cliente || !userId) return { ok: false, erro: 'Cliente ou userId ausente' };
+
+  let erroMsg: string | undefined;
 
   try {
     // 1. Sincroniza em public.usuarios (se existir tabela)
-    await cliente.from('usuarios').upsert(
+    const resUsuarios = await cliente.from('usuarios').upsert(
       {
         id: userId,
         email: email.trim().toLowerCase(),
@@ -312,8 +314,13 @@ export async function garantirRegistroAssinanteNuvem(
       },
       { onConflict: 'id' }
     );
-  } catch (err) {
+    if (resUsuarios.error) {
+      console.warn('[Supabase Sync usuarios]:', resUsuarios.error.message);
+      erroMsg = resUsuarios.error.message;
+    }
+  } catch (err: any) {
     console.warn('[Supabase Sync] public.usuarios não acessível no momento:', err);
+    erroMsg = err?.message;
   }
 
   try {
@@ -329,12 +336,14 @@ export async function garantirRegistroAssinanteNuvem(
         user_id: userId,
         plano: 'individual',
         status: 'ativa',
-        valido_ate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+        valido_ate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
       });
     }
   } catch (err) {
-    console.warn('[Supabase Sync] public.assinaturas_saas não acessível no momento:', err);
+    console.warn('[Supabase Sync] public.assinaturas_saas:', err);
   }
+
+  return { ok: !erroMsg, erro: erroMsg };
 }
 
 export interface ContaAssinanteArmazenada {
@@ -471,8 +480,8 @@ export async function fazerLoginSupabaseAuth(
         salvarContaAssinante(infoConta);
         definirSessaoAssinanteAtiva(infoConta);
 
-        // Sincroniza em segundo plano no banco de dados sem travar a navegação
-        garantirRegistroAssinanteNuvem(cliente, data.user.id, data.user.email || emailClean, {
+        // Sincroniza no banco de dados do Supabase (public.usuarios e assinaturas_saas)
+        await garantirRegistroAssinanteNuvem(cliente, data.user.id, data.user.email || emailClean, {
           nomeCompleto: nomeMeta,
           crp: crpMeta
         });
@@ -546,137 +555,78 @@ export async function cadastrarContaSupabaseAuth(
   precisaConfirmarEmail?: boolean;
   erro?: string;
   isRateLimit?: boolean;
-  salvoLocalmentePorErroBanco?: boolean;
+  isDbError?: boolean;
 }> {
   const emailClean = email.trim().toLowerCase();
   const cliente = getSupabase();
 
-  if (cliente) {
-    try {
-      const { data, error } = await cliente.auth.signUp({
-        email: emailClean,
-        password: senha,
-        options: {
-          data: {
-            nome_completo: metadados.nomeCompleto,
-            crp: metadados.crp || ''
-          }
-        }
-      });
-
-      if (!error && data?.user) {
-        const userId = data.user.id;
-        const precisaConfirmarEmail = Boolean(data.user && !data.session);
-
-        const infoConta: ContaAssinanteArmazenada = {
-          id: userId,
-          email: emailClean,
-          senhaTexto: senha,
-          nomeCompleto: metadados.nomeCompleto,
-          crp: metadados.crp,
-          role: 'psicologo',
-          status: 'ativo',
-          criadoEm: data.user.created_at || new Date().toISOString(),
-          origem: 'supabase'
-        };
-        salvarContaAssinante(infoConta);
-        if (data.session) {
-          definirSessaoAssinanteAtiva(infoConta);
-        }
-
-        if (data.user && data.session) {
-          garantirRegistroAssinanteNuvem(cliente, data.user.id, data.user.email || emailClean, metadados);
-        }
-
-        return {
-          ok: true,
-          id: userId,
-          user: data.user,
-          session: data.session,
-          precisaConfirmarEmail
-        };
-      }
-
-      // Se ocorreu erro de trigger no Supabase ("Database error saving new user") ou rate limit:
-      const msg = error?.message || '';
-      const isDbError = msg.toLowerCase().includes('database error') || msg.toLowerCase().includes('trigger');
-      const isRateLimit = msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('over_email_send_rate_limit');
-
-      if (isDbError || isRateLimit) {
-        console.warn('[Supabase SignUp Error, ativando registro resiliente]:', msg);
-        const randomHex = Math.random().toString(16).slice(2, 14);
-        const idResiliente = `a${Date.now().toString(16).slice(-7)}-0000-4000-8000-${randomHex.padEnd(12, '0')}`;
-
-        const novaConta: ContaAssinanteArmazenada = {
-          id: idResiliente,
-          email: emailClean,
-          senhaTexto: senha,
-          nomeCompleto: metadados.nomeCompleto,
-          crp: metadados.crp,
-          role: 'psicologo',
-          status: 'ativo',
-          criadoEm: new Date().toISOString(),
-          origem: 'local_resiliente'
-        };
-        salvarContaAssinante(novaConta);
-        definirSessaoAssinanteAtiva(novaConta);
-
-        return {
-          ok: true,
-          id: idResiliente,
-          user: {
-            id: idResiliente,
-            email: emailClean,
-            user_metadata: {
-              nome_completo: metadados.nomeCompleto,
-              crp: metadados.crp
-            }
-          },
-          session: { access_token: 'resilient_subscriber_session' },
-          precisaConfirmarEmail: false,
-          salvoLocalmentePorErroBanco: true
-        };
-      }
-
-      return { ok: false, erro: traduzirErroAuth(msg), isRateLimit };
-    } catch (err: any) {
-      const msg = err?.message || '';
-      const isRateLimit = msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('over_email_send_rate_limit');
-      return { ok: false, erro: traduzirErroAuth(msg), isRateLimit };
-    }
+  if (!cliente) {
+    return {
+      ok: false,
+      erro: 'Serviço de banco de dados (Supabase) não configurado. Verifique a conexão com o Supabase.'
+    };
   }
 
-  // Se cliente não estiver disponível, salva na camada resiliente
-  const randomHex = Math.random().toString(16).slice(2, 14);
-  const idResiliente = `a${Date.now().toString(16).slice(-7)}-0000-4000-8000-${randomHex.padEnd(12, '0')}`;
-  const novaConta: ContaAssinanteArmazenada = {
-    id: idResiliente,
-    email: emailClean,
-    senhaTexto: senha,
-    nomeCompleto: metadados.nomeCompleto,
-    crp: metadados.crp,
-    role: 'psicologo',
-    status: 'ativo',
-    criadoEm: new Date().toISOString(),
-    origem: 'local_resiliente'
-  };
-  salvarContaAssinante(novaConta);
-  definirSessaoAssinanteAtiva(novaConta);
-
-  return {
-    ok: true,
-    id: idResiliente,
-    user: {
-      id: idResiliente,
+  try {
+    const { data, error } = await cliente.auth.signUp({
       email: emailClean,
-      user_metadata: {
-        nome_completo: metadados.nomeCompleto,
-        crp: metadados.crp
+      password: senha,
+      options: {
+        data: {
+          nome_completo: metadados.nomeCompleto,
+          crp: metadados.crp || ''
+        }
       }
-    },
-    session: { access_token: 'resilient_subscriber_session' },
-    precisaConfirmarEmail: false
-  };
+    });
+
+    if (error) {
+      const msg = error.message || '';
+      const isDbError = msg.toLowerCase().includes('database error') || msg.toLowerCase().includes('trigger');
+      const isRateLimit = msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('over_email_send_rate_limit');
+      return { ok: false, erro: traduzirErroAuth(msg), isRateLimit, isDbError };
+    }
+
+    if (data?.user) {
+      const userId = data.user.id;
+      const precisaConfirmarEmail = Boolean(data.user && !data.session);
+
+      const infoConta: ContaAssinanteArmazenada = {
+        id: userId,
+        email: emailClean,
+        senhaTexto: senha,
+        nomeCompleto: metadados.nomeCompleto,
+        crp: metadados.crp,
+        role: 'psicologo',
+        status: 'ativo',
+        criadoEm: data.user.created_at || new Date().toISOString(),
+        origem: 'supabase'
+      };
+      salvarContaAssinante(infoConta);
+
+      if (data.session) {
+        definirSessaoAssinanteAtiva(infoConta);
+        // Sincroniza imediatamente na tabela public.usuarios e public.assinaturas_saas no Supabase
+        await garantirRegistroAssinanteNuvem(cliente, data.user.id, data.user.email || emailClean, metadados);
+      }
+
+      return {
+        ok: true,
+        id: userId,
+        user: data.user,
+        session: data.session,
+        precisaConfirmarEmail
+      };
+    }
+
+    return {
+      ok: false,
+      erro: 'Não foi possível registrar o usuário no Supabase. Verifique suas credenciais e tente novamente.'
+    };
+  } catch (err: any) {
+    const msg = err?.message || '';
+    const isRateLimit = msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('over_email_send_rate_limit');
+    return { ok: false, erro: traduzirErroAuth(msg), isRateLimit };
+  }
 }
 
 /**

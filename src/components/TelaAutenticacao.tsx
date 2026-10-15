@@ -322,10 +322,7 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
 
       if (res.ok) {
         if (res.user && !res.precisaConfirmarEmail) {
-          const msgSucesso = res.salvoLocalmentePorErroBanco
-            ? 'Conta de assinante criada e autenticada com sucesso! Acesso concedido. Seus dados clínicos ficam salvos 100% locais no cofre do seu dispositivo.'
-            : 'Conta criada e autenticada com sucesso no Supabase! Entrando no sistema...';
-          setSucessoCadastro(msgSucesso);
+          setSucessoCadastro('Conta salva com sucesso no banco de dados do Supabase! Entrando no sistema...');
           setTimeout(() => {
             onLoginSucesso({
               id: res.user.id,
@@ -335,13 +332,13 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
             });
           }, 900);
         } else {
-          setSucessoCadastro('Conta criada com sucesso no Supabase! Verifique seu e-mail se a confirmação estiver ativada ou faça login agora.');
+          setSucessoCadastro('Conta registrada no Supabase (auth.users)! Caso "Confirm email" esteja ativo no seu projeto, confirme o e-mail ou faça login.');
           setTimeout(() => {
             setAba('login');
             setEmailLogin(emailClean);
             setSenhaLogin(senhaCadastro);
             setSucessoCadastro('');
-          }, 2000);
+          }, 3000);
         }
       } else {
         setErroCadastro(res.erro || 'Erro ao criar conta no servidor.');
