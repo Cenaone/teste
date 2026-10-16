@@ -230,7 +230,7 @@ export default function App() {
   const podeGerenciarAcessos = Boolean(
     contaUsuario?.isAdmin ||
     contaUsuario?.role === 'admin' ||
-    contaUsuario?.email?.toLowerCase() === 'sup.fin.adm@gmail.com'
+    contaUsuario?.email?.toLowerCase() === 'backupvideomidias@gmail.com'
   );
   const secoesDisponiveis = podeGerenciarAcessos
     ? [...SECTIONS, { id: 'admin_users', label: 'Validação de Acessos & Assinaturas', icon: ShieldCheck, category: 'Configurações' }]

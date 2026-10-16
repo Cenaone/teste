@@ -135,7 +135,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
 
   // Ações de gerenciamento
   const handleAprovar = async (u: ContaAssinanteArmazenada) => {
-    const res = await aprovarUsuarioAdmin(u.id, 30, 'mensal', contaUsuario?.email || 'sup.fin.adm@gmail.com');
+    const res = await aprovarUsuarioAdmin(u.id, 30, 'mensal', contaUsuario?.email || 'backupvideomidias@gmail.com');
     if (res.ok) {
       mostrarFeedback(`Assinatura de ${u.nomeCompleto} aprovada com sucesso! Acesso liberado por 30 dias.`);
       await carregarDados();
@@ -246,8 +246,8 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
   };
 
   const handleExcluir = async (u: ContaAssinanteArmazenada) => {
-    if (u.email.toLowerCase() === 'sup.fin.adm@gmail.com') {
-      mostrarFeedback('Não é permitido excluir o Administrador Geral.', 'erro');
+    if (u.email.toLowerCase() === 'backupvideomidias@gmail.com') {
+      mostrarFeedback('Não é permitido excluir o Administrador Geral Master.', 'erro');
       return;
     }
     if (confirm(`Tem certeza que deseja remover o usuário ${u.nomeCompleto} (${u.email})?`)) {
@@ -531,7 +531,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
           </Card>
         ) : (
           usuariosFiltrados.map(u => {
-            const isSuperAdmin = u.email.toLowerCase() === 'sup.fin.adm@gmail.com';
+            const isSuperAdmin = u.email.toLowerCase() === 'backupvideomidias@gmail.com';
             const diasRestantes = calcularDiasRestantes(u.validoAte);
             const vencido = u.validoAte && new Date(u.validoAte).getTime() < Date.now();
 

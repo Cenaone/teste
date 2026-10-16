@@ -369,28 +369,15 @@ export interface ContaAssinanteArmazenada {
 
 export const CONTAS_ASSINANTES_INICIAIS: ContaAssinanteArmazenada[] = [
   {
-    id: 'a0000000-0000-4000-8000-000000000000',
-    email: 'sup.fin.adm@gmail.com',
-    senhaTexto: 'AdminPsi2026!',
-    nomeCompleto: 'Administrador Geral (Suporte Financeiro)',
-    crp: 'ADMIN-PSI',
+    id: 'a1000000-0000-4000-8000-000000000001',
+    email: 'backupvideomidias@gmail.com',
+    senhaTexto: 'Daniel12345',
+    nomeCompleto: 'Dr. Daniel (Administrador Master)',
+    crp: '06/123456',
     role: 'admin',
     status: 'ativo',
     plano: 'saas_pro',
     validoAte: '2036-12-31T23:59:59.000Z',
-    criadoEm: '2026-10-15T00:00:00.000Z',
-    origem: 'local_resiliente'
-  },
-  {
-    id: 'a1000000-0000-4000-8000-000000000001',
-    email: 'backupvideomidias@gmail.com',
-    senhaTexto: 'Daniel12345',
-    nomeCompleto: 'Dr. Daniel',
-    crp: '06/123456',
-    role: 'psicologo',
-    status: 'ativo',
-    plano: 'mensal',
-    validoAte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     criadoEm: '2026-10-14T12:00:00.000Z',
     origem: 'local_resiliente'
   }
@@ -498,7 +485,7 @@ export async function listarUsuariosAdmin(): Promise<ContaAssinanteArmazenada[]>
             nomeCompleto: u.nome || existente?.nomeCompleto || email.split('@')[0],
             crp: u.crp || existente?.crp,
             telefone: u.telefone || existente?.telefone,
-            role: (u.role === 'admin' || email === 'sup.fin.adm@gmail.com') ? 'admin' : (existente?.role || 'psicologo'),
+            role: (u.role === 'admin' || email === 'backupvideomidias@gmail.com') ? 'admin' : (existente?.role || 'psicologo'),
             status: (u.status as StatusAssinante) || existente?.status || 'ativo',
             plano: existente?.plano || 'mensal',
             validoAte: existente?.validoAte || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
@@ -548,7 +535,7 @@ export async function listarUsuariosAdmin(): Promise<ContaAssinanteArmazenada[]>
   }
 
   // Garante que o Super Administrador esteja sempre presente e ativo
-  const adminExiste = resultado.some(u => u.email.toLowerCase() === 'sup.fin.adm@gmail.com');
+  const adminExiste = resultado.some(u => u.email.toLowerCase() === 'backupvideomidias@gmail.com');
   if (!adminExiste) {
     resultado.unshift(CONTAS_ASSINANTES_INICIAIS[0]);
   }
@@ -560,7 +547,7 @@ export async function aprovarUsuarioAdmin(
   userId: string,
   diasValidade = 30,
   plano: PlanoAssinante = 'mensal',
-  adminEmail = 'sup.fin.adm@gmail.com'
+  adminEmail = 'backupvideomidias@gmail.com'
 ): Promise<{ ok: boolean; mensagem: string }> {
   const contas = obterContasAssinantes();
   const index = contas.findIndex(c => c.id === userId);
@@ -613,7 +600,7 @@ export async function alternarStatusAcessoUsuario(
 
   if (index >= 0) {
     // Não permite desativar a própria conta do Super Admin
-    if (contas[index].email.toLowerCase() === 'sup.fin.adm@gmail.com' && novoStatus !== 'ativo') {
+    if (contas[index].email.toLowerCase() === 'backupvideomidias@gmail.com' && novoStatus !== 'ativo') {
       return { ok: false, mensagem: 'A conta do Administrador Geral não pode ser desativada.' };
     }
 
@@ -793,7 +780,7 @@ export async function criarUsuarioManualAdmin(dados: {
     nomeCompleto: nomeClean,
     crp: dados.crp,
     telefone: dados.telefone,
-    role: dados.role || (emailClean === 'sup.fin.adm@gmail.com' ? 'admin' : 'psicologo'),
+    role: dados.role || (emailClean === 'backupvideomidias@gmail.com' ? 'admin' : 'psicologo'),
     status: 'ativo',
     plano: dados.plano || 'mensal',
     validoAte: new Date(Date.now() + dias * 24 * 60 * 60 * 1000).toISOString(),
@@ -876,7 +863,7 @@ export async function fazerLoginSupabaseAuth(
       if (!error && data?.user) {
         const nomeMeta = data.user.user_metadata?.nome_completo || data.user.email?.split('@')[0];
         const crpMeta = data.user.user_metadata?.crp;
-        const isAdmin = emailClean === 'sup.fin.adm@gmail.com' ||
+        const isAdmin = emailClean === 'backupvideomidias@gmail.com' ||
           data.user.user_metadata?.role === 'admin' ||
           data.user.user_metadata?.is_admin === true;
 
@@ -890,7 +877,7 @@ export async function fazerLoginSupabaseAuth(
           return {
             ok: false,
             statusAcesso: 'pendente',
-            erro: 'Sua conta está aguardando aprovação do Administrador. Assim que a sua assinatura mensal for ativada pelo administrador, seu acesso estará liberado. Contato: sup.fin.adm@gmail.com'
+            erro: 'Sua conta está aguardando aprovação do Administrador. Assim que a sua assinatura mensal for ativada pelo administrador, seu acesso estará liberado. Contato: backupvideomidias@gmail.com'
           };
         }
 
@@ -898,7 +885,7 @@ export async function fazerLoginSupabaseAuth(
           return {
             ok: false,
             statusAcesso: 'inativo',
-            erro: 'Sua assinatura mensal está desativada ou suspensa. Entre em contato com a administração (sup.fin.adm@gmail.com) para regularizar seu acesso.'
+            erro: 'Sua assinatura mensal está desativada ou suspensa. Entre em contato com a administração (backupvideomidias@gmail.com) para regularizar seu acesso.'
           };
         }
 
@@ -909,7 +896,7 @@ export async function fazerLoginSupabaseAuth(
             return {
               ok: false,
               statusAcesso: 'expirado',
-              erro: 'Sua assinatura mensal expirou. Entre em contato com a administração (sup.fin.adm@gmail.com) para renovar seu plano.'
+              erro: 'Sua assinatura mensal expirou. Entre em contato com a administração (backupvideomidias@gmail.com) para renovar seu plano.'
             };
           }
         }
@@ -961,13 +948,13 @@ export async function fazerLoginSupabaseAuth(
   );
 
   if (contaEncontrada) {
-    const isAdmin = emailClean === 'sup.fin.adm@gmail.com' || contaEncontrada.role === 'admin';
+    const isAdmin = emailClean === 'backupvideomidias@gmail.com' || contaEncontrada.role === 'admin';
 
     if (!isAdmin && contaEncontrada.status === 'pendente') {
       return {
         ok: false,
         statusAcesso: 'pendente',
-        erro: 'Sua conta está aguardando aprovação do Administrador. Assim que a sua assinatura mensal for ativada pelo administrador, seu acesso estará liberado. Contato: sup.fin.adm@gmail.com'
+        erro: 'Sua conta está aguardando aprovação do Administrador. Assim que a sua assinatura mensal for ativada pelo administrador, seu acesso estará liberado. Contato: backupvideomidias@gmail.com'
       };
     }
 
@@ -975,7 +962,7 @@ export async function fazerLoginSupabaseAuth(
       return {
         ok: false,
         statusAcesso: 'inativo',
-        erro: 'Sua assinatura mensal está desativada ou suspensa. Entre em contato com a administração (sup.fin.adm@gmail.com) para regularizar seu acesso.'
+        erro: 'Sua assinatura mensal está desativada ou suspensa. Entre em contato com a administração (backupvideomidias@gmail.com) para regularizar seu acesso.'
       };
     }
 
@@ -985,7 +972,7 @@ export async function fazerLoginSupabaseAuth(
         return {
           ok: false,
           statusAcesso: 'expirado',
-          erro: 'Sua assinatura mensal expirou. Entre em contato com a administração (sup.fin.adm@gmail.com) para renovar seu plano.'
+          erro: 'Sua assinatura mensal expirou. Entre em contato com a administração (backupvideomidias@gmail.com) para renovar seu plano.'
         };
       }
     }
@@ -1027,7 +1014,7 @@ export async function fazerLoginSupabaseAuth(
 /**
  * Cadastra uma nova conta de assinante no Supabase Auth com metadados de identificação.
  * Para modelo SaaS pago: novos psicólogos cadastrados iniciam como 'pendente' de aprovação,
- * enquanto a conta de Super Administrador (sup.fin.adm@gmail.com) é sempre criada como ativa e administradora.
+ * enquanto a conta de Super Administrador Master (backupvideomidias@gmail.com) é sempre criada como ativa e administradora.
  */
 export async function cadastrarContaSupabaseAuth(
   email: string,
@@ -1045,7 +1032,7 @@ export async function cadastrarContaSupabaseAuth(
   isDbError?: boolean;
 }> {
   const emailClean = email.trim().toLowerCase();
-  const isAdmin = emailClean === 'sup.fin.adm@gmail.com';
+  const isAdmin = emailClean === 'backupvideomidias@gmail.com';
   const statusInicial: StatusAssinante = isAdmin ? 'ativo' : 'pendente';
   const roleInicial: 'admin' | 'psicologo' = isAdmin ? 'admin' : 'psicologo';
   const cliente = getSupabase();
@@ -1301,7 +1288,7 @@ export async function obterUsuarioAutenticadoSupabase(): Promise<any | null> {
         const emailLower = (user.email || '').toLowerCase();
         const contas = obterContasAssinantes();
         const cLocal = contas.find(c => c.email.toLowerCase() === emailLower);
-        const isAdmin = emailLower === 'sup.fin.adm@gmail.com' ||
+        const isAdmin = emailLower === 'backupvideomidias@gmail.com' ||
           user.user_metadata?.role === 'admin' ||
           user.user_metadata?.is_admin === true ||
           cLocal?.role === 'admin';
@@ -1328,7 +1315,7 @@ export async function obterUsuarioAutenticadoSupabase(): Promise<any | null> {
   const sessaoAtiva = obterSessaoAssinanteAtiva();
   if (sessaoAtiva && sessaoAtiva.id) {
     const emailLower = (sessaoAtiva.email || '').toLowerCase();
-    const isAdmin = emailLower === 'sup.fin.adm@gmail.com' || sessaoAtiva.role === 'admin';
+    const isAdmin = emailLower === 'backupvideomidias@gmail.com' || sessaoAtiva.role === 'admin';
     return {
       id: sessaoAtiva.id,
       email: sessaoAtiva.email,

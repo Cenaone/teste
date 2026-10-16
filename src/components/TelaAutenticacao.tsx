@@ -409,7 +409,7 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
       setCarregandoCadastro(false);
 
       if (res.ok) {
-        const isAdmin = emailClean === 'sup.fin.adm@gmail.com';
+        const isAdmin = emailClean === 'backupvideomidias@gmail.com';
         if (isAdmin && res.user && !res.precisaConfirmarEmail) {
           setSucessoCadastro('Conta de Administrador criada com sucesso! Entrando no sistema...');
           setTimeout(() => {

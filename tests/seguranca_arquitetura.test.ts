@@ -305,9 +305,9 @@ async function runTests() {
   {
     console.log('▶ Teste 13: Perfil de Administrador, aprovação e controle de acessos SaaS mensais');
     
-    // 13.1 Login do Super Administrador
-    const loginAdmin = await fazerLoginSupabaseAuth('sup.fin.adm@gmail.com', 'AdminPsi2026!');
-    assert.strictEqual(loginAdmin.ok, true, 'Super Administrador deve autenticar com sucesso');
+    // 13.1 Login do Super Administrador Master
+    const loginAdmin = await fazerLoginSupabaseAuth('backupvideomidias@gmail.com', 'Daniel12345');
+    assert.strictEqual(loginAdmin.ok, true, 'Super Administrador Master deve autenticar com sucesso');
     assert.strictEqual(loginAdmin.user?.role, 'admin', 'Perfil do usuário deve ser admin');
     assert.strictEqual(loginAdmin.user?.isAdmin, true, 'Flag isAdmin deve ser true');
 
@@ -321,9 +321,9 @@ async function runTests() {
     } = await import('../src/lib/supabase');
 
     const lista = await listarUsuariosAdmin();
-    assert.ok(Array.isArray(lista) && lista.length >= 2, 'Lista de usuários deve conter administrador e assinantes');
-    const adminEncontrado = lista.find(u => u.email.toLowerCase() === 'sup.fin.adm@gmail.com');
-    assert.ok(adminEncontrado, 'Administrador sup.fin.adm@gmail.com presente na base');
+    assert.ok(Array.isArray(lista) && lista.length >= 1, 'Lista de usuários deve conter administrador');
+    const adminEncontrado = lista.find(u => u.email.toLowerCase() === 'backupvideomidias@gmail.com');
+    assert.ok(adminEncontrado, 'Administrador backupvideomidias@gmail.com presente na base');
     assert.strictEqual(adminEncontrado?.role, 'admin', 'Role admin confirmada');
 
     // 13.3 Criação de usuário em estado pendente e aprovação com concessão de 30 dias
@@ -352,7 +352,7 @@ async function runTests() {
     assert.strictEqual(resRenovar.ok, true, 'Renovação de 30 dias confirmada');
     assert.ok(resRenovar.novaValidade, 'Nova validade gerada');
 
-    console.log('  ✔ Sucesso: Perfil de Administrador (sup.fin.adm@gmail.com) operacional com aprovação, ativação e desativação de assinaturas mensais.');
+    console.log('  ✔ Sucesso: Perfil de Administrador Master (backupvideomidias@gmail.com) operacional com aprovação, ativação e desativação de assinaturas mensais.');
   }
 
   console.log('\n🎉 TODOS OS TESTES DE SEGURANÇA E ARQUITETURA PASSARAM COM SUCESSO!\n');

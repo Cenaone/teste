@@ -35,8 +35,8 @@ RETURNS boolean AS $$
 BEGIN
   RETURN EXISTS (
     SELECT 1 FROM public.usuarios
-    WHERE id = auth.uid() AND (role = 'admin' OR email = 'sup.fin.adm@gmail.com')
-  ) OR (auth.jwt() ->> 'email' = 'sup.fin.adm@gmail.com');
+    WHERE id = auth.uid() AND (role = 'admin' OR email = 'backupvideomidias@gmail.com')
+  ) OR (auth.jwt() ->> 'email' = 'backupvideomidias@gmail.com');
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
 
@@ -209,7 +209,7 @@ DECLARE
   v_status_inicial TEXT;
   v_role_inicial TEXT;
 BEGIN
-  v_is_super_admin := (lower(new.email) = 'sup.fin.adm@gmail.com');
+  v_is_super_admin := (lower(new.email) = 'backupvideomidias@gmail.com');
   v_status_inicial := CASE WHEN v_is_super_admin THEN 'ativo' ELSE 'pendente' END;
   v_role_inicial   := CASE WHEN v_is_super_admin THEN 'admin' ELSE 'psicologo' END;
 
@@ -257,19 +257,25 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
--- 6. ATUALIZAÇÃO RETROATIVA DO SUPER ADMINISTRADOR (SE JÁ CADASTRADO)
+-- 6. ATUALIZAÇÃO DO SUPER ADMINISTRADOR MASTER (backupvideomidias@gmail.com)
 UPDATE public.usuarios
 SET role = 'admin',
     status = 'ativo',
     atualizado_em = timezone('utc'::text, now())
-WHERE lower(email) = 'sup.fin.adm@gmail.com';
+WHERE lower(email) = 'backupvideomidias@gmail.com';
 
 INSERT INTO public.assinaturas_saas (user_id, plano, status, valido_ate)
 SELECT id, 'saas_pro', 'ativa', now() + interval '3650 days'
 FROM public.usuarios
-WHERE lower(email) = 'sup.fin.adm@gmail.com'
+WHERE lower(email) = 'backupvideomidias@gmail.com'
 ON CONFLICT (user_id) DO UPDATE SET
   status = 'ativa',
   plano = 'saas_pro',
   valido_ate = now() + interval '3650 days';
+
+-- Remove privilégios de Administrador Master de sup.fin.adm@gmail.com
+UPDATE public.usuarios
+SET role = 'psicologo',
+    atualizado_em = timezone('utc'::text, now())
+WHERE lower(email) = 'sup.fin.adm@gmail.com';
 `;
