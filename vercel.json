@@ -2,6 +2,10 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/reset-password",
+      "destination": "/reset-password/index.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
