@@ -348,7 +348,7 @@ export default function SecaoNovaSessao({
           </div>
 
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Inicie a gravação no botão abaixo para capturar o áudio da sessão com transcrição automática do diálogo em tempo real. Você pode baixar a gravação em formato <strong>.mp3</strong> para guardar no computador e inserir o texto nas notas clínicas.
+            Inicie a gravação no botão abaixo para capturar o áudio da sessão com total privacidade. Quando desejar, aperte o botão de transcrever para converter o áudio em texto. Você também pode salvar o arquivo em formato <strong>.mp3</strong> no computador e anexar o registro ao prontuário.
           </p>
 
           {/* Componente Gravador com Transcrição e Botão Salvar .MP3 */}

@@ -16,7 +16,8 @@ import {
   Sparkles,
   FileAudio,
   CheckCircle2,
-  RefreshCw
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
 import { Card } from './ui-compact';
 
@@ -36,21 +37,20 @@ export default function GravadorSessao({
   const [estaGravando, setEstaGravando] = useState(false);
   const [estaPausado, setEstaPausado] = useState(false);
   const [tempoSegundos, setTempoSegundos] = useState(0);
-  const [transcricaoAoVivo, setTranscricaoAoVivo] = useState('');
-  const [transcricaoFinal, setTranscricaoFinal] = useState('');
+  const [transcricaoTexto, setTranscricaoTexto] = useState('');
+  const [transcrevendo, setTranscrevendo] = useState(false);
   const [erroMicrofone, setErroMicrofone] = useState<string | null>(null);
+  const [erroTranscricao, setErroTranscricao] = useState<string | null>(null);
   const [mostrarPainel, setMostrarPainel] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [copiadoTexto, setCopiadoTexto] = useState(false);
   const [sucessoDownload, setSucessoDownload] = useState(false);
-  const [suportadoReconhecimento, setSuportadoReconhecimento] = useState(true);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const recognitionRef = useRef<any>(null);
 
   // Formatar tempo MM:SS ou HH:MM:SS
   const formatarTempo = (segundos: number) => {
@@ -65,14 +65,6 @@ export default function GravadorSessao({
   };
 
   useEffect(() => {
-    // Verifica suporte ao Web Speech API
-    if (typeof window !== 'undefined') {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (!SpeechRecognition) {
-        setSuportadoReconhecimento(false);
-      }
-    }
-
     return () => {
       pararGravacaoGeral();
       if (audioUrl) {
@@ -81,10 +73,10 @@ export default function GravadorSessao({
     };
   }, []);
 
+  // 1. Iniciar gravação de áudio pura (SEM transcrição automática durante a fala)
   const iniciarGravacao = async () => {
     setErroMicrofone(null);
-    setTranscricaoAoVivo('');
-    setTranscricaoFinal('');
+    setErroTranscricao(null);
     setTempoSegundos(0);
     setMostrarPainel(true);
     setAudioUrl(null);
@@ -93,7 +85,6 @@ export default function GravadorSessao({
     audioChunksRef.current = [];
 
     try {
-      // 1. Obter stream de microfone do dispositivo
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           echoCancellation: true,
@@ -103,7 +94,6 @@ export default function GravadorSessao({
       });
       streamRef.current = stream;
 
-      // 2. Inicializar MediaRecorder para gravação de áudio
       try {
         let options: MediaRecorderOptions = {};
         if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
@@ -140,66 +130,10 @@ export default function GravadorSessao({
         console.warn('MediaRecorder não disponível ou formato restrito:', e);
       }
 
-      // 3. Inicializar SpeechRecognition para transcrição em tempo real (Web Speech API)
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        try {
-          const recognition = new SpeechRecognition();
-          recognition.lang = 'pt-BR';
-          recognition.continuous = true;
-          recognition.interimResults = true;
-          recognition.maxAlternatives = 1;
-
-          recognition.onresult = (event: any) => {
-            let interim = '';
-            let finalAccumulated = '';
-
-            for (let i = 0; i < event.results.length; i++) {
-              const res = event.results[i];
-              if (res.isFinal) {
-                finalAccumulated += res[0].transcript + ' ';
-              } else {
-                interim += res[0].transcript;
-              }
-            }
-
-            if (finalAccumulated) {
-              setTranscricaoFinal((prev) => {
-                // Junta sem duplicações óbvias
-                const limpo = finalAccumulated.trim();
-                return prev ? `${prev} ${limpo}` : limpo;
-              });
-            }
-            setTranscricaoAoVivo(interim);
-          };
-
-          recognition.onerror = (event: any) => {
-            console.warn('[SpeechRecognition]:', event.error);
-            if (event.error === 'not-allowed') {
-              setErroMicrofone('Acesso ao microfone para transcrição não foi autorizado pelo navegador.');
-            }
-          };
-
-          recognition.onend = () => {
-            // Reinicia reconhecimento se ainda estiver gravando ativamente
-            if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-              try {
-                recognition.start();
-              } catch (_) {}
-            }
-          };
-
-          recognition.start();
-          recognitionRef.current = recognition;
-        } catch (errRec) {
-          console.warn('Erro ao inicializar reconhecimento de fala:', errRec);
-        }
-      }
-
       setEstaGravando(true);
       setEstaPausado(false);
 
-      // 4. Timer do cronômetro da sessão
+      // Timer
       timerRef.current = setInterval(() => {
         setTempoSegundos((prev) => prev + 1);
       }, 1000);
@@ -215,28 +149,16 @@ export default function GravadorSessao({
     if (!estaGravando) return;
 
     if (estaPausado) {
-      // Retomar
       if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'paused') {
         mediaRecorderRef.current.resume();
-      }
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.start();
-        } catch (_) {}
       }
       timerRef.current = setInterval(() => {
         setTempoSegundos((prev) => prev + 1);
       }, 1000);
       setEstaPausado(false);
     } else {
-      // Pausar
       if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
         mediaRecorderRef.current.pause();
-      }
-      if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop();
-        } catch (_) {}
       }
       if (timerRef.current) {
         clearInterval(timerRef.current);
@@ -249,13 +171,6 @@ export default function GravadorSessao({
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
-    }
-
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-        recognitionRef.current = null;
-      } catch (_) {}
     }
 
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
@@ -277,12 +192,80 @@ export default function GravadorSessao({
     pararGravacaoGeral();
   };
 
-  // Função para baixar arquivo em formato .mp3 diretamente no computador do usuário
+  // Converte Blob de áudio para base64 para envio à API de transcrição
+  const blobToBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const res = reader.result as string;
+        // Remove prefixo data:*/*;base64,
+        const base64 = res.split(',')[1] || res;
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  // 2. FUNÇÃO EXCLUSIVA DE TRANSCRIÇÃO DISPARADA PELO BOTÃO (NÃO AUTOMÁTICA)
+  const handleTranscreverAudio = async () => {
+    setErroTranscricao(null);
+
+    // Se ainda estiver gravando, encerra a gravação primeiro
+    if (estaGravando) {
+      pararGravacaoGeral();
+    }
+
+    const blobParaTranscrever = audioBlob || (audioChunksRef.current.length > 0 ? new Blob(audioChunksRef.current, { type: 'audio/mp3' }) : null);
+
+    if (!blobParaTranscrever || blobParaTranscrever.size === 0) {
+      setErroTranscricao('Nenhum áudio gravado disponível para transcrever. Grave a sessão primeiro.');
+      return;
+    }
+
+    setTranscrevendo(true);
+
+    try {
+      const base64 = await blobToBase64(blobParaTranscrever);
+      const mime = blobParaTranscrever.type || 'audio/webm';
+
+      const response = await fetch('/api/transcrever-audio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          audioBase64: base64,
+          mimeType: mime
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.ok && data.transcricao) {
+        setTranscricaoTexto(data.transcricao);
+      } else {
+        // Fallback local se a API retornar erro
+        throw new Error(data.erro || 'Falha ao processar a transcrição pelo servidor.');
+      }
+    } catch (err: any) {
+      console.warn('Erro ao transcrever via API:', err);
+      // Tentativa de fallback com Web Speech API se suportado pelo navegador
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        setErroTranscricao('A transcrição remota falhou ou está indisponível. Você pode usar a fala ao vivo ou ditar notas diretamente.');
+      } else {
+        setErroTranscricao('Não foi possível transcrever o áudio no momento. Verifique a conexão com o servidor ou digite as anotações manualmente.');
+      }
+    } finally {
+      setTranscrevendo(false);
+    }
+  };
+
+  // 3. Salvar arquivo em formato .mp3 diretamente no computador
   const handleBaixarArquivoMp3 = () => {
     const blobParaDownload = audioBlob || (audioChunksRef.current.length > 0 ? new Blob(audioChunksRef.current, { type: 'audio/mp3' }) : null);
 
     if (!blobParaDownload) {
-      alert('Nenhum áudio disponível para download. Grave a sessão antes de salvar.');
+      alert('Nenhum áudio gravado disponível para download. Grave a sessão antes de salvar.');
       return;
     }
 
@@ -313,17 +296,16 @@ export default function GravadorSessao({
     setTimeout(() => setSucessoDownload(false), 5000);
   };
 
-  // Inserir registro do áudio e transcrição no prontuário clínico
+  // 4. Inserir registro do áudio e transcrição no prontuário clínico
   const handleInserirRegistroAudio = () => {
     const timestamp = new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    const cabecalho = `\n\n--- [Sessão Presencial Registrada - ${timestamp} (Duração: ${formatarTempo(tempoSegundos)})] ---\n`;
+    const cabecalho = `\n\n--- [Sessão Registrada - ${timestamp} (Duração: ${formatarTempo(tempoSegundos)})] ---\n`;
     
-    const textoTranscrito = [transcricaoFinal, transcricaoAoVivo].filter(Boolean).join(' ').trim();
-    const blocoTranscricao = textoTranscrito
-      ? `\n[Transcrição do Áudio da Sessão]:\n"${textoTranscrito}"\n`
+    const blocoTranscricao = transcricaoTexto.trim()
+      ? `\n[Transcrição do Áudio da Sessão]:\n"${transcricaoTexto.trim()}"\n`
       : '';
 
-    const nota = `[Registro de áudio gerado no dispositivo local. Formato .mp3 disponível para armazenamento confidencial sob sigilo profissional.]\n`;
+    const nota = `[Áudio gravado e arquivado em formato .mp3 sob sigilo profissional.]\n`;
     const resultado = textoAtual 
       ? `${textoAtual.trim()}${cabecalho}${nota}${blocoTranscricao}` 
       : `${cabecalho.trim()}\n${nota}${blocoTranscricao}`;
@@ -337,9 +319,8 @@ export default function GravadorSessao({
   };
 
   const handleCopiarTranscricao = () => {
-    const texto = [transcricaoFinal, transcricaoAoVivo].filter(Boolean).join(' ').trim();
-    if (!texto) return;
-    navigator.clipboard.writeText(texto);
+    if (!transcricaoTexto) return;
+    navigator.clipboard.writeText(transcricaoTexto);
     setCopiadoTexto(true);
     setTimeout(() => setCopiadoTexto(false), 3000);
   };
@@ -349,15 +330,15 @@ export default function GravadorSessao({
       pararGravacaoGeral();
     }
     audioChunksRef.current = [];
-    setTranscricaoAoVivo('');
-    setTranscricaoFinal('');
+    setTranscricaoTexto('');
     setTempoSegundos(0);
     setAudioUrl(null);
     setAudioBlob(null);
+    setTranscrevendo(false);
     setMostrarPainel(false);
   };
 
-  const textoTotalTranscrito = [transcricaoFinal, transcricaoAoVivo].filter(Boolean).join(' ').trim();
+  const temAudioGravado = tempoSegundos > 0 || !!audioBlob || audioChunksRef.current.length > 0;
 
   return (
     <div className="space-y-3">
@@ -376,9 +357,9 @@ export default function GravadorSessao({
               <Mic className="size-3.5" />
             </div>
             <div className="text-left">
-              <span className="font-semibold block">Gravar Áudio da Sessão com Transcrição</span>
+              <span className="font-semibold block">Gravar Áudio da Sessão</span>
               <span className="text-[10px] text-muted-foreground font-normal">
-                Gera transcrição em tempo real e permite salvar o arquivo .mp3 no computador
+                Grave com tranquilidade e transcreva quando desejar apertando o botão
               </span>
             </div>
           </div>
@@ -396,7 +377,7 @@ export default function GravadorSessao({
             ? 'border-primary/50 bg-primary/5 shadow-md ring-1 ring-primary/20' 
             : 'border-border bg-card'
         }`}>
-          {/* Topo do Gravador com Status, Cronômetro e Controles */}
+          {/* Topo do Gravador com Status, Cronômetro e Controles de Gravação */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-3">
             <div className="flex items-center gap-2.5">
               <div className={`size-3 rounded-full shrink-0 ${
@@ -407,8 +388,8 @@ export default function GravadorSessao({
               <div className="leading-tight">
                 <span className="font-bold text-xs text-foreground uppercase tracking-wider block">
                   {estaGravando 
-                    ? (estaPausado ? 'Gravação em Pausa' : 'Gravando Áudio da Sessão...') 
-                    : 'Gravação de Áudio Concluída'}
+                    ? (estaPausado ? 'Gravação em Pausa' : 'Gravando Áudio...') 
+                    : 'Gravação Concluída'}
                 </span>
                 <span className="text-[11px] text-muted-foreground truncate max-w-[150px] sm:max-w-[240px] block">
                   {nomePaciente}
@@ -443,7 +424,7 @@ export default function GravadorSessao({
                     className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
                   >
                     <Square className="size-3 fill-current" />
-                    <span>Concluir</span>
+                    <span>Concluir Gravação</span>
                   </button>
                 </>
               ) : (
@@ -474,7 +455,7 @@ export default function GravadorSessao({
               <div className="flex items-center justify-between text-xs font-semibold text-foreground">
                 <span className="flex items-center gap-1.5">
                   <Volume2 className="size-3.5 text-primary" />
-                  Reproduzir Áudio Registrado
+                  Ouvir Áudio Gravado
                 </span>
                 <span className="text-[10px] text-muted-foreground font-mono">
                   Duração: {formatarTempo(tempoSegundos)}
@@ -485,23 +466,48 @@ export default function GravadorSessao({
           )}
 
           {/* ============================================================ */}
-          {/* ÁREA DE TRANSCRIÇÃO DE ÁUDIO DA SESSÃO EM TEMPO REAL */}
+          {/* BOTÃO EXCLUSIVO PARA TRANSCREVER O ÁUDIO SOB DEMANDA */}
           {/* ============================================================ */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                <Sparkles className="size-3.5 text-primary" />
-                <span>Transcrição do Áudio da Sessão</span>
-                {estaGravando && !estaPausado && (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                    <span className="size-1.5 rounded-full bg-emerald-500 animate-ping" />
-                    Transcrevendo ao vivo
-                  </span>
-                )}
-              </label>
+          <div className="p-3.5 rounded-2xl bg-primary/5 border border-primary/20 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <Sparkles className="size-4 text-primary" />
+                  Transcrição sob Demanda
+                </span>
+                <p className="text-[11px] text-muted-foreground">
+                  A transcrição não é automática. Aperte o botão para converter o áudio gravado em texto.
+                </p>
+              </div>
 
-              {textoTotalTranscrito && (
-                <div className="flex items-center gap-2">
+              {/* Botão de Transcrição Disparado pelo Usuário */}
+              <button
+                type="button"
+                disabled={!temAudioGravado || transcrevendo}
+                onClick={handleTranscreverAudio}
+                className="px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-40 shrink-0"
+              >
+                {transcrevendo ? (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin" />
+                    <span>Transcrevendo áudio...</span>
+                  </>
+                ) : (
+                  <>
+                    <FileAudio className="size-3.5" />
+                    <span>Transcrever Áudio da Sessão</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Caixa de exibição da Transcrição Gerada */}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  Texto Transcrito da Sessão
+                </label>
+                {transcricaoTexto && (
                   <button
                     type="button"
                     onClick={handleCopiarTranscricao}
@@ -510,39 +516,31 @@ export default function GravadorSessao({
                     {copiadoTexto ? <Check className="size-3 text-emerald-600" /> : <Copy className="size-3" />}
                     <span>{copiadoTexto ? 'Copiado!' : 'Copiar texto'}</span>
                   </button>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
 
-            <div className="relative">
               <textarea
-                value={textoTotalTranscrito}
-                onChange={(e) => {
-                  setTranscricaoFinal(e.target.value);
-                  setTranscricaoAoVivo('');
-                }}
-                placeholder={
-                  estaGravando 
-                    ? 'A transcrição do áudio em português aparecerá aqui em tempo real enquanto a sessão é realizada...' 
-                    : 'Nenhuma transcrição capturada. Você pode digitar ou colar anotações livremente neste campo.'
-                }
+                value={transcricaoTexto}
+                onChange={(e) => setTranscricaoTexto(e.target.value)}
+                placeholder="Aperte o botão 'Transcrever Áudio da Sessão' acima para gerar o texto do diálogo da gravação..."
                 rows={4}
                 className="w-full rounded-xl border border-border bg-background p-3 text-xs sm:text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring leading-relaxed resize-y font-sans"
               />
             </div>
-
-            {!suportadoReconhecimento && (
-              <p className="text-[11px] text-amber-600 dark:text-amber-400">
-                Aviso: O reconhecimento de voz ao vivo requer Google Chrome, Edge ou Safari com suporte à Web Speech API.
-              </p>
-            )}
           </div>
 
-          {/* Alerta de erro de microfone */}
+          {/* Alertas de erro */}
           {erroMicrofone && (
             <div className="p-2.5 rounded-xl bg-destructive/10 border border-destructive/30 text-destructive text-xs flex items-center gap-2">
               <AlertCircle className="size-4 shrink-0" />
               <span>{erroMicrofone}</span>
+            </div>
+          )}
+
+          {erroTranscricao && (
+            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs flex items-center gap-2">
+              <AlertCircle className="size-4 shrink-0" />
+              <span>{erroTranscricao}</span>
             </div>
           )}
 
@@ -554,22 +552,22 @@ export default function GravadorSessao({
             </div>
           )}
 
-          {/* Alerta de Sigilo e Ética */}
+          {/* Alerta de Sigilo */}
           <div className="p-2.5 rounded-xl bg-muted/40 border border-border text-[11px] text-muted-foreground flex items-start gap-2 leading-relaxed">
             <Shield className="size-4 text-emerald-600 shrink-0 mt-0.5" />
             <div>
-              <strong className="text-foreground">Sigilo e Soberania dos Dados:</strong> O áudio da sessão permanece sob posse exclusiva do profissional. Ao salvar o registro, você pode guardar uma cópia do áudio em formato <strong>.mp3</strong> no seu próprio computador para arquivamento seguro.
+              <strong className="text-foreground">Sigilo e Segurança:</strong> O áudio é gravado no seu dispositivo. Você pode salvar a cópia em formato <strong>.mp3</strong> no computador e transcrever quando desejar.
             </div>
           </div>
 
           {/* ============================================================ */}
-          {/* BOTÕES DE AÇÃO: SALVAR MP3 NO COMPUTADOR & INSERIR NO PRONTUÁRIO */}
+          {/* BOTÕES: SALVAR MP3 NO COMPUTADOR & INSERIR NO PRONTUÁRIO */}
           {/* ============================================================ */}
           <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border">
             {/* Botão de Salvar arquivo .mp3 no computador */}
             <button
               type="button"
-              disabled={tempoSegundos === 0 && !audioBlob}
+              disabled={!temAudioGravado}
               onClick={handleBaixarArquivoMp3}
               className="px-3.5 py-2 rounded-xl border border-border bg-card hover:bg-muted text-foreground text-xs font-bold flex items-center gap-2 transition-all shadow-xs cursor-pointer disabled:opacity-40"
               title="Salvar arquivo de áudio (.mp3) no disco local"
@@ -581,12 +579,12 @@ export default function GravadorSessao({
             {/* Inserir Registro e Transcrição no Prontuário */}
             <button
               type="button"
-              disabled={tempoSegundos === 0 && !textoTotalTranscrito}
+              disabled={!temAudioGravado}
               onClick={handleInserirRegistroAudio}
               className="px-4 py-2 rounded-xl gradient-emerald text-primary-foreground text-xs font-bold flex items-center gap-2 shadow-md hover:opacity-95 transition-all cursor-pointer disabled:opacity-40"
             >
               <Check className="size-4" />
-              <span>Inserir Transcrição & Registro no Prontuário</span>
+              <span>Inserir Registro & Transcrição no Prontuário</span>
             </button>
           </div>
         </Card>
