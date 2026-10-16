@@ -38,6 +38,7 @@ import {
 import ProntuarioModal from './components/ProntuarioModal';
 import WhatsAppModal from './components/WhatsAppModal';
 import GravadorSessao from './components/GravadorSessao';
+import SecaoNovaSessao from './components/SecaoNovaSessao';
 import TelaAutenticacao from './components/TelaAutenticacao';
 import TelaRedefinirSenha from './components/TelaRedefinirSenha';
 import { Card, Badge } from './components/ui-compact';
@@ -63,6 +64,7 @@ import {
   FileCode,
   Trash2,
   Plus,
+  PlusCircle,
   Search,
   Check,
   ChevronRight,
@@ -140,6 +142,7 @@ const PALETAS_COR = [
 
 const SECTIONS = [
   { id: 'dashboard', label: 'Painel Geral', icon: BarChart, category: 'Clínica' },
+  { id: 'nova_sessao', label: 'Nova Sessão', icon: PlusCircle, category: 'Clínica' },
   { id: 'analisandos', label: 'Meus Pacientes', icon: Users, category: 'Clínica' },
   { id: 'agenda', label: 'Agenda Clínica', icon: Calendar, category: 'Clínica' },
   { id: 'sessoes', label: 'Sessões Realizadas', icon: Clock, category: 'Clínica' },
@@ -1299,6 +1302,22 @@ export default function App() {
           )}
 
           {/* ======================================================== */}
+          {/* NOVA SESSÃO (MENU CLÍNICA COM TRANSCRIÇÃO & MP3) */}
+          {/* ======================================================== */}
+          {secaoAtiva === 'nova_sessao' && (
+            <SecaoNovaSessao
+              analisandos={analisandos}
+              modalidades={modalidades}
+              sessoes={sessoes}
+              onSalvarSessao={(novaSessao) => {
+                atualizarSessoes([novaSessao, ...sessoes]);
+              }}
+              onNavegarSessoes={() => setSecaoAtiva('sessoes')}
+              onCadastrarPaciente={() => setSecaoAtiva('analisandos')}
+            />
+          )}
+
+          {/* ======================================================== */}
           {/* 2. ANALISANDOS (KANBAN BOARD) */}
           {/* ======================================================== */}
           {secaoAtiva === 'analisandos' && (
@@ -1477,20 +1496,8 @@ export default function App() {
                   Registro completo de sessões de análise e supervisões concluídas.
                 </p>
                 <button
-                  onClick={() => {
-                    setSessaoForm({
-                      id: `${Date.now()}`,
-                      analisandoId: '',
-                      modalidadeId: '',
-                      data: new Date().toISOString().slice(0, 10),
-                      valorCobrado: 0,
-                      pagamentoStatus: 'pago',
-                      meioPagamento: 'pix',
-                      notasSessao: ''
-                    });
-                    setMostrarFormSessao(true);
-                  }}
-                  className="px-4 py-2 text-sm font-semibold text-white gradient-emerald rounded-xl shadow-md hover:opacity-95 transition-all flex items-center gap-1.5"
+                  onClick={() => setSecaoAtiva('nova_sessao')}
+                  className="px-4 py-2 text-sm font-semibold text-white gradient-emerald rounded-xl shadow-md hover:opacity-95 transition-all flex items-center gap-1.5 cursor-pointer"
                 >
                   <Plus className="size-4" />
                   <span>Nova Sessão</span>
