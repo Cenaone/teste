@@ -176,6 +176,22 @@ export default function App() {
     validoAte?: string;
   } | null>(null);
 
+  // Detecção de Rota de Recuperação de Senha (/reset-password)
+  const [emFluxoRecuperacao, setEmFluxoRecuperacao] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const pathname = window.location.pathname || '';
+    const hash = window.location.hash || '';
+    const search = window.location.search || '';
+    return (
+      pathname.includes('/reset-password') ||
+      pathname.includes('/redefinir-senha') ||
+      hash.includes('type=recovery') ||
+      hash.includes('reset-password') ||
+      search.includes('type=recovery') ||
+      search.includes('code=')
+    );
+  });
+
   // Cofre Criptográfico Local (Web Crypto AES-GCM 256)
   const [cofreConfigurado, setCofreConfigurado] = useState(false);
   const [cofreDesbloqueado, setCofreDesbloqueado] = useState(false);
@@ -803,7 +819,9 @@ export default function App() {
 
     // 2. Escuta alterações em tempo real no estado de autenticação do Supabase
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
+      if (event === 'PASSWORD_RECOVERY') {
+        setEmFluxoRecuperacao(true);
+      } else if (event === 'SIGNED_IN' && session?.user) {
         const usuarioServer = await obterUsuarioAutenticadoSupabase();
         if (usuarioServer && usuarioServer.id) {
           setContaUsuario(usuarioServer);
@@ -839,10 +857,11 @@ export default function App() {
     if (timerInatividadeRef.current) clearTimeout(timerInatividadeRef.current);
   };
 
-  if (!usuarioAutenticado || !contaUsuario) {
+  if (!usuarioAutenticado || !contaUsuario || emFluxoRecuperacao) {
     return (
       <TelaAutenticacao
         onLoginSucesso={async (usuario, senhaUtilizada) => {
+          setEmFluxoRecuperacao(false);
           setContaUsuario(usuario);
           setUsuarioAutenticado(true);
           await verificarCofreUsuario(usuario.id, senhaUtilizada);

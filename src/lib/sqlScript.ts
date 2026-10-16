@@ -256,4 +256,20 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- 6. ATUALIZAÇÃO RETROATIVA DO SUPER ADMINISTRADOR (SE JÁ CADASTRADO)
+UPDATE public.usuarios
+SET role = 'admin',
+    status = 'ativo',
+    atualizado_em = timezone('utc'::text, now())
+WHERE lower(email) = 'sup.fin.adm@gmail.com';
+
+INSERT INTO public.assinaturas_saas (user_id, plano, status, valido_ate)
+SELECT id, 'saas_pro', 'ativa', now() + interval '3650 days'
+FROM public.usuarios
+WHERE lower(email) = 'sup.fin.adm@gmail.com'
+ON CONFLICT (user_id) DO UPDATE SET
+  status = 'ativa',
+  plano = 'saas_pro',
+  valido_ate = now() + interval '3650 days';
 `;
