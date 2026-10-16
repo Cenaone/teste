@@ -24,7 +24,8 @@ import {
   Edit,
   Trash2,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  ArrowLeft
 } from 'lucide-react';
 import { Card } from './ui-compact';
 import {
@@ -47,7 +48,7 @@ interface SecaoAdminSaasProps {
   onVoltarParaConfiguracoes?: () => void;
 }
 
-export default function SecaoAdminSaas({ contaUsuario, licencaSaas }: SecaoAdminSaasProps) {
+export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarParaConfiguracoes }: SecaoAdminSaasProps) {
   const [usuarios, setUsuarios] = useState<ContaAssinanteArmazenada[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState('');
@@ -286,6 +287,18 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas }: SecaoAdmin
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {onVoltarParaConfiguracoes && (
+            <button
+              type="button"
+              onClick={onVoltarParaConfiguracoes}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground transition-all shadow-xs"
+              title="Voltar para as Configurações do Sistema"
+            >
+              <ArrowLeft className="size-3.5" />
+              <span>Voltar às Configurações</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => setModalSqlAberto(true)}

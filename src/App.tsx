@@ -39,6 +39,7 @@ import ProntuarioModal from './components/ProntuarioModal';
 import WhatsAppModal from './components/WhatsAppModal';
 import GravadorSessao from './components/GravadorSessao';
 import TelaAutenticacao from './components/TelaAutenticacao';
+import TelaRedefinirSenha from './components/TelaRedefinirSenha';
 import { Card, Badge } from './components/ui-compact';
 import {
   Sparkles,
@@ -2147,9 +2148,21 @@ export default function App() {
           {secaoAtiva === 'analista' && (
             <div className="max-w-2xl">
               <Card className="p-6 space-y-6">
-                <div>
-                  <h3 className="font-bold text-foreground text-base">Credenciais & Dados Profissionais</h3>
-                  <p className="text-xs text-muted-foreground">Informe seus registros de associação psicanalítica.</p>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-bold text-foreground text-base">Credenciais & Dados Profissionais</h3>
+                    <p className="text-xs text-muted-foreground">Informe seus registros de associação psicanalítica.</p>
+                  </div>
+                  {podeGerenciarAcessos && (
+                    <button
+                      type="button"
+                      onClick={() => setSecaoAtiva('admin_users')}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-primary/30 bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 transition-all shrink-0"
+                    >
+                      <ShieldCheck className="size-3.5" />
+                      <span>Painel de Validação de Acessos</span>
+                    </button>
+                  )}
                 </div>
 
                 <div className="grid sm:grid-cols-2 gap-4">
@@ -2344,6 +2357,28 @@ export default function App() {
           {/* ======================================================== */}
           {secaoAtiva === 'backup' && (
             <div className="space-y-6">
+              {podeGerenciarAcessos && (
+                <div className="p-4 rounded-2xl border border-primary/30 bg-primary/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+                  <div className="flex items-center gap-3">
+                    <div className="size-10 rounded-xl bg-primary/10 text-primary grid place-items-center shrink-0">
+                      <ShieldCheck className="size-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-foreground">Painel do Administrador Micro SaaS</h4>
+                      <p className="text-xs text-muted-foreground">Valide acessos de novos psicólogos, ative e desative contas de clientes e renove assinaturas mensais.</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSecaoAtiva('admin_users')}
+                    className="px-3.5 py-2 rounded-xl gradient-emerald text-white text-xs font-bold shadow-sm hover:opacity-95 transition-all shrink-0 flex items-center gap-1.5"
+                  >
+                    <ShieldCheck className="size-4" />
+                    <span>Gerenciar Acessos & Assinaturas</span>
+                  </button>
+                </div>
+              )}
+
               <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 {/* 1. Exportar Backup Criptografado */}
                 <Card className="p-5 flex flex-col justify-between h-48 hover:shadow-md transition-shadow border-emerald-500/30 bg-emerald-500/5">
@@ -2514,7 +2549,11 @@ export default function App() {
           {/* SEÇÃO ADMIN: GERENCIAMENTO DE ACESSOS */}
           {/* ======================================================== */}
           {secaoAtiva === 'admin_users' && podeGerenciarAcessos && (
-            <SecaoAdminSaas contaUsuario={contaUsuario} licencaSaas={licencaSaas} />
+            <SecaoAdminSaas
+              contaUsuario={contaUsuario}
+              licencaSaas={licencaSaas}
+              onVoltarParaConfiguracoes={() => setSecaoAtiva('consultorio')}
+            />
           )}
           {/* ======================================================== */}
           {/* A. AGENDA CLÍNICA */}

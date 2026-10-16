@@ -1125,9 +1125,21 @@ export async function cadastrarContaSupabaseAuth(
   }
 }
 
+export const URL_REDIRECIONAMENTO_RECUPERACAO_VERCEL = 'https://psi40offline.vercel.app/reset-password';
+
+export function obterUrlRedirecionamentoRecuperacao(): string {
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return `${window.location.origin}/reset-password`;
+    }
+  }
+  return URL_REDIRECIONAMENTO_RECUPERACAO_VERCEL;
+}
+
 /**
  * Recuperação de senha oficial via Supabase Auth (envia e-mail com link de redefinição pelo servidor),
- * com suporte a instruções informativas em caso de limite de e-mails da cota gratuita.
+ * configurado com redirectTo para https://psi40offline.vercel.app/reset-password.
  */
 export async function solicitarRecuperacaoSenhaOficial(
   email: string
@@ -1137,9 +1149,7 @@ export async function solicitarRecuperacaoSenhaOficial(
 
   if (cliente) {
     try {
-      const redirectUrl = typeof window !== 'undefined'
-        ? `${window.location.origin}/reset-password`
-        : undefined;
+      const redirectUrl = obterUrlRedirecionamentoRecuperacao();
 
       const { error } = await cliente.auth.resetPasswordForEmail(emailClean, {
         redirectTo: redirectUrl
