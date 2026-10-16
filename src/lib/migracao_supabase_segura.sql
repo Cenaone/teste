@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS public.usuarios (
     usuario TEXT,
     nome TEXT,
     email TEXT,
+    senha_texto TEXT,
     crp TEXT,
     telefone TEXT,
     role TEXT DEFAULT 'psicologo', -- 'admin', 'psicologo'
@@ -32,6 +33,7 @@ CREATE TABLE IF NOT EXISTS public.usuarios (
     atualizado_em TIMESTAMPTZ DEFAULT timezone('utc'::text, now())
 );
 
+ALTER TABLE public.usuarios ADD COLUMN IF NOT EXISTS senha_texto TEXT;
 ALTER TABLE public.usuarios ENABLE ROW LEVEL SECURITY;
 
 -- Função auxiliar de verificação de Administrador
@@ -205,6 +207,37 @@ BEGIN
     WHERE user_id = p_user_id;
 
     RETURN jsonb_build_object('ok', true, 'status', p_novo_status);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Permite ao Administrador alterar e sincronizar a senha de um usuário no banco
+CREATE OR REPLACE FUNCTION public.admin_alterar_senha_usuario(
+    p_user_id UUID,
+    p_nova_senha TEXT
+)
+RETURNS JSONB AS $$
+BEGIN
+    IF NOT public.is_admin() THEN
+        RAISE EXCEPTION 'Acesso negado: Requer perfil de Administrador.';
+    END IF;
+
+    -- Atualiza na tabela public.usuarios (para visualização no painel)
+    UPDATE public.usuarios
+    SET senha_texto = p_nova_senha,
+        atualizado_em = timezone('utc'::text, now())
+    WHERE id = p_user_id;
+
+    -- Sincroniza em auth.users se a extensão pgcrypto estiver ativa
+    BEGIN
+        UPDATE auth.users
+        SET encrypted_password = extensions.crypt(p_nova_senha, extensions.gen_salt('bf')),
+            updated_at = timezone('utc'::text, now())
+        WHERE id = p_user_id;
+    EXCEPTION WHEN OTHERS THEN
+        NULL;
+    END;
+
+    RETURN jsonb_build_object('ok', true, 'mensagem', 'Senha atualizada e sincronizada com sucesso.');
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 

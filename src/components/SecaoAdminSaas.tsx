@@ -25,7 +25,9 @@ import {
   Trash2,
   Sparkles,
   ArrowRight,
-  ArrowLeft
+  ArrowLeft,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { Card } from './ui-compact';
 import {
@@ -80,7 +82,16 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
   const [editRole, setEditRole] = useState<'admin' | 'psicologo'>('psicologo');
   const [editPlano, setEditPlano] = useState<PlanoAssinante>('mensal');
   const [editValidoAte, setEditValidoAte] = useState('');
+  const [editSenha, setEditSenha] = useState('');
+  const [mostrarEditSenha, setMostrarEditSenha] = useState(false);
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+
+  // Controle de exibição de senhas na listagem
+  const [senhasReveladas, setSenhasReveladas] = useState<Record<string, boolean>>({});
+
+  const alternarRevelarSenha = (userId: string) => {
+    setSenhasReveladas(prev => ({ ...prev, [userId]: !prev[userId] }));
+  };
 
   // SQL Copied State
   const [copiadoSql, setCopiadoSql] = useState(false);
@@ -174,6 +185,8 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
     setEditRole(u.role);
     setEditPlano(u.plano || 'mensal');
     setEditValidoAte(u.validoAte ? u.validoAte.split('T')[0] : '');
+    setEditSenha(u.senhaTexto || '');
+    setMostrarEditSenha(false);
     setModalEditarAberto(true);
   };
 
@@ -191,7 +204,8 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
         status: editStatus,
         role: editRole,
         plano: editPlano,
-        validoAte: dataValidade
+        validoAte: dataValidade,
+        senha: editSenha.trim() || undefined
       });
 
       setSalvandoEdicao(false);
@@ -612,6 +626,51 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
                         </>
                       )}
                     </div>
+
+                    {/* Linha de Senha Cadastrada (Exibição, Revelação & Cópia pelo Administrador Master) */}
+                    <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
+                      <span className="text-muted-foreground flex items-center gap-1 font-medium text-[11px]">
+                        <Key className="size-3 text-primary" />
+                        Senha de Acesso:
+                      </span>
+                      {u.senhaTexto ? (
+                        <div className="inline-flex items-center gap-1.5 font-mono text-xs bg-muted/70 px-2.5 py-0.5 rounded-lg border border-border">
+                          <span className="text-foreground font-bold tracking-wider">
+                            {senhasReveladas[u.id] ? u.senhaTexto : '••••••••'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => alternarRevelarSenha(u.id)}
+                            className="text-muted-foreground hover:text-foreground p-0.5 transition-colors cursor-pointer"
+                            title={senhasReveladas[u.id] ? 'Ocultar senha' : 'Ver senha'}
+                          >
+                            {senhasReveladas[u.id] ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(u.senhaTexto!);
+                              mostrarFeedback(`Senha de ${u.nomeCompleto} copiada!`);
+                            }}
+                            className="text-muted-foreground hover:text-primary p-0.5 transition-colors cursor-pointer"
+                            title="Copiar senha do assinante"
+                          >
+                            <Copy className="size-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground italic text-[11px] flex items-center gap-1">
+                          <span>Não informada no cadastro</span>
+                          <button
+                            type="button"
+                            onClick={() => abrirEdicao(u)}
+                            className="text-primary hover:underline font-semibold ml-1 text-[11px] cursor-pointer"
+                          >
+                            (definir senha)
+                          </button>
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Ações Administrativas */}
@@ -990,6 +1049,48 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
                   onChange={e => setEditValidoAte(e.target.value)}
                   className="w-full h-10 px-3.5 rounded-xl border border-border bg-background text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Key className="size-3.5 text-primary" />
+                    Senha de Acesso (Sincronizada no Banco)
+                  </span>
+                  {editSenha && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(editSenha);
+                        mostrarFeedback('Senha copiada para a área de transferência!');
+                      }}
+                      className="text-[10px] text-primary hover:underline font-semibold flex items-center gap-1 cursor-pointer"
+                    >
+                      <Copy className="size-3" />
+                      Copiar
+                    </button>
+                  )}
+                </label>
+                <div className="relative">
+                  <input
+                    type={mostrarEditSenha ? 'text' : 'password'}
+                    value={editSenha}
+                    onChange={e => setEditSenha(e.target.value)}
+                    placeholder="Digite para alterar ou definir a senha deste usuário"
+                    className="w-full h-10 px-3.5 pr-10 rounded-xl border border-border bg-background text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setMostrarEditSenha(!mostrarEditSenha)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1 cursor-pointer"
+                    title={mostrarEditSenha ? 'Ocultar' : 'Exibir'}
+                  >
+                    {mostrarEditSenha ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  </button>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  Ao salvar, a nova senha é sincronizada com o banco de dados e substitui a senha atual do assinante.
+                </p>
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-border">

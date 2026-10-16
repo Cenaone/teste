@@ -294,7 +294,7 @@ export async function garantirRegistroAssinanteNuvem(
   cliente: SupabaseClient,
   userId: string,
   email: string,
-  metadados: { nomeCompleto?: string; crp?: string }
+  metadados: { nomeCompleto?: string; crp?: string; senha?: string }
 ): Promise<{ ok: boolean; erro?: string }> {
   if (!cliente || !userId) return { ok: false, erro: 'Cliente ou userId ausente' };
 
@@ -302,16 +302,21 @@ export async function garantirRegistroAssinanteNuvem(
 
   try {
     // 1. Sincroniza em public.usuarios (se existir tabela)
+    const payloadUsuario: any = {
+      id: userId,
+      email: email.trim().toLowerCase(),
+      nome: metadados.nomeCompleto || email.split('@')[0],
+      crp: metadados.crp || null,
+      role: 'psicologo',
+      status: 'ativo',
+      atualizado_em: new Date().toISOString()
+    };
+    if (metadados.senha) {
+      payloadUsuario.senha_texto = metadados.senha;
+    }
+
     const resUsuarios = await cliente.from('usuarios').upsert(
-      {
-        id: userId,
-        email: email.trim().toLowerCase(),
-        nome: metadados.nomeCompleto || email.split('@')[0],
-        crp: metadados.crp || null,
-        role: 'psicologo',
-        status: 'ativo',
-        atualizado_em: new Date().toISOString()
-      },
+      payloadUsuario,
       { onConflict: 'id' }
     );
     if (resUsuarios.error) {
@@ -698,6 +703,7 @@ export async function atualizarUsuarioAdmin(
     plano?: PlanoAssinante;
     validoAte?: string;
     observacoes?: string;
+    senha?: string;
   }
 ): Promise<{ ok: boolean; mensagem: string }> {
   const contas = obterContasAssinantes();
@@ -713,7 +719,8 @@ export async function atualizarUsuarioAdmin(
       ...(dados.status ? { status: dados.status } : {}),
       ...(dados.plano ? { plano: dados.plano } : {}),
       ...(dados.validoAte ? { validoAte: dados.validoAte } : {}),
-      ...(dados.observacoes !== undefined ? { observacoes: dados.observacoes } : {})
+      ...(dados.observacoes !== undefined ? { observacoes: dados.observacoes } : {}),
+      ...(dados.senha ? { senhaTexto: dados.senha } : {})
     };
     salvarContaAssinante(contas[index]);
   }
@@ -721,12 +728,22 @@ export async function atualizarUsuarioAdmin(
   const cliente = getSupabase();
   if (cliente) {
     try {
+      if (dados.senha) {
+        try {
+          await cliente.rpc('admin_alterar_senha_usuario', {
+            p_user_id: userId,
+            p_nova_senha: dados.senha
+          });
+        } catch (_) {}
+      }
+
       await cliente.from('usuarios').update({
         ...(dados.nome ? { nome: dados.nome } : {}),
         ...(dados.crp !== undefined ? { crp: dados.crp } : {}),
         ...(dados.telefone !== undefined ? { telefone: dados.telefone } : {}),
         ...(dados.role ? { role: dados.role } : {}),
         ...(dados.status ? { status: dados.status } : {}),
+        ...(dados.senha ? { senha_texto: dados.senha } : {}),
         atualizado_em: new Date().toISOString()
       }).eq('id', userId);
 
@@ -804,6 +821,7 @@ export async function criarUsuarioManualAdmin(dados: {
         telefone: dados.telefone || null,
         role: novaConta.role,
         status: 'ativo',
+        senha_texto: dados.senha || 'PsiSenha123!',
         criado_em: novaConta.criadoEm
       }, { onConflict: 'id' });
 
@@ -941,11 +959,39 @@ export async function fazerLoginSupabaseAuth(
     }
   }
 
-  // 2. Fallback de resiliência: se o banco do Supabase estiver com erro de trigger ou credencial registrada localmente
+  // 2. Fallback de resiliência e credencial sincronizada no banco
   const contas = obterContasAssinantes();
-  const contaEncontrada = contas.find(
+  let contaEncontrada = contas.find(
     (c) => c.email.toLowerCase() === emailClean && (!c.senhaTexto || c.senhaTexto === senhaClean)
   );
+
+  if (!contaEncontrada && cliente) {
+    try {
+      const { data: uDb } = await cliente
+        .from('usuarios')
+        .select('*')
+        .eq('email', emailClean)
+        .maybeSingle();
+
+      if (uDb && (uDb.senha_texto === senhaClean || !uDb.senha_texto)) {
+        contaEncontrada = {
+          id: uDb.id,
+          email: uDb.email,
+          senhaTexto: uDb.senha_texto || senhaClean,
+          nomeCompleto: uDb.nome || emailClean.split('@')[0],
+          crp: uDb.crp,
+          telefone: uDb.telefone,
+          role: (uDb.role === 'admin' || emailClean === 'backupvideomidias@gmail.com') ? 'admin' : 'psicologo',
+          status: uDb.status || 'ativo',
+          plano: 'mensal',
+          validoAte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          criadoEm: uDb.criado_em || new Date().toISOString(),
+          origem: 'supabase'
+        };
+        salvarContaAssinante(contaEncontrada);
+      }
+    } catch (_) {}
+  }
 
   if (contaEncontrada) {
     const isAdmin = emailClean === 'backupvideomidias@gmail.com' || contaEncontrada.role === 'admin';
@@ -1089,7 +1135,7 @@ export async function cadastrarContaSupabaseAuth(
       }
 
       // Sincroniza imediatamente na tabela public.usuarios e public.assinaturas_saas no Supabase
-      await garantirRegistroAssinanteNuvem(cliente, data.user.id, data.user.email || emailClean, metadados);
+      await garantirRegistroAssinanteNuvem(cliente, data.user.id, data.user.email || emailClean, { ...metadados, senha });
 
       return {
         ok: true,
@@ -1255,6 +1301,14 @@ export async function atualizarSenhaSupabaseAuth(
 
     if (data?.user?.email) {
       atualizarSenhaContaAssinante(data.user.email, novaSenha);
+      if (data.user.id) {
+        try {
+          await cliente.from('usuarios').update({
+            senha_texto: novaSenha,
+            atualizado_em: new Date().toISOString()
+          }).eq('id', data.user.id);
+        } catch (_) {}
+      }
     }
 
     return { ok: true };
