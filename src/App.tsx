@@ -331,6 +331,32 @@ export default function App() {
     })();
   }, []);
 
+  // Monitoramento periódico de status (ativação / bloqueio em tempo real pelo Administrador Master)
+  useEffect(() => {
+    if (!usuarioAutenticado || !contaUsuario?.id || podeGerenciarAcessos) return;
+
+    const checarStatusLicenca = async () => {
+      try {
+        const lic = await consultarLicencaAssinante(contaUsuario.id);
+        if (lic) {
+          const statusReal: 'ativo' | 'inativo' | 'pendente' =
+            (lic.status === 'inativa' || lic.statusUsuario === 'inativo')
+              ? 'inativo'
+              : (lic.status === 'pendente' || lic.statusUsuario === 'pendente')
+              ? 'pendente'
+              : 'ativo';
+
+          if (contaUsuario.status !== statusReal) {
+            setContaUsuario(prev => prev ? { ...prev, status: statusReal } : null);
+          }
+        }
+      } catch (_) {}
+    };
+
+    const intervalId = setInterval(checarStatusLicenca, 10000); // verifica a cada 10s
+    return () => clearInterval(intervalId);
+  }, [usuarioAutenticado, contaUsuario?.id, podeGerenciarAcessos, contaUsuario?.status]);
+
   // Verifica existência de metadados do cofre para a conta autenticada
   const verificarCofreUsuario = async (accountId: string, senhaTentativa?: string) => {
     try {
@@ -872,6 +898,66 @@ export default function App() {
         temaEscuro={temaEscuro}
         onToggleTema={() => setTemaEscuro(!temaEscuro)}
       />
+    );
+  }
+
+  // Bloqueio rigoroso de assinantes desativados ou pendentes pelo Administrador Geral
+  if (contaUsuario && !podeGerenciarAcessos && (contaUsuario.status === 'inativo' || contaUsuario.status === 'pendente')) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4 bg-background">
+        <div className="max-w-md w-full bg-card border border-destructive/30 rounded-2xl p-6 sm:p-8 space-y-5 text-center shadow-2xl animate-in zoom-in-95">
+          <div className="size-16 mx-auto rounded-2xl bg-destructive/10 text-destructive flex items-center justify-center">
+            <AlertTriangle className="size-8" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-bold text-foreground">
+              {contaUsuario.status === 'pendente' ? 'Conta Aguardando Aprovação' : 'Acesso Bloqueado / Assinatura Inativa'}
+            </h2>
+            <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+              {contaUsuario.status === 'pendente'
+                ? 'Sua conta de assinante está cadastrada e aguardando a liberação do Administrador Geral.'
+                : 'Seu acesso ao sistema foi desativado ou suspenso pelo Administrador Geral. Para regularizar sua mensalidade e reativar o acesso ao consultório, entre em contato com a administração.'}
+            </p>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-muted/50 border border-border text-xs text-muted-foreground space-y-1">
+            <p className="font-semibold text-foreground">Contato da Administração:</p>
+            <p className="font-mono text-primary font-bold">backupvideomidias@gmail.com</p>
+          </div>
+
+          <div className="space-y-2 pt-2">
+            <button
+              type="button"
+              onClick={async () => {
+                const lic = await consultarLicencaAssinante(contaUsuario.id);
+                if (lic && lic.status === 'ativa' && lic.statusUsuario === 'ativo') {
+                  setContaUsuario(prev => prev ? { ...prev, status: 'ativo' } : null);
+                  alert('Acesso reativado com sucesso pelo Administrador!');
+                } else {
+                  alert('Sua conta ainda se encontra inativa ou pendente. Aguarde a liberação do Administrador Geral.');
+                }
+              }}
+              className="w-full py-2.5 rounded-xl gradient-emerald text-white text-xs font-bold shadow-md hover:opacity-95 transition-all cursor-pointer"
+            >
+              Verificar se Fui Reativado
+            </button>
+
+            <button
+              type="button"
+              onClick={async () => {
+                await fazerLogoutSupabase();
+                setContaUsuario(null);
+                setUsuarioAutenticado(false);
+                setChaveiroCofre(null);
+                setCofreDesbloqueado(false);
+              }}
+              className="w-full py-2 text-xs font-semibold text-muted-foreground hover:text-foreground border border-border hover:bg-muted rounded-xl transition-colors cursor-pointer"
+            >
+              Sair da Conta
+            </button>
+          </div>
+        </div>
+      </div>
     );
   }
 

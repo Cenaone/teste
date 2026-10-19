@@ -614,12 +614,28 @@ export async function alternarStatusAcessoUsuario(
       status: novoStatus
     };
     salvarContaAssinante(contas[index]);
+
+    // Atualiza sessão ativa se for o mesmo usuário logado
+    const sessaoAtiva = obterSessaoAssinanteAtiva();
+    if (sessaoAtiva && (sessaoAtiva.id === userId || sessaoAtiva.email.toLowerCase() === contas[index].email.toLowerCase())) {
+      sessaoAtiva.status = novoStatus;
+      definirSessaoAssinanteAtiva(sessaoAtiva);
+    }
   }
 
   // Sincroniza com Supabase
   const cliente = getSupabase();
   if (cliente) {
     try {
+      // 1. Invoca a RPC segura no PostgreSQL
+      try {
+        await cliente.rpc('admin_alternar_status_usuario', {
+          p_user_id: userId,
+          p_novo_status: novoStatus
+        });
+      } catch (_) {}
+
+      // 2. Atualiza tabelas public.usuarios e public.assinaturas_saas
       await cliente.from('usuarios').update({
         status: novoStatus,
         atualizado_em: agora
@@ -634,8 +650,13 @@ export async function alternarStatusAcessoUsuario(
     }
   }
 
-  const label = novoStatus === 'ativo' ? 'ativado' : novoStatus === 'pendente' ? 'marcado como pendente' : 'desativado';
-  return { ok: true, mensagem: `Acesso do assinante ${label} com sucesso!` };
+  const mensagem = novoStatus === 'ativo'
+    ? 'Acesso do assinante ativado com sucesso! O profissional agora tem acesso liberado ao sistema.'
+    : novoStatus === 'pendente'
+    ? 'Assinante marcado como pendente de aprovação.'
+    : 'Acesso do assinante bloqueado com sucesso! O usuário não poderá utilizar o sistema até ser reativado.';
+
+  return { ok: true, mensagem };
 }
 
 export async function renovarAssinaturaUsuario(
@@ -885,13 +906,43 @@ export async function fazerLoginSupabaseAuth(
           data.user.user_metadata?.role === 'admin' ||
           data.user.user_metadata?.is_admin === true;
 
-        // Consulta se existe registro prévio no repositório de assinantes para verificar status de acesso
+        // Consulta status atual diretamente no banco de dados do Supabase
+        let statusBanco: StatusAssinante | undefined;
+        let validoAteBanco: string | undefined;
+        if (!isAdmin) {
+          try {
+            const { data: uDb } = await cliente
+              .from('usuarios')
+              .select('status, role')
+              .eq('id', data.user.id)
+              .maybeSingle();
+            if (uDb?.status) {
+              statusBanco = uDb.status as StatusAssinante;
+            }
+
+            const { data: assDb } = await cliente
+              .from('assinaturas_saas')
+              .select('status, valido_ate')
+              .eq('user_id', data.user.id)
+              .maybeSingle();
+            if (assDb) {
+              if (assDb.status === 'inativa' || assDb.status === 'cancelada') {
+                statusBanco = 'inativo';
+              }
+              validoAteBanco = assDb.valido_ate;
+            }
+          } catch (_) {}
+        }
+
+        // Consulta também se existe registro prévio no repositório local
         const contas = obterContasAssinantes();
         const contaRegistrada = contas.find(c => c.email.toLowerCase() === emailClean);
-        const statusAtual: StatusAssinante = isAdmin ? 'ativo' : (contaRegistrada?.status || 'ativo');
+        const statusAtual: StatusAssinante = isAdmin ? 'ativo' : (statusBanco || contaRegistrada?.status || 'ativo');
+        const dataValidadeFinal = validoAteBanco || contaRegistrada?.validoAte;
 
         // Se for assinante comum e estiver pendente ou desativado
         if (!isAdmin && statusAtual === 'pendente') {
+          await cliente.auth.signOut();
           return {
             ok: false,
             statusAcesso: 'pendente',
@@ -900,17 +951,19 @@ export async function fazerLoginSupabaseAuth(
         }
 
         if (!isAdmin && statusAtual === 'inativo') {
+          await cliente.auth.signOut();
           return {
             ok: false,
             statusAcesso: 'inativo',
-            erro: 'Sua assinatura mensal está desativada ou suspensa. Entre em contato com a administração (backupvideomidias@gmail.com) para regularizar seu acesso.'
+            erro: 'Seu acesso ao sistema foi desativado ou bloqueado pelo Administrador. Para regularizar sua mensalidade e reativar o acesso, entre em contato com backupvideomidias@gmail.com.'
           };
         }
 
         // Verifica validade da assinatura para assinantes comuns
-        if (!isAdmin && contaRegistrada?.validoAte) {
-          const expTime = new Date(contaRegistrada.validoAte).getTime();
+        if (!isAdmin && dataValidadeFinal) {
+          const expTime = new Date(dataValidadeFinal).getTime();
           if (expTime < Date.now()) {
+            await cliente.auth.signOut();
             return {
               ok: false,
               statusAcesso: 'expirado',
@@ -1008,7 +1061,7 @@ export async function fazerLoginSupabaseAuth(
       return {
         ok: false,
         statusAcesso: 'inativo',
-        erro: 'Sua assinatura mensal está desativada ou suspensa. Entre em contato com a administração (backupvideomidias@gmail.com) para regularizar seu acesso.'
+        erro: 'Seu acesso ao sistema foi desativado ou bloqueado pelo Administrador. Para regularizar sua mensalidade e reativar o acesso, entre em contato com backupvideomidias@gmail.com.'
       };
     }
 
@@ -1346,8 +1399,38 @@ export async function obterUsuarioAutenticadoSupabase(): Promise<any | null> {
           user.user_metadata?.role === 'admin' ||
           user.user_metadata?.is_admin === true ||
           cLocal?.role === 'admin';
+
+        // Consulta status real diretamente no banco de dados do Supabase
+        let statusBanco: StatusAssinante | undefined;
+        let validoAteBanco: string | undefined;
+        if (!isAdmin) {
+          try {
+            const { data: uDb } = await cliente
+              .from('usuarios')
+              .select('status, role')
+              .eq('id', user.id)
+              .maybeSingle();
+            if (uDb?.status) {
+              statusBanco = uDb.status as StatusAssinante;
+            }
+
+            const { data: assDb } = await cliente
+              .from('assinaturas_saas')
+              .select('status, valido_ate')
+              .eq('user_id', user.id)
+              .maybeSingle();
+            if (assDb) {
+              if (assDb.status === 'inativa' || assDb.status === 'cancelada') {
+                statusBanco = 'inativo';
+              }
+              validoAteBanco = assDb.valido_ate;
+            }
+          } catch (_) {}
+        }
+
         const role = isAdmin ? 'admin' : (cLocal?.role || user.user_metadata?.role || 'psicologo');
-        const status = isAdmin ? 'ativo' : (cLocal?.status || user.user_metadata?.status || 'ativo');
+        const status = isAdmin ? 'ativo' : (statusBanco || cLocal?.status || user.user_metadata?.status || 'ativo');
+        const validoAte = validoAteBanco || cLocal?.validoAte;
 
         return {
           id: user.id, // ID imutável da conta (auth.uid())
@@ -1358,7 +1441,7 @@ export async function obterUsuarioAutenticadoSupabase(): Promise<any | null> {
           isAdmin,
           status,
           plano: cLocal?.plano || 'mensal',
-          validoAte: cLocal?.validoAte,
+          validoAte,
           criadoEm: user.created_at
         };
       }
@@ -1410,24 +1493,91 @@ export async function consultarLicencaAssinante(userId: string): Promise<any | n
   const cliente = getSupabase();
   if (cliente && userId) {
     try {
-      const { data, error } = await cliente
+      const { data: usuarioDb } = await cliente
+        .from('usuarios')
+        .select('status, role, email')
+        .eq('id', userId)
+        .maybeSingle();
+
+      const { data: assDb } = await cliente
         .from('assinaturas_saas')
         .select('*')
         .eq('user_id', userId)
         .maybeSingle();
 
-      if (!error && data) {
-        return data;
+      const email = (usuarioDb?.email || '').toLowerCase();
+      const isMasterAdmin = email === 'backupvideomidias@gmail.com' || usuarioDb?.role === 'admin';
+
+      if (!isMasterAdmin) {
+        if (usuarioDb?.status === 'inativo' || assDb?.status === 'inativa' || assDb?.status === 'cancelada') {
+          return {
+            id: assDb?.id || `lic_saas_${userId.slice(0, 8)}`,
+            user_id: userId,
+            plano: assDb?.plano || 'mensal',
+            status: 'inativa',
+            statusUsuario: 'inativo',
+            valido_ate: assDb?.valido_ate || new Date().toISOString(),
+            limite_offline_dias: 0
+          };
+        }
+
+        if (usuarioDb?.status === 'pendente' || assDb?.status === 'pendente') {
+          return {
+            id: assDb?.id || `lic_saas_${userId.slice(0, 8)}`,
+            user_id: userId,
+            plano: assDb?.plano || 'mensal',
+            status: 'pendente',
+            statusUsuario: 'pendente',
+            valido_ate: assDb?.valido_ate,
+            limite_offline_dias: 0
+          };
+        }
+      }
+
+      if (assDb) {
+        return {
+          ...assDb,
+          statusUsuario: usuarioDb?.status || 'ativo'
+        };
       }
     } catch (_) {}
   }
 
-  // Retorna licença SaaS ativa por padrão para o assinante autenticado
+  // Consulta do repositório local
+  const contas = obterContasAssinantes();
+  const cLocal = contas.find(c => c.id === userId);
+  if (cLocal && cLocal.email.toLowerCase() !== 'backupvideomidias@gmail.com') {
+    if (cLocal.status === 'inativo') {
+      return {
+        id: `lic_saas_${userId.slice(0, 8)}`,
+        user_id: userId,
+        plano: cLocal.plano || 'mensal',
+        status: 'inativa',
+        statusUsuario: 'inativo',
+        valido_ate: cLocal.validoAte,
+        limite_offline_dias: 0
+      };
+    }
+    if (cLocal.status === 'pendente') {
+      return {
+        id: `lic_saas_${userId.slice(0, 8)}`,
+        user_id: userId,
+        plano: cLocal.plano || 'mensal',
+        status: 'pendente',
+        statusUsuario: 'pendente',
+        valido_ate: cLocal.validoAte,
+        limite_offline_dias: 0
+      };
+    }
+  }
+
+  // Retorna licença SaaS ativa por padrão para o assinante ativo
   return {
     id: `lic_saas_${userId.slice(0, 8)}`,
     user_id: userId,
     plano: 'individual',
     status: 'ativa',
+    statusUsuario: 'ativo',
     valido_ate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
     limite_offline_dias: 30
   };

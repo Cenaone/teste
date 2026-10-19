@@ -189,17 +189,29 @@ BEGIN
         RAISE EXCEPTION 'Acesso negado: Requer perfil de Administrador.';
     END IF;
 
+    -- 1. Atualiza status na tabela de perfis de usuários
     UPDATE public.usuarios
     SET status = p_novo_status,
         atualizado_em = timezone('utc'::text, now())
     WHERE id = p_user_id;
 
+    -- 2. Atualiza status na tabela de assinaturas do SaaS
     UPDATE public.assinaturas_saas
     SET status = CASE WHEN p_novo_status = 'ativo' THEN 'ativa' WHEN p_novo_status = 'pendente' THEN 'pendente' ELSE 'inativa' END,
         atualizado_em = timezone('utc'::text, now())
     WHERE user_id = p_user_id;
 
-    RETURN jsonb_build_object('ok', true, 'status', p_novo_status);
+    -- 3. Sincroniza metadados em auth.users
+    BEGIN
+        UPDATE auth.users
+        SET raw_user_meta_data = coalesce(raw_user_meta_data, '{}'::jsonb) || jsonb_build_object('status', p_novo_status),
+            updated_at = timezone('utc'::text, now())
+        WHERE id = p_user_id;
+    EXCEPTION WHEN OTHERS THEN
+        NULL;
+    END;
+
+    RETURN jsonb_build_object('ok', true, 'status', p_novo_status, 'mensagem', 'Status do usuário atualizado com sucesso.');
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 

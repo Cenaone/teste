@@ -339,20 +339,29 @@ async function runTests() {
     assert.strictEqual(novoSub.ok, true, 'Novo assinante criado');
     assert.ok(novoSub.usuario?.id, 'ID do assinante gerado');
 
-    // 13.4 Desativação de acesso (cliente com mensalidade atrasada)
+    // 13.4 Desativação de acesso (cliente com mensalidade atrasada / bloqueado pelo Master)
     const resDesativar = await alternarStatusAcessoUsuario(novoSub.usuario!.id, 'inativo');
     assert.strictEqual(resDesativar.ok, true, 'Acesso do assinante desativado');
+
+    // Validação de bloqueio: tentativa de login com usuário desativado deve ser bloqueada
+    const loginBloqueado = await fazerLoginSupabaseAuth(novoSub.usuario!.email, 'SenhaValida123!');
+    assert.strictEqual(loginBloqueado.ok, false, 'Usuário inativo deve ter login bloqueado');
+    assert.strictEqual(loginBloqueado.statusAcesso, 'inativo', 'Status de acesso retornado deve ser inativo');
 
     // 13.5 Reativação / Aprovação de acesso após pagamento da mensalidade
     const resReativar = await aprovarUsuarioAdmin(novoSub.usuario!.id, 30, 'mensal');
     assert.strictEqual(resReativar.ok, true, 'Acesso do assinante reativado com validade de 30 dias');
+
+    // Validação de liberação: tentativa de login com usuário reativado deve ter sucesso
+    const loginReativado = await fazerLoginSupabaseAuth(novoSub.usuario!.email, 'SenhaValida123!');
+    assert.strictEqual(loginReativado.ok, true, 'Usuário ativado deve ter login liberado com sucesso');
 
     // 13.6 Renovação de mensalidade (+30 dias)
     const resRenovar = await renovarAssinaturaUsuario(novoSub.usuario!.id, 30);
     assert.strictEqual(resRenovar.ok, true, 'Renovação de 30 dias confirmada');
     assert.ok(resRenovar.novaValidade, 'Nova validade gerada');
 
-    console.log('  ✔ Sucesso: Perfil de Administrador Master (backupvideomidias@gmail.com) operacional com aprovação, ativação e desativação de assinaturas mensais.');
+    console.log('  ✔ Sucesso: Perfil de Administrador Master (backupvideomidias@gmail.com) operacional com bloqueio, desbloqueio, ativação e desativação efetiva de assinantes.');
   }
 
   console.log('\n🎉 TODOS OS TESTES DE SEGURANÇA E ARQUITETURA PASSARAM COM SUCESSO!\n');
