@@ -38,6 +38,7 @@ import {
   atualizarUsuarioAdmin,
   criarUsuarioManualAdmin,
   excluirUsuarioAdmin,
+  sincronizarBancoDadosCompleto,
   ContaAssinanteArmazenada,
   StatusAssinante,
   PlanoAssinante
@@ -56,6 +57,9 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
   const [busca, setBusca] = useState('');
   const [filtroStatus, setFiltroStatus] = useState<'todos' | 'pendente' | 'ativo' | 'inativo'>('todos');
   const [feedback, setFeedback] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null);
+  const [sincronizandoBanco, setSincronizandoBanco] = useState(false);
+  const [ultimaSincronizacao, setUltimaSincronizacao] = useState<string>('');
+  const [usuarioAtualizandoId, setUsuarioAtualizandoId] = useState<string | null>(null);
 
   // Modais
   const [modalNovoAberto, setModalNovoAberto] = useState(false);
@@ -155,14 +159,39 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
     }
   };
 
+  const handleForcarSincronizacaoBanco = async () => {
+    setSincronizandoBanco(true);
+    try {
+      const res = await sincronizarBancoDadosCompleto();
+      if (res.ok) {
+        setUltimaSincronizacao(res.sincronizadoEm);
+        await carregarDados();
+        mostrarFeedback(`Sincronização imediata concluída! ${res.totalUsuarios} assinantes sincronizados com o Supabase.`);
+      } else {
+        mostrarFeedback(res.mensagem, 'erro');
+      }
+    } catch (err: any) {
+      mostrarFeedback(err?.message || 'Erro ao sincronizar com o banco de dados.', 'erro');
+    } finally {
+      setSincronizandoBanco(false);
+    }
+  };
+
   const handleAlternarStatus = async (u: ContaAssinanteArmazenada) => {
     const novoStatus: StatusAssinante = u.status === 'ativo' ? 'inativo' : 'ativo';
-    const res = await alternarStatusAcessoUsuario(u.id, novoStatus);
-    if (res.ok) {
-      mostrarFeedback(res.mensagem);
-      await carregarDados();
-    } else {
-      mostrarFeedback(res.mensagem, 'erro');
+    setUsuarioAtualizandoId(u.id);
+    try {
+      const res = await alternarStatusAcessoUsuario(u.id, novoStatus);
+      if (res.ok) {
+        mostrarFeedback(res.mensagem);
+        await carregarDados();
+      } else {
+        mostrarFeedback(res.mensagem, 'erro');
+      }
+    } catch (err: any) {
+      mostrarFeedback(err?.message || 'Erro ao alternar status no banco de dados.', 'erro');
+    } finally {
+      setUsuarioAtualizandoId(null);
     }
   };
 
@@ -326,12 +355,24 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
           <button
             type="button"
             onClick={carregarDados}
-            disabled={carregando}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all shadow-xs"
+            disabled={carregando || sincronizandoBanco}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all shadow-xs cursor-pointer"
             title="Atualizar lista de assinantes"
           >
             <RefreshCw className={`size-3.5 ${carregando ? 'animate-spin' : ''}`} />
             <span>Atualizar</span>
+          </button>
+
+          {/* Botão Dedicado: Forçar Sincronização Imediata com o Banco de Dados */}
+          <button
+            type="button"
+            onClick={handleForcarSincronizacaoBanco}
+            disabled={sincronizandoBanco || carregando}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-primary/40 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-bold transition-all shadow-xs cursor-pointer disabled:opacity-50"
+            title="Forçar sincronização imediata de ativações e desativações diretamente no banco de dados Supabase"
+          >
+            <RefreshCw className={`size-3.5 ${sincronizandoBanco ? 'animate-spin' : ''}`} />
+            <span>{sincronizandoBanco ? 'Sincronizando Banco...' : 'Sincronizar com Banco'}</span>
           </button>
 
           <button
@@ -687,19 +728,25 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
                       </button>
                     )}
 
-                    {/* Ativar / Desativar Acesso */}
+                    {/* Ativar / Desativar Acesso Imediato com Sincronização */}
                     {!isSuperAdmin && u.status !== 'pendente' && (
                       <button
                         type="button"
+                        disabled={usuarioAtualizandoId === u.id || sincronizandoBanco}
                         onClick={() => handleAlternarStatus(u)}
-                        className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer disabled:opacity-50 ${
                           u.status === 'ativo'
                             ? 'border-destructive/30 text-destructive hover:bg-destructive/10'
                             : 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10'
                         }`}
-                        title={u.status === 'ativo' ? 'Suspender acesso deste assinante' : 'Liberar acesso para este assinante'}
+                        title={u.status === 'ativo' ? 'Bloquear e sincronizar no banco Supabase' : 'Ativar e sincronizar no banco Supabase'}
                       >
-                        {u.status === 'ativo' ? (
+                        {usuarioAtualizandoId === u.id ? (
+                          <>
+                            <RefreshCw className="size-3.5 animate-spin" />
+                            <span>Sincronizando...</span>
+                          </>
+                        ) : u.status === 'ativo' ? (
                           <>
                             <Ban className="size-3.5" />
                             <span>Desativar Acesso</span>

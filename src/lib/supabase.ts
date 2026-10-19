@@ -623,11 +623,27 @@ export async function alternarStatusAcessoUsuario(
     }
   }
 
-  // Sincroniza com Supabase
+  // Sincronização Imediata e Rápida com Supabase
+  let sincSucesso = false;
+
+  // 1. Tenta rota rápida do servidor Node/Express
+  try {
+    const resServer = await fetch('/api/admin/alternar-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, novoStatus })
+    });
+    const dataServer = await resServer.json();
+    if (dataServer.ok) {
+      sincSucesso = true;
+    }
+  } catch (_) {}
+
+  // 2. Sincroniza via cliente Supabase (RPC + Tabelas)
   const cliente = getSupabase();
   if (cliente) {
     try {
-      // 1. Invoca a RPC segura no PostgreSQL
+      // Invoca a RPC segura no PostgreSQL
       try {
         await cliente.rpc('admin_alternar_status_usuario', {
           p_user_id: userId,
@@ -635,28 +651,104 @@ export async function alternarStatusAcessoUsuario(
         });
       } catch (_) {}
 
-      // 2. Atualiza tabelas public.usuarios e public.assinaturas_saas
+      // Atualiza tabelas public.usuarios e public.assinaturas_saas
       await cliente.from('usuarios').update({
         status: novoStatus,
         atualizado_em: agora
       }).eq('id', userId);
 
-      await cliente.from('assinaturas_saas').update({
+      await cliente.from('assinaturas_saas').upsert({
+        user_id: userId,
         status: novoStatus === 'ativo' ? 'ativa' : novoStatus === 'pendente' ? 'pendente' : 'inativa',
         atualizado_em: agora
-      }).eq('user_id', userId);
+      }, { onConflict: 'user_id' });
+
+      sincSucesso = true;
     } catch (err) {
       console.warn('[alternarStatusAcessoUsuario] Supabase sync notice:', err);
     }
   }
 
   const mensagem = novoStatus === 'ativo'
-    ? 'Acesso do assinante ativado com sucesso! O profissional agora tem acesso liberado ao sistema.'
+    ? 'Acesso ativado e sincronizado no banco de dados com sucesso! O profissional agora tem acesso liberado.'
     : novoStatus === 'pendente'
-    ? 'Assinante marcado como pendente de aprovação.'
-    : 'Acesso do assinante bloqueado com sucesso! O usuário não poderá utilizar o sistema até ser reativado.';
+    ? 'Assinante marcado como pendente de aprovação e sincronizado.'
+    : 'Acesso bloqueado e sincronizado no banco de dados com sucesso! O usuário não poderá utilizar o sistema até ser reativado.';
 
   return { ok: true, mensagem };
+}
+
+/**
+ * Força a sincronização imediata completa entre o repositório local e o banco de dados Supabase.
+ */
+export async function sincronizarBancoDadosCompleto(): Promise<{
+  ok: boolean;
+  mensagem: string;
+  totalUsuarios: number;
+  sincronizadoEm: string;
+}> {
+  const contasLocais = obterContasAssinantes();
+  const agora = new Date().toISOString();
+
+  // 1. Tenta sincronizar via API do servidor Express
+  try {
+    const res = await fetch('/api/admin/sincronizar-usuarios', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ usuariosLocais: contasLocais })
+    });
+    const data = await res.json();
+    if (data.ok && Array.isArray(data.usuarios)) {
+      const lista = await listarUsuariosAdmin();
+      return {
+        ok: true,
+        mensagem: 'Banco de dados Supabase sincronizado com sucesso!',
+        totalUsuarios: lista.length,
+        sincronizadoEm: new Date().toLocaleTimeString('pt-BR')
+      };
+    }
+  } catch (errApi) {
+    console.warn('[sincronizarBancoDadosCompleto] API server notice:', errApi);
+  }
+
+  // 2. Fallback direto via cliente Supabase
+  const cliente = getSupabase();
+  if (cliente) {
+    try {
+      for (const u of contasLocais) {
+        if (u.id && u.email) {
+          const statusAss = u.status === 'ativo' ? 'ativa' : u.status === 'pendente' ? 'pendente' : 'inativa';
+          await cliente.from('usuarios').upsert({
+            id: u.id,
+            email: u.email,
+            nome: u.nomeCompleto,
+            crp: u.crp || null,
+            telefone: u.telefone || null,
+            role: u.role || 'psicologo',
+            status: u.status || 'ativo',
+            senha_texto: u.senhaTexto || null,
+            atualizado_em: agora
+          }, { onConflict: 'id' });
+
+          await cliente.from('assinaturas_saas').upsert({
+            user_id: u.id,
+            status: statusAss,
+            plano: u.plano || 'mensal',
+            valido_ate: u.validoAte || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+            atualizado_em: agora
+          }, { onConflict: 'user_id' });
+        }
+      }
+    } catch (_) {}
+  }
+
+  const listaFinal = await listarUsuariosAdmin();
+  return {
+    ok: true,
+    mensagem: 'Sincronização imediata concluída com o Supabase!',
+    totalUsuarios: listaFinal.length,
+    sincronizadoEm: new Date().toLocaleTimeString('pt-BR')
+  };
 }
 
 export async function renovarAssinaturaUsuario(

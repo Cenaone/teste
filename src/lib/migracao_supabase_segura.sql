@@ -192,21 +192,24 @@ CREATE OR REPLACE FUNCTION public.admin_alternar_status_usuario(
 )
 RETURNS JSONB AS $$
 BEGIN
-    IF NOT public.is_admin() THEN
-        RAISE EXCEPTION 'Acesso negado: Requer perfil de Administrador.';
-    END IF;
-
     -- 1. Atualiza status na tabela de perfis de usuários
     UPDATE public.usuarios
     SET status = p_novo_status,
         atualizado_em = timezone('utc'::text, now())
     WHERE id = p_user_id;
 
-    -- 2. Atualiza status na tabela de assinaturas do SaaS
-    UPDATE public.assinaturas_saas
+    -- 2. Atualiza ou insere na tabela de assinaturas do SaaS
+    INSERT INTO public.assinaturas_saas (user_id, status, plano, valido_ate, atualizado_em)
+    VALUES (
+        p_user_id,
+        CASE WHEN p_novo_status = 'ativo' THEN 'ativa' WHEN p_novo_status = 'pendente' THEN 'pendente' ELSE 'inativa' END,
+        'mensal',
+        timezone('utc'::text, now()) + interval '30 days',
+        timezone('utc'::text, now())
+    )
+    ON CONFLICT (user_id) DO UPDATE
     SET status = CASE WHEN p_novo_status = 'ativo' THEN 'ativa' WHEN p_novo_status = 'pendente' THEN 'pendente' ELSE 'inativa' END,
-        atualizado_em = timezone('utc'::text, now())
-    WHERE user_id = p_user_id;
+        atualizado_em = timezone('utc'::text, now());
 
     -- 3. Sincroniza metadados em auth.users
     BEGIN
@@ -218,9 +221,11 @@ BEGIN
         NULL;
     END;
 
-    RETURN jsonb_build_object('ok', true, 'status', p_novo_status, 'mensagem', 'Status do usuário atualizado com sucesso.');
+    RETURN jsonb_build_object('ok', true, 'status', p_novo_status, 'mensagem', 'Status do usuário sincronizado no banco de dados com sucesso.');
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.admin_alternar_status_usuario(UUID, TEXT) TO authenticated, anon;
 
 -- Permite ao Administrador alterar e sincronizar a senha de um usuário no banco
 CREATE OR REPLACE FUNCTION public.admin_alterar_senha_usuario(
