@@ -68,12 +68,24 @@ async function startServer() {
     }
   });
 
+function isMasterAdminServer(email?: string): boolean {
+  if (!email) return false;
+  const e = email.trim().toLowerCase();
+  return e === 'backupvideomidias@gmail.com' || e === 'sup.fin.adm@gmail.com';
+}
+
   // Endpoint 2: Alternar status de acesso de usuário com sincronização imediata no Supabase
   app.post('/api/admin/alternar-status', async (req, res) => {
     try {
       const { userId, novoStatus } = req.body;
       if (!userId || !novoStatus) {
         return res.status(400).json({ ok: false, erro: 'userId e novoStatus são obrigatórios.' });
+      }
+
+      // Protege Administradores Master de desativação
+      const { data: usuarioAlvo } = await supabaseAdmin.from('usuarios').select('email').eq('id', userId).maybeSingle();
+      if (usuarioAlvo?.email && isMasterAdminServer(usuarioAlvo.email) && novoStatus !== 'ativo') {
+        return res.status(400).json({ ok: false, erro: 'A conta de Administrador Geral Master não pode ser desativada.' });
       }
 
       const agora = new Date().toISOString();
@@ -128,7 +140,14 @@ async function startServer() {
         for (const u of usuariosLocais) {
           if (u.id && u.email) {
             try {
-              const statusAss = u.status === 'ativo' ? 'ativa' : u.status === 'pendente' ? 'pendente' : 'inativa';
+              const isMaster = isMasterAdminServer(u.email);
+              const statusReal = isMaster ? 'ativo' : (u.status || 'ativo');
+              const roleReal = isMaster ? 'admin' : (u.role || 'psicologo');
+              const statusAss = isMaster ? 'ativa' : (u.status === 'ativo' ? 'ativa' : u.status === 'pendente' ? 'pendente' : 'inativa');
+              const planoReal = isMaster ? 'saas_pro' : (u.plano || 'mensal');
+              const validadeReal = isMaster
+                ? '2036-12-31T23:59:59.000Z'
+                : (u.validoAte || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString());
 
               await supabaseAdmin.from('usuarios').upsert({
                 id: u.id,
@@ -136,8 +155,8 @@ async function startServer() {
                 nome: u.nomeCompleto || u.nome || u.email.split('@')[0],
                 crp: u.crp || null,
                 telefone: u.telefone || null,
-                role: u.role || 'psicologo',
-                status: u.status || 'ativo',
+                role: roleReal,
+                status: statusReal,
                 senha_texto: u.senhaTexto || null,
                 atualizado_em: agora
               }, { onConflict: 'id' });
@@ -145,8 +164,8 @@ async function startServer() {
               await supabaseAdmin.from('assinaturas_saas').upsert({
                 user_id: u.id,
                 status: statusAss,
-                plano: u.plano || 'mensal',
-                valido_ate: u.validoAte || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+                plano: planoReal,
+                valido_ate: validadeReal,
                 atualizado_em: agora
               }, { onConflict: 'user_id' });
             } catch (errUpsert) {

@@ -39,6 +39,7 @@ import {
   criarUsuarioManualAdmin,
   excluirUsuarioAdmin,
   sincronizarBancoDadosCompleto,
+  isMasterAdminEmail,
   ContaAssinanteArmazenada,
   StatusAssinante,
   PlanoAssinante
@@ -289,8 +290,8 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
   };
 
   const handleExcluir = async (u: ContaAssinanteArmazenada) => {
-    if (u.email.toLowerCase() === 'backupvideomidias@gmail.com') {
-      mostrarFeedback('Não é permitido excluir o Administrador Geral Master.', 'erro');
+    if (isMasterAdminEmail(u.email)) {
+      mostrarFeedback('Não é permitido excluir contas de Administrador Geral Master.', 'erro');
       return;
     }
     if (confirm(`Tem certeza que deseja remover o usuário ${u.nomeCompleto} (${u.email})?`)) {
@@ -586,7 +587,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
           </Card>
         ) : (
           usuariosFiltrados.map(u => {
-            const isSuperAdmin = u.email.toLowerCase() === 'backupvideomidias@gmail.com';
+            const isSuperAdmin = isMasterAdminEmail(u.email);
             const diasRestantes = calcularDiasRestantes(u.validoAte);
             const vencido = u.validoAte && new Date(u.validoAte).getTime() < Date.now();
 

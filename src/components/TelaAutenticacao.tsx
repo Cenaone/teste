@@ -7,6 +7,7 @@ import {
   validarSessaoRecuperacaoAtiva,
   isSupabaseConfigurado,
   obterUrlPainelEmailSupabase,
+  isMasterAdminEmail,
   getSupabase
 } from '../lib/supabase';
 import {
@@ -409,7 +410,7 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
       setCarregandoCadastro(false);
 
       if (res.ok) {
-        const isAdmin = emailClean === 'backupvideomidias@gmail.com';
+        const isAdmin = isMasterAdminEmail(emailClean);
         if (isAdmin && res.user && !res.precisaConfirmarEmail) {
           setSucessoCadastro('Conta de Administrador criada com sucesso! Entrando no sistema...');
           setTimeout(() => {
@@ -670,6 +671,73 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
                   </>
                 )}
               </button>
+
+              {/* Contas de Administrador Master (Acesso Rápido) */}
+              <div className="pt-2 border-t border-border/60 space-y-2">
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                  <span className="font-semibold flex items-center gap-1 text-foreground">
+                    <ShieldCheck className="size-3.5 text-primary" />
+                    Contas Master Pré-configuradas:
+                  </span>
+                  <span className="text-[10px]">Clique para preencher</span>
+                </div>
+
+                <div className="grid grid-cols-1 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmailLogin('sup.fin.adm@gmail.com');
+                      setSenhaLogin('Daniel12345');
+                      setErroLogin('');
+                    }}
+                    className={`w-full p-2.5 rounded-xl border text-left text-xs transition-all flex items-center justify-between group cursor-pointer ${
+                      emailLogin === 'sup.fin.adm@gmail.com'
+                        ? 'border-primary bg-primary/10 text-primary font-semibold'
+                        : 'border-border bg-card/60 hover:bg-muted text-foreground'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="size-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 grid place-items-center shrink-0">
+                        <ShieldCheck className="size-3.5" />
+                      </div>
+                      <div className="truncate">
+                        <div className="font-semibold text-xs leading-tight">Suporte Financeiro / Administrador</div>
+                        <div className="text-[10px] text-muted-foreground font-mono">sup.fin.adm@gmail.com</div>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-semibold text-primary group-hover:translate-x-0.5 transition-all shrink-0">
+                      Preencher &rarr;
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmailLogin('backupvideomidias@gmail.com');
+                      setSenhaLogin('Daniel12345');
+                      setErroLogin('');
+                    }}
+                    className={`w-full p-2.5 rounded-xl border text-left text-xs transition-all flex items-center justify-between group cursor-pointer ${
+                      emailLogin === 'backupvideomidias@gmail.com'
+                        ? 'border-primary bg-primary/10 text-primary font-semibold'
+                        : 'border-border bg-card/60 hover:bg-muted text-foreground'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="size-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 grid place-items-center shrink-0">
+                        <ShieldCheck className="size-3.5" />
+                      </div>
+                      <div className="truncate">
+                        <div className="font-semibold text-xs leading-tight">Dr. Daniel (Administrador Master)</div>
+                        <div className="text-[10px] text-muted-foreground font-mono">backupvideomidias@gmail.com</div>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-semibold text-primary group-hover:translate-x-0.5 transition-all shrink-0">
+                      Preencher &rarr;
+                    </span>
+                  </button>
+                </div>
+              </div>
             </form>
           )}
 

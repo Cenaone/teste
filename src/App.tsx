@@ -90,9 +90,11 @@ import {
 import {
   getSupabase,
   obterUsuarioAutenticadoSupabase,
+  obterSessaoAssinanteAtiva,
   fazerLogoutSupabase,
   consultarLicencaAssinante,
-  solicitarRecuperacaoSenhaOficial
+  solicitarRecuperacaoSenhaOficial,
+  isMasterAdminEmail
 } from './lib/supabase';
 import {
   salvarColecaoCofre,
@@ -233,7 +235,7 @@ export default function App() {
   const podeGerenciarAcessos = Boolean(
     contaUsuario?.isAdmin ||
     contaUsuario?.role === 'admin' ||
-    contaUsuario?.email?.toLowerCase() === 'backupvideomidias@gmail.com'
+    isMasterAdminEmail(contaUsuario?.email)
   );
   const secoesDisponiveis = podeGerenciarAcessos
     ? [...SECTIONS, { id: 'admin_users', label: 'Validação de Acessos & Assinaturas', icon: ShieldCheck, category: 'Configurações' }]
@@ -395,7 +397,7 @@ export default function App() {
           }
         } else {
           // Cofre ainda não inicializado para esta conta: inicializa automaticamente com a senha do login!
-          await handleCriarSenhaCofre(senhaTentativa);
+          await handleCriarSenhaCofre(senhaTentativa, accountId);
           return;
         }
       }
@@ -419,15 +421,16 @@ export default function App() {
   };
 
   // Inicializa a senha do cofre local
-  const handleCriarSenhaCofre = async (senha: string) => {
-    if (!contaUsuario?.id) return { ok: false, erro: 'Conta de usuário não identificada.' };
+  const handleCriarSenhaCofre = async (senha: string, targetAccountId?: string) => {
+    const accId = targetAccountId || contaUsuario?.id;
+    if (!accId) return { ok: false, erro: 'Conta de usuário não identificada.' };
 
     try {
       const verificador = await gerarVerificadorCofre(senha);
       const chaveiro = await derivarChaveCofre(senha, base64ToBuffer(verificador.salt));
 
       await salvarMetadadosCofre({
-        accountId: contaUsuario.id,
+        accountId: accId,
         vaultSalt: verificador.salt,
         vaultHash: verificador.hash,
         criadoEm: new Date().toISOString(),
@@ -448,7 +451,7 @@ export default function App() {
         agendamentos: AGENDAMENTOS_PADRAO
       };
 
-      await salvarTodasColecoesCofre(contaUsuario.id, dadosIniciais, chaveiro);
+      await salvarTodasColecoesCofre(accId, dadosIniciais, chaveiro);
 
       setAnalisandos(ANALISANDOS_PADRAO);
       setModalidades(MODALIDADES_PADRAO);
@@ -857,8 +860,11 @@ export default function App() {
           setUsuarioAutenticado(true);
         }
       } else if (event === 'SIGNED_OUT') {
-        setUsuarioAutenticado(false);
-        setContaUsuario(null);
+        const sessaoLocal = obterSessaoAssinanteAtiva();
+        if (!sessaoLocal) {
+          setUsuarioAutenticado(false);
+          setContaUsuario(null);
+        }
       }
     });
 

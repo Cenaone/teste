@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, Key, ShieldCheck, AlertCircle, ShieldAlert, Sparkles, RefreshCw } from 'lucide-react';
 import { Card } from './ui-compact';
+import { isMasterAdminEmail } from '../lib/supabase';
 
 interface CofreDesbloqueioModalProps {
   estaConfigurado: boolean;
@@ -15,7 +16,7 @@ export default function CofreDesbloqueioModal({
   onCriarSenhaCofre,
   emailUsuario
 }: CofreDesbloqueioModalProps) {
-  const isContaPadrao = emailUsuario?.toLowerCase() === 'backupvideomidias@gmail.com';
+  const isContaPadrao = isMasterAdminEmail(emailUsuario);
   const [senha, setSenha] = useState(isContaPadrao ? 'Daniel12345' : '');
   const [confirmarSenha, setConfirmarSenha] = useState(isContaPadrao ? 'Daniel12345' : '');
   const [erro, setErro] = useState('');
