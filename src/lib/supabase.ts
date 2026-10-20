@@ -226,6 +226,45 @@ export const supabase = {
   }
 };
 
+/**
+ * Interface estrita com as colunas oficiais retornadas pela RPC public.admin_listar_assinaturas()
+ */
+export interface AssinaturaAdminRpc {
+  user_id: string;
+  nome: string;
+  email: string;
+  crp: string | null;
+  role: string;
+  status_usuario: string;
+  plano: string;
+  status_assinatura: string;
+  valido_ate: string | null;
+  aprovado_por: string | null;
+  aprovado_em: string | null;
+  acesso_valido: boolean;
+}
+
+/**
+ * Busca assinaturas do SaaS chamando a RPC oficial admin_listar_assinaturas.
+ * Usa a sessão Supabase do usuário autenticado (sem chave service_role).
+ */
+export async function adminListarAssinaturasRpc(): Promise<{
+  data: AssinaturaAdminRpc[] | null;
+  error: any | null;
+}> {
+  return await supabase.rpc('admin_listar_assinaturas');
+}
+
+/**
+ * Valida se o usuário autenticado atual possui acesso válido chamando a RPC oficial usuario_tem_acesso.
+ */
+export async function usuarioTemAcessoRpc(): Promise<{
+  data: boolean | null;
+  error: any | null;
+}> {
+  return await supabase.rpc('usuario_tem_acesso');
+}
+
 export function isSupabaseConfigurado(): boolean {
   const { url, anonKey } = getSupabaseCredentials();
   return Boolean(isValidSupabaseUrl(url) && isValidSupabaseKey(anonKey));

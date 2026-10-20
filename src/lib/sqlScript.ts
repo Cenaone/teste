@@ -323,7 +323,98 @@ ON CONFLICT (user_id) DO UPDATE SET
   plano = 'saas_pro',
   valido_ate = now() + interval '3650 days';
 
--- 7. CONCESSÃO DE PERMISSÕES PARA ANON, AUTHENTICATED E SERVICE_ROLE
+-- 7. FUNÇÃO RPC OFICIAL: admin_listar_assinaturas
+CREATE OR REPLACE FUNCTION public.admin_listar_assinaturas()
+RETURNS TABLE (
+    user_id UUID,
+    nome TEXT,
+    email TEXT,
+    crp TEXT,
+    role TEXT,
+    status_usuario TEXT,
+    plano TEXT,
+    status_assinatura TEXT,
+    valido_ate TIMESTAMPTZ,
+    aprovado_por TEXT,
+    aprovado_em TIMESTAMPTZ,
+    acesso_valido BOOLEAN
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        u.id AS user_id,
+        coalesce(u.nome, split_part(u.email, '@', 1)) AS nome,
+        u.email AS email,
+        u.crp AS crp,
+        coalesce(u.role, 'psicologo') AS role,
+        coalesce(u.status, 'pendente') AS status_usuario,
+        coalesce(a.plano, 'mensal') AS plano,
+        coalesce(a.status, 'pendente') AS status_assinatura,
+        a.valido_ate AS valido_ate,
+        a.aprovado_por AS aprovado_por,
+        a.aprovado_em AS aprovado_em,
+        CASE
+            WHEN lower(u.email) IN ('backupvideomidias@gmail.com', 'sup.fin.adm@gmail.com') OR u.role = 'admin' THEN TRUE
+            WHEN coalesce(u.status, '') = 'ativo' 
+                 AND coalesce(a.status, '') = 'ativa' 
+                 AND (a.valido_ate IS NULL OR a.valido_ate > timezone('utc'::text, now())) THEN TRUE
+            ELSE FALSE
+        END AS acesso_valido
+    FROM public.usuarios u
+    LEFT JOIN public.assinaturas_saas a ON a.user_id = u.id
+    ORDER BY u.criado_em DESC;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 8. FUNÇÃO RPC OFICIAL: usuario_tem_acesso
+CREATE OR REPLACE FUNCTION public.usuario_tem_acesso()
+RETURNS BOOLEAN AS $$
+DECLARE
+    v_user_id UUID;
+    v_email TEXT;
+    v_status_usuario TEXT;
+    v_role TEXT;
+    v_status_assinatura TEXT;
+    v_valido_ate TIMESTAMPTZ;
+BEGIN
+    v_user_id := auth.uid();
+    v_email := lower(coalesce(auth.jwt() ->> 'email', ''));
+
+    IF v_user_id IS NULL AND v_email = '' THEN
+        RETURN FALSE;
+    END IF;
+
+    IF v_email IN ('backupvideomidias@gmail.com', 'sup.fin.adm@gmail.com') THEN
+        RETURN TRUE;
+    END IF;
+
+    SELECT status, role INTO v_status_usuario, v_role
+    FROM public.usuarios
+    WHERE id = v_user_id OR lower(email) = v_email
+    LIMIT 1;
+
+    IF v_role = 'admin' THEN
+        RETURN TRUE;
+    END IF;
+
+    IF coalesce(v_status_usuario, '') != 'ativo' THEN
+        RETURN FALSE;
+    END IF;
+
+    SELECT status, valido_ate INTO v_status_assinatura, v_valido_ate
+    FROM public.assinaturas_saas
+    WHERE user_id = v_user_id
+    LIMIT 1;
+
+    IF coalesce(v_status_assinatura, '') = 'ativa' AND (v_valido_ate IS NULL OR v_valido_ate > timezone('utc'::text, now())) THEN
+        RETURN TRUE;
+    END IF;
+
+    RETURN FALSE;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 9. CONCESSÃO DE PERMISSÕES PARA ANON, AUTHENTICATED E SERVICE_ROLE
 GRANT ALL ON SCHEMA public TO anon, authenticated, service_role;
 GRANT ALL ON TABLE public.usuarios TO anon, authenticated, service_role;
 GRANT ALL ON TABLE public.assinaturas_saas TO anon, authenticated, service_role;
@@ -331,6 +422,8 @@ GRANT ALL ON TABLE public.psi40_dados TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.is_admin() TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.admin_aprovar_usuario(UUID, INTEGER, TEXT) TO anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.admin_alternar_status_usuario(UUID, TEXT) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.admin_listar_assinaturas() TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.usuario_tem_acesso() TO anon, authenticated, service_role;
 
 -- Políticas de RLS para leitura de status no login e atualizações administrativas:
 DROP POLICY IF EXISTS "Anon e auth podem consultar status usuarios" ON public.usuarios;

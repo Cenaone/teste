@@ -12,36 +12,19 @@ import {
   Check,
   Ban,
   Clock,
-  Key,
   AlertTriangle,
   CheckCircle2,
   Copy,
   FileText,
   X,
-  Phone,
-  Mail,
-  SlidersHorizontal,
   Edit,
-  Trash2,
-  Sparkles,
-  ArrowRight,
-  ArrowLeft,
-  Eye,
-  EyeOff
+  ArrowLeft
 } from 'lucide-react';
 import { Card } from './ui-compact';
 import {
-  listarUsuariosAdmin,
-  aprovarUsuarioAdmin,
-  alternarStatusAcessoUsuario,
-  renovarAssinaturaUsuario,
-  atualizarUsuarioAdmin,
-  criarUsuarioManualAdmin,
-  excluirUsuarioAdmin,
-  sincronizarBancoDadosCompleto,
+  supabase,
+  AssinaturaAdminRpc,
   isMasterAdminEmail,
-  ContaAssinanteArmazenada,
-  StatusAssinante,
   PlanoAssinante
 } from '../lib/supabase';
 import { SQL_MIGRACAO_NOVO_SUPABASE } from '../lib/sqlScript';
@@ -53,27 +36,26 @@ interface SecaoAdminSaasProps {
 }
 
 export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarParaConfiguracoes }: SecaoAdminSaasProps) {
-  const [usuarios, setUsuarios] = useState<ContaAssinanteArmazenada[]>([]);
+  const [usuarios, setUsuarios] = useState<AssinaturaAdminRpc[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [erroRpc, setErroRpc] = useState<string | null>(null);
   const [busca, setBusca] = useState('');
   const [filtroStatus, setFiltroStatus] = useState<'todos' | 'pendente' | 'ativo' | 'inativo'>('todos');
   const [feedback, setFeedback] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null);
-  const [sincronizandoBanco, setSincronizandoBanco] = useState(false);
-  const [ultimaSincronizacao, setUltimaSincronizacao] = useState<string>('');
   const [usuarioAtualizandoId, setUsuarioAtualizandoId] = useState<string | null>(null);
+  const [validandoMeuAcesso, setValidandoMeuAcesso] = useState(false);
 
   // Modais
   const [modalNovoAberto, setModalNovoAberto] = useState(false);
   const [modalEditarAberto, setModalEditarAberto] = useState(false);
   const [modalSqlAberto, setModalSqlAberto] = useState(false);
-  const [usuarioEmEdicao, setUsuarioEmEdicao] = useState<ContaAssinanteArmazenada | null>(null);
+  const [usuarioEmEdicao, setUsuarioEmEdicao] = useState<AssinaturaAdminRpc | null>(null);
 
   // Form states - Novo Usuário Manual
   const [novoNome, setNovoNome] = useState('');
   const [novoEmail, setNovoEmail] = useState('');
   const [novaSenha, setNovaSenha] = useState('PsiSenha123!');
   const [novoCrp, setNovoCrp] = useState('');
-  const [novoTelefone, setNovoTelefone] = useState('');
   const [novoPlano, setNovoPlano] = useState<PlanoAssinante>('mensal');
   const [novoDias, setNovoDias] = useState(30);
   const [novoRole, setNovoRole] = useState<'admin' | 'psicologo'>('psicologo');
@@ -82,32 +64,38 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
   // Form states - Editar Usuário
   const [editNome, setEditNome] = useState('');
   const [editCrp, setEditCrp] = useState('');
-  const [editTelefone, setEditTelefone] = useState('');
-  const [editStatus, setEditStatus] = useState<StatusAssinante>('ativo');
+  const [editStatus, setEditStatus] = useState<'ativo' | 'inativo' | 'pendente'>('ativo');
   const [editRole, setEditRole] = useState<'admin' | 'psicologo'>('psicologo');
   const [editPlano, setEditPlano] = useState<PlanoAssinante>('mensal');
-  const [editValidoAte, setEditValidoAte] = useState('');
-  const [editSenha, setEditSenha] = useState('');
-  const [mostrarEditSenha, setMostrarEditSenha] = useState(false);
+  const [editDiasValidade, setEditDiasValidade] = useState(30);
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
-
-  // Controle de exibição de senhas na listagem
-  const [senhasReveladas, setSenhasReveladas] = useState<Record<string, boolean>>({});
-
-  const alternarRevelarSenha = (userId: string) => {
-    setSenhasReveladas(prev => ({ ...prev, [userId]: !prev[userId] }));
-  };
 
   // SQL Copied State
   const [copiadoSql, setCopiadoSql] = useState(false);
 
+  /**
+   * 1. Quando a tela de gestão abrir, busque os dados chamando:
+   *    supabase.rpc('admin_listar_assinaturas')
+   * Se a RPC não existir ou retornar erro, mostre o erro de forma clara e indique qual função falhou.
+   */
   const carregarDados = async () => {
     setCarregando(true);
+    setErroRpc(null);
     try {
-      const lista = await listarUsuariosAdmin();
-      setUsuarios(lista);
+      const { data, error } = await supabase.rpc('admin_listar_assinaturas');
+      if (error) {
+        console.error("Erro retornado por supabase.rpc('admin_listar_assinaturas'):", error);
+        setErroRpc(
+          `A função RPC 'admin_listar_assinaturas' retornou um erro: ${error.message} (Código: ${error.code || '42501/PGRST'}). Verifique se o script SQL foi executado no Supabase e se o usuário atual possui permissão de administrador.`
+        );
+        setUsuarios([]);
+        return;
+      }
+      setUsuarios((data as AssinaturaAdminRpc[]) || []);
     } catch (err: any) {
-      console.warn('Erro ao carregar assinantes:', err);
+      console.error("Falha ao executar supabase.rpc('admin_listar_assinaturas'):", err);
+      setErroRpc(`Falha ao chamar a função RPC 'admin_listar_assinaturas': ${err?.message || 'Erro inesperado de rede'}`);
+      setUsuarios([]);
     } finally {
       setCarregando(false);
     }
@@ -119,118 +107,158 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
 
   const mostrarFeedback = (texto: string, tipo: 'sucesso' | 'erro' = 'sucesso') => {
     setFeedback({ tipo, texto });
-    setTimeout(() => setFeedback(null), 4000);
+    setTimeout(() => setFeedback(null), 5000);
   };
 
-  // Contadores
+  /**
+   * 5. Para a validação de acesso do usuário autenticado, conecta à chamada:
+   *    supabase.rpc('usuario_tem_acesso')
+   *    Usa o booleano retornado para atualizar o estado de acesso.
+   */
+  const handleValidarMeuAcesso = async () => {
+    setValidandoMeuAcesso(true);
+    try {
+      const { data, error } = await supabase.rpc('usuario_tem_acesso');
+      if (error) {
+        mostrarFeedback(`Falha na validação: A função RPC 'usuario_tem_acesso' retornou erro: ${error.message}`, 'erro');
+        return;
+      }
+      const temAcesso = Boolean(data);
+      if (temAcesso) {
+        mostrarFeedback("Validação com sucesso! A RPC 'usuario_tem_acesso' retornou TRUE (Acesso Válido no banco de dados).");
+      } else {
+        mostrarFeedback("Validação: A RPC 'usuario_tem_acesso' retornou FALSE (Acesso Inválido ou Pendente no banco de dados).", 'erro');
+      }
+    } catch (err: any) {
+      mostrarFeedback(`Erro ao chamar a RPC 'usuario_tem_acesso': ${err?.message || 'Erro de comunicação'}`, 'erro');
+    } finally {
+      setValidandoMeuAcesso(false);
+    }
+  };
+
+  // Contadores baseados estritamente nos dados retornados pela RPC
   const contadores = useMemo(() => {
     const total = usuarios.length;
-    const pendentes = usuarios.filter(u => u.status === 'pendente').length;
-    const ativos = usuarios.filter(u => u.status === 'ativo').length;
-    const inativos = usuarios.filter(u => u.status === 'inativo').length;
+    const pendentes = usuarios.filter(
+      u => u.status_usuario === 'pendente' || u.status_assinatura === 'pendente'
+    ).length;
+    const ativos = usuarios.filter(u => u.acesso_valido === true).length;
+    const inativos = usuarios.filter(
+      u => u.acesso_valido === false && u.status_usuario !== 'pendente' && u.status_assinatura !== 'pendente'
+    ).length;
     return { total, pendentes, ativos, inativos };
   }, [usuarios]);
 
-  // Lista Filtrada
+  // Lista Filtrada preservando busca e filtros existentes
   const usuariosFiltrados = useMemo(() => {
     return usuarios.filter(u => {
-      // Filtro de status
-      if (filtroStatus !== 'todos' && u.status !== filtroStatus) return false;
+      // Filtro de status usando campos da RPC
+      if (filtroStatus === 'pendente') {
+        if (u.status_usuario !== 'pendente' && u.status_assinatura !== 'pendente') return false;
+      } else if (filtroStatus === 'ativo') {
+        if (!u.acesso_valido) return false;
+      } else if (filtroStatus === 'inativo') {
+        if (u.acesso_valido || u.status_usuario === 'pendente' || u.status_assinatura === 'pendente') return false;
+      }
 
-      // Filtro de texto
+      // Filtro de texto conectado a todos os campos
       if (busca.trim()) {
         const termo = busca.toLowerCase().trim();
-        const nomeMatch = (u.nomeCompleto || '').toLowerCase().includes(termo);
+        const nomeMatch = (u.nome || '').toLowerCase().includes(termo);
         const emailMatch = (u.email || '').toLowerCase().includes(termo);
         const crpMatch = (u.crp || '').toLowerCase().includes(termo);
-        return nomeMatch || emailMatch || crpMatch;
+        const userIdMatch = (u.user_id || '').toLowerCase().includes(termo);
+        const roleMatch = (u.role || '').toLowerCase().includes(termo);
+        const planoMatch = (u.plano || '').toLowerCase().includes(termo);
+        const statusUsuarioMatch = (u.status_usuario || '').toLowerCase().includes(termo);
+        const statusAssinaturaMatch = (u.status_assinatura || '').toLowerCase().includes(termo);
+        return (
+          nomeMatch ||
+          emailMatch ||
+          crpMatch ||
+          userIdMatch ||
+          roleMatch ||
+          planoMatch ||
+          statusUsuarioMatch ||
+          statusAssinaturaMatch
+        );
       }
       return true;
     });
   }, [usuarios, filtroStatus, busca]);
 
-  // Ações de gerenciamento com cálculo a contar da data de cadastro
-  const handleAprovar = async (u: ContaAssinanteArmazenada, dias = 30) => {
-    setUsuarioAtualizandoId(u.id);
+  // Ações de gerenciamento via RPCs oficiais
+  const handleAprovar = async (u: AssinaturaAdminRpc, dias = 30) => {
+    setUsuarioAtualizandoId(u.user_id);
     try {
-      const res = await aprovarUsuarioAdmin(u.id, dias, 'mensal', contaUsuario?.email || 'backupvideomidias@gmail.com');
-      if (res.ok) {
-        mostrarFeedback(res.mensagem || `Assinatura de ${u.nomeCompleto} aprovada com sucesso! Acesso liberado por ${dias} dias a contar da data do cadastro.`);
-        await carregarDados();
+      const { error } = await supabase.rpc('admin_aprovar_usuario', {
+        p_user_id: u.user_id,
+        p_dias_validade: dias,
+        p_plano: u.plano || 'mensal'
+      });
+      if (error) {
+        mostrarFeedback(`Falha na função RPC 'admin_aprovar_usuario': ${error.message}`, 'erro');
       } else {
-        mostrarFeedback(res.mensagem, 'erro');
+        mostrarFeedback(`Assinatura de ${u.nome} aprovada por ${dias} dias com sucesso!`);
+        await carregarDados();
       }
     } catch (err: any) {
-      mostrarFeedback(err?.message || 'Erro ao aprovar usuário.', 'erro');
+      mostrarFeedback(`Erro na RPC 'admin_aprovar_usuario': ${err?.message || 'Erro inesperado'}`, 'erro');
     } finally {
       setUsuarioAtualizandoId(null);
     }
   };
 
-  const handleForcarSincronizacaoBanco = async () => {
-    setSincronizandoBanco(true);
+  const handleAlternarStatus = async (u: AssinaturaAdminRpc) => {
+    const novoStatus = u.acesso_valido ? 'inativo' : 'ativo';
+    setUsuarioAtualizandoId(u.user_id);
     try {
-      const res = await sincronizarBancoDadosCompleto();
-      if (res.ok) {
-        setUltimaSincronizacao(res.sincronizadoEm);
-        await carregarDados();
-        mostrarFeedback(`Sincronização imediata concluída! ${res.totalUsuarios} assinantes sincronizados com o banco de dados.`);
+      const { error } = await supabase.rpc('admin_alternar_status_usuario', {
+        p_user_id: u.user_id,
+        p_novo_status: novoStatus
+      });
+      if (error) {
+        mostrarFeedback(`Falha na função RPC 'admin_alternar_status_usuario': ${error.message}`, 'erro');
       } else {
-        mostrarFeedback(res.mensagem, 'erro');
+        mostrarFeedback(`Status de ${u.nome} alterado para '${novoStatus}' com sucesso!`);
+        await carregarDados();
       }
     } catch (err: any) {
-      mostrarFeedback(err?.message || 'Erro ao sincronizar com o banco de dados.', 'erro');
-    } finally {
-      setSincronizandoBanco(false);
-    }
-  };
-
-  const handleAlternarStatus = async (u: ContaAssinanteArmazenada) => {
-    const novoStatus: StatusAssinante = u.status === 'ativo' ? 'inativo' : 'ativo';
-    setUsuarioAtualizandoId(u.id);
-    try {
-      const res = await alternarStatusAcessoUsuario(u.id, novoStatus);
-      if (res.ok) {
-        mostrarFeedback(res.mensagem);
-        await carregarDados();
-      } else {
-        mostrarFeedback(res.mensagem, 'erro');
-      }
-    } catch (err: any) {
-      mostrarFeedback(err?.message || 'Erro ao alternar status no banco de dados.', 'erro');
+      mostrarFeedback(`Erro na RPC 'admin_alternar_status_usuario': ${err?.message || 'Erro inesperado'}`, 'erro');
     } finally {
       setUsuarioAtualizandoId(null);
     }
   };
 
-  const handleRenovarDias = async (u: ContaAssinanteArmazenada, dias = 30) => {
-    setUsuarioAtualizandoId(u.id);
+  const handleRenovarDias = async (u: AssinaturaAdminRpc, dias = 30) => {
+    setUsuarioAtualizandoId(u.user_id);
     try {
-      const res = await renovarAssinaturaUsuario(u.id, dias);
-      if (res.ok) {
-        mostrarFeedback(res.mensagem || `Assinatura de ${u.nomeCompleto} estendida por mais ${dias} dias com sucesso!`);
-        await carregarDados();
+      const { error } = await supabase.rpc('admin_aprovar_usuario', {
+        p_user_id: u.user_id,
+        p_dias_validade: dias,
+        p_plano: u.plano || 'mensal'
+      });
+      if (error) {
+        mostrarFeedback(`Falha na função RPC 'admin_aprovar_usuario': ${error.message}`, 'erro');
       } else {
-        mostrarFeedback(res.mensagem, 'erro');
+        mostrarFeedback(`Assinatura de ${u.nome} renovada por mais ${dias} dias!`);
+        await carregarDados();
       }
     } catch (err: any) {
-      mostrarFeedback(err?.message || 'Erro ao estender validade da assinatura.', 'erro');
+      mostrarFeedback(`Erro ao renovar assinatura: ${err?.message || 'Erro inesperado'}`, 'erro');
     } finally {
       setUsuarioAtualizandoId(null);
     }
   };
 
-  const abrirEdicao = (u: ContaAssinanteArmazenada) => {
+  const abrirEdicao = (u: AssinaturaAdminRpc) => {
     setUsuarioEmEdicao(u);
-    setEditNome(u.nomeCompleto);
+    setEditNome(u.nome || '');
     setEditCrp(u.crp || '');
-    setEditTelefone(u.telefone || '');
-    setEditStatus(u.status);
-    setEditRole(u.role);
-    setEditPlano(u.plano || 'mensal');
-    setEditValidoAte(u.validoAte ? u.validoAte.split('T')[0] : '');
-    setEditSenha(u.senhaTexto || '');
-    setMostrarEditSenha(false);
+    setEditStatus((u.status_usuario as any) || 'ativo');
+    setEditRole((u.role as any) || 'psicologo');
+    setEditPlano((u.plano as any) || 'mensal');
+    setEditDiasValidade(30);
     setModalEditarAberto(true);
   };
 
@@ -240,27 +268,37 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
     setSalvandoEdicao(true);
 
     try {
-      const dataValidade = editValidoAte ? new Date(editValidoAte).toISOString() : undefined;
-      const res = await atualizarUsuarioAdmin(usuarioEmEdicao.id, {
-        nome: editNome.trim(),
-        crp: editCrp.trim() || undefined,
-        telefone: editTelefone.trim() || undefined,
-        status: editStatus,
-        role: editRole,
-        plano: editPlano,
-        validoAte: dataValidade,
-        senha: editSenha.trim() || undefined
+      // 1. Atualiza status via RPC
+      const { error: erroStatus } = await supabase.rpc('admin_alternar_status_usuario', {
+        p_user_id: usuarioEmEdicao.user_id,
+        p_novo_status: editStatus
       });
 
-      setSalvandoEdicao(false);
-      if (res.ok) {
-        mostrarFeedback('Assinante atualizado com sucesso!');
-        setModalEditarAberto(false);
-        setUsuarioEmEdicao(null);
-        await carregarDados();
-      } else {
-        mostrarFeedback(res.mensagem, 'erro');
+      if (erroStatus) {
+        setSalvandoEdicao(false);
+        mostrarFeedback(`Falha na RPC 'admin_alternar_status_usuario': ${erroStatus.message}`, 'erro');
+        return;
       }
+
+      // 2. Se status for ativo, atualiza validade e plano via admin_aprovar_usuario
+      if (editStatus === 'ativo') {
+        const { error: erroAprovar } = await supabase.rpc('admin_aprovar_usuario', {
+          p_user_id: usuarioEmEdicao.user_id,
+          p_dias_validade: Number(editDiasValidade) || 30,
+          p_plano: editPlano
+        });
+        if (erroAprovar) {
+          setSalvandoEdicao(false);
+          mostrarFeedback(`Falha na RPC 'admin_aprovar_usuario': ${erroAprovar.message}`, 'erro');
+          return;
+        }
+      }
+
+      setSalvandoEdicao(false);
+      mostrarFeedback('Assinante atualizado com sucesso no Supabase!');
+      setModalEditarAberto(false);
+      setUsuarioEmEdicao(null);
+      await carregarDados();
     } catch (err: any) {
       setSalvandoEdicao(false);
       mostrarFeedback(err.message || 'Erro ao salvar alterações.', 'erro');
@@ -272,50 +310,52 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
     setSalvandoNovo(true);
 
     try {
-      const res = await criarUsuarioManualAdmin({
-        nome: novoNome.trim(),
+      // Cadastra usuário no Supabase Auth usando a sessão/cliente Supabase configurado
+      const { data, error } = await supabase.auth.signUp({
         email: novoEmail.trim().toLowerCase(),
-        senha: novaSenha.trim(),
-        crp: novoCrp.trim() || undefined,
-        telefone: novoTelefone.trim() || undefined,
-        plano: novoPlano,
-        diasValidade: Number(novoDias) || 30,
-        role: novoRole
+        password: novaSenha.trim(),
+        options: {
+          data: {
+            nome_completo: novoNome.trim(),
+            crp: novoCrp.trim() || undefined,
+            role: novoRole
+          }
+        }
       });
 
-      setSalvandoNovo(false);
-      if (res.ok) {
-        mostrarFeedback(`Assinante ${novoNome} cadastrado e ativado com sucesso!`);
-        setModalNovoAberto(false);
-        setNovoNome('');
-        setNovoEmail('');
-        setNovoCrp('');
-        setNovoTelefone('');
-        setNovaSenha('PsiSenha123!');
-        setNovoDias(30);
-        await carregarDados();
-      } else {
-        mostrarFeedback(res.erro || 'Falha ao cadastrar usuário.', 'erro');
+      if (error) {
+        setSalvandoNovo(false);
+        mostrarFeedback(`Erro ao registrar usuário: ${error.message}`, 'erro');
+        return;
       }
+
+      if (data?.user?.id) {
+        // Imediatamente aprova via RPC oficial
+        const { error: erroAprovar } = await supabase.rpc('admin_aprovar_usuario', {
+          p_user_id: data.user.id,
+          p_dias_validade: Number(novoDias) || 30,
+          p_plano: novoPlano
+        });
+        if (erroAprovar) {
+          mostrarFeedback(`Usuário criado, mas RPC 'admin_aprovar_usuario' retornou: ${erroAprovar.message}`, 'erro');
+        } else {
+          mostrarFeedback(`Assinante ${novoNome} cadastrado e liberado com sucesso!`);
+        }
+      } else {
+        mostrarFeedback(`Conta criada com sucesso!`);
+      }
+
+      setSalvandoNovo(false);
+      setModalNovoAberto(false);
+      setNovoNome('');
+      setNovoEmail('');
+      setNovoCrp('');
+      setNovaSenha('PsiSenha123!');
+      setNovoDias(30);
+      await carregarDados();
     } catch (err: any) {
       setSalvandoNovo(false);
       mostrarFeedback(err.message || 'Erro inesperado.', 'erro');
-    }
-  };
-
-  const handleExcluir = async (u: ContaAssinanteArmazenada) => {
-    if (isMasterAdminEmail(u.email)) {
-      mostrarFeedback('Não é permitido excluir contas de Administrador Geral Master.', 'erro');
-      return;
-    }
-    if (confirm(`Tem certeza que deseja remover o usuário ${u.nomeCompleto} (${u.email})?`)) {
-      const res = await excluirUsuarioAdmin(u.id);
-      if (res.ok) {
-        mostrarFeedback('Usuário removido.');
-        await carregarDados();
-      } else {
-        mostrarFeedback(res.mensagem, 'erro');
-      }
     }
   };
 
@@ -323,12 +363,6 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
     navigator.clipboard.writeText(SQL_MIGRACAO_NOVO_SUPABASE);
     setCopiadoSql(true);
     setTimeout(() => setCopiadoSql(false), 2500);
-  };
-
-  const calcularDiasRestantes = (validoAte?: string): number => {
-    if (!validoAte) return 0;
-    const diff = new Date(validoAte).getTime() - Date.now();
-    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
   };
 
   return (
@@ -341,7 +375,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
             Gestão de Assinaturas & Validação de Acessos
           </h2>
           <p className="text-sm text-muted-foreground">
-            Painel do Administrador Micro SaaS. Valide pagamentos, aprove novos psicólogos e gerencie acessos mensais.
+            Painel de Controle integrado ao Supabase via RPCs oficiais.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -349,7 +383,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
             <button
               type="button"
               onClick={onVoltarParaConfiguracoes}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground transition-all shadow-xs"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground transition-all shadow-xs cursor-pointer"
               title="Voltar para as Configurações do Sistema"
             >
               <ArrowLeft className="size-3.5" />
@@ -360,40 +394,41 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
           <button
             type="button"
             onClick={() => setModalSqlAberto(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all shadow-xs"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all shadow-xs cursor-pointer"
             title="Ver Script de Migração do Banco no Supabase"
           >
             <FileText className="size-3.5 text-muted-foreground" />
             <span className="hidden sm:inline">Script SQL</span>
           </button>
 
+          {/* Botão de Validação do Usuário Autenticado via RPC usuario_tem_acesso */}
+          <button
+            type="button"
+            onClick={handleValidarMeuAcesso}
+            disabled={validandoMeuAcesso}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-primary/40 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold transition-all shadow-xs cursor-pointer disabled:opacity-50"
+            title="Testa a validação de acesso do usuário autenticado chamando supabase.rpc('usuario_tem_acesso')"
+          >
+            <Shield className={`size-3.5 ${validandoMeuAcesso ? 'animate-spin' : ''}`} />
+            <span>{validandoMeuAcesso ? 'Validando...' : 'Validar Meu Acesso (RPC)'}</span>
+          </button>
+
+          {/* Botão Atualizar chamando supabase.rpc('admin_listar_assinaturas') */}
           <button
             type="button"
             onClick={carregarDados}
-            disabled={carregando || sincronizandoBanco}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all shadow-xs cursor-pointer"
-            title="Atualizar lista de assinantes"
+            disabled={carregando}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all shadow-xs cursor-pointer disabled:opacity-50"
+            title="Atualizar lista de assinaturas chamando admin_listar_assinaturas"
           >
             <RefreshCw className={`size-3.5 ${carregando ? 'animate-spin' : ''}`} />
             <span>Atualizar</span>
           </button>
 
-          {/* Botão Dedicado: Forçar Sincronização Imediata com o Banco de Dados */}
-          <button
-            type="button"
-            onClick={handleForcarSincronizacaoBanco}
-            disabled={sincronizandoBanco || carregando}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-primary/40 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-bold transition-all shadow-xs cursor-pointer disabled:opacity-50"
-            title="Forçar sincronização imediata de ativações e desativações diretamente no banco de dados Supabase"
-          >
-            <RefreshCw className={`size-3.5 ${sincronizandoBanco ? 'animate-spin' : ''}`} />
-            <span>{sincronizandoBanco ? 'Sincronizando Banco...' : 'Sincronizar com Banco'}</span>
-          </button>
-
           <button
             type="button"
             onClick={() => setModalNovoAberto(true)}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl gradient-emerald text-primary-foreground text-xs font-bold transition-all shadow-md hover:opacity-95"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl gradient-emerald text-primary-foreground text-xs font-bold transition-all shadow-md hover:opacity-95 cursor-pointer"
           >
             <UserPlus className="size-4" />
             <span>Novo Assinante Manual</span>
@@ -423,7 +458,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
             <Users className="size-4 text-muted-foreground" />
           </div>
           <div className="text-2xl font-bold text-foreground">{contadores.total}</div>
-          <div className="text-[11px] text-muted-foreground">Psicólogos registrados</div>
+          <div className="text-[11px] text-muted-foreground">Registros na base</div>
         </Card>
 
         <Card
@@ -455,7 +490,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
           <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
             {contadores.ativos}
           </div>
-          <div className="text-[11px] text-muted-foreground">Acesso liberado</div>
+          <div className="text-[11px] text-muted-foreground">acesso_valido = true</div>
         </Card>
 
         <Card
@@ -471,7 +506,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
           <div className="text-2xl font-bold text-rose-600 dark:text-rose-400">
             {contadores.inativos}
           </div>
-          <div className="text-[11px] text-muted-foreground">Acesso bloqueado</div>
+          <div className="text-[11px] text-muted-foreground">acesso_valido = false</div>
         </Card>
       </div>
 
@@ -487,14 +522,14 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
                 {contadores.pendentes} assinante(s) aguardando sua validação
               </span>
               <span className="text-amber-700/80 dark:text-amber-400/80 text-[11px]">
-                Novos usuários registrados precisam da aprovação do administrador para acessar o sistema.
+                Novos usuários registrados precisam da aprovação do administrador para ter acesso liberado.
               </span>
             </div>
           </div>
           <button
             type="button"
             onClick={() => setFiltroStatus('pendente')}
-            className="px-3.5 py-1.5 rounded-lg bg-amber-500 text-white font-semibold text-xs hover:bg-amber-600 transition-colors shrink-0 self-start sm:self-auto"
+            className="px-3.5 py-1.5 rounded-lg bg-amber-500 text-white font-semibold text-xs hover:bg-amber-600 transition-colors shrink-0 self-start sm:self-auto cursor-pointer"
           >
             Ver Pendentes
           </button>
@@ -509,7 +544,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
             <button
               type="button"
               onClick={() => setFiltroStatus('todos')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                 filtroStatus === 'todos'
                   ? 'bg-card text-foreground shadow-xs'
                   : 'text-muted-foreground hover:text-foreground'
@@ -520,7 +555,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
             <button
               type="button"
               onClick={() => setFiltroStatus('pendente')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                 filtroStatus === 'pendente'
                   ? 'bg-amber-500 text-white shadow-xs'
                   : 'text-muted-foreground hover:text-foreground'
@@ -531,7 +566,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
             <button
               type="button"
               onClick={() => setFiltroStatus('ativo')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                 filtroStatus === 'ativo'
                   ? 'bg-card text-foreground shadow-xs'
                   : 'text-muted-foreground hover:text-foreground'
@@ -542,7 +577,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
             <button
               type="button"
               onClick={() => setFiltroStatus('inativo')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                 filtroStatus === 'inativo'
                   ? 'bg-card text-foreground shadow-xs'
                   : 'text-muted-foreground hover:text-foreground'
@@ -559,14 +594,14 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
               type="text"
               value={busca}
               onChange={e => setBusca(e.target.value)}
-              placeholder="Buscar por psicólogo, e-mail ou CRP..."
+              placeholder="Buscar por nome, e-mail, CRP ou user_id..."
               className="w-full h-10 pl-9 pr-3.5 rounded-xl border border-border bg-card text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
             {busca && (
               <button
                 type="button"
                 onClick={() => setBusca('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1 text-xs"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1 text-xs cursor-pointer"
               >
                 <X className="size-3.5" />
               </button>
@@ -575,25 +610,60 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
         </div>
       </Card>
 
+      {/* Estado de Erro da RPC */}
+      {erroRpc && (
+        <Card className="p-6 text-center border-destructive/40 bg-destructive/5 space-y-3">
+          <div className="size-12 rounded-xl bg-destructive/10 text-destructive flex items-center justify-center mx-auto">
+            <AlertTriangle className="size-6" />
+          </div>
+          <div className="space-y-1 max-w-xl mx-auto">
+            <h3 className="text-sm font-bold text-destructive">
+              Falha na Chamada da RPC: admin_listar_assinaturas
+            </h3>
+            <p className="text-xs text-muted-foreground leading-relaxed break-words">
+              {erroRpc}
+            </p>
+          </div>
+          <div className="pt-2 flex flex-wrap justify-center gap-2">
+            <button
+              type="button"
+              onClick={carregarDados}
+              className="px-4 py-2 rounded-xl border border-destructive/30 bg-destructive/10 hover:bg-destructive/20 text-destructive text-xs font-semibold transition-all inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <RefreshCw className="size-3.5" />
+              <span>Tentar Novamente</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setModalSqlAberto(true)}
+              className="px-4 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <FileText className="size-3.5 text-muted-foreground" />
+              <span>Ver Script SQL no Supabase</span>
+            </button>
+          </div>
+        </Card>
+      )}
+
       {/* Lista de Assinantes */}
       <div className="space-y-3">
         {carregando ? (
           <Card className="p-12 text-center text-muted-foreground text-xs space-y-2">
             <RefreshCw className="size-6 animate-spin mx-auto text-primary" />
-            <p>Carregando base de assinantes e status das licenças...</p>
+            <p>Buscando dados via supabase.rpc('admin_listar_assinaturas')...</p>
           </Card>
-        ) : usuariosFiltrados.length === 0 ? (
+        ) : !erroRpc && usuariosFiltrados.length === 0 ? (
           <Card className="p-12 text-center text-muted-foreground text-xs space-y-2">
             <Users className="size-8 mx-auto text-muted-foreground/60" />
             <p className="font-semibold text-foreground text-sm">Nenhum assinante encontrado</p>
             <p className="max-w-sm mx-auto">
-              {busca ? 'Nenhum resultado corresponde à busca digitada.' : 'Nenhum usuário cadastrado neste filtro de status.'}
+              {busca ? 'Nenhum resultado corresponde à busca digitada.' : 'Nenhuma assinatura retornada pelo banco de dados para este filtro.'}
             </p>
             {busca && (
               <button
                 type="button"
                 onClick={() => setBusca('')}
-                className="text-primary hover:underline font-semibold pt-2"
+                className="text-primary hover:underline font-semibold pt-2 cursor-pointer"
               >
                 Limpar busca
               </button>
@@ -602,206 +672,178 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
         ) : (
           usuariosFiltrados.map(u => {
             const isSuperAdmin = isMasterAdminEmail(u.email);
-            const diasRestantes = calcularDiasRestantes(u.validoAte);
-            const vencido = u.validoAte && new Date(u.validoAte).getTime() < Date.now();
 
             return (
               <Card
-                key={u.id}
+                key={u.user_id}
                 className={`p-4 sm:p-5 transition-all border ${
-                  u.status === 'pendente'
+                  u.status_usuario === 'pendente' || u.status_assinatura === 'pendente'
                     ? 'border-amber-500/40 bg-amber-500/5'
-                    : u.status === 'inativo' || vencido
+                    : !u.acesso_valido
                     ? 'border-destructive/30 bg-destructive/5'
                     : 'border-border hover:border-primary/40'
                 }`}
               >
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                  {/* Informações do Usuário */}
+                  {/* Informações do Usuário conectadas aos 12 campos solicitados */}
                   <div className="space-y-1.5 flex-1 min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
+                      {/* Campo: nome */}
                       <span className="font-bold text-foreground text-sm truncate">
-                        {u.nomeCompleto}
+                        {u.nome}
                       </span>
 
-                      {/* Role indicator */}
+                      {/* Campo: role */}
                       {u.role === 'admin' ? (
                         <span className="text-[10px] font-bold uppercase tracking-wider text-primary flex items-center gap-1">
                           <Shield className="size-3" />
                           Administrador
                         </span>
                       ) : (
-                        <span className="text-[10px] font-medium text-muted-foreground">
-                          Psicólogo
+                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                          {u.role || 'Psicólogo'}
                         </span>
                       )}
 
-                      {/* Status indicator (No pills - clean text + dot) */}
+                      {/* 3. Indicador de acesso usando estritamente o valor acesso_valido retornado pela RPC */}
                       <span aria-hidden="true" className="text-muted-foreground">·</span>
-                      {u.status === 'ativo' && !vencido && (
+                      {u.acesso_valido ? (
                         <span className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
                           <span className="size-2 rounded-full bg-emerald-500" />
-                          Ativo ({diasRestantes} dias restantes)
+                          Acesso Válido
                         </span>
-                      )}
-                      {u.status === 'pendente' && (
-                        <span className="text-xs text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1">
-                          <span className="size-2 rounded-full bg-amber-500 animate-ping" />
-                          Aguardando Aprovação
-                        </span>
-                      )}
-                      {(u.status === 'inativo' || (u.status === 'ativo' && vencido)) && (
+                      ) : (
                         <span className="text-xs text-destructive font-semibold flex items-center gap-1">
                           <span className="size-2 rounded-full bg-destructive" />
-                          {vencido ? 'Mensalidade Expirada' : 'Acesso Desativado'}
+                          Acesso Inválido {u.status_usuario === 'pendente' ? '(Pendente)' : ''}
                         </span>
                       )}
                     </div>
 
-                    {/* Metadata line com data de cadastro e validade calculada */}
+                    {/* Metadados e Campos da RPC */}
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                      {/* Campo: email */}
                       <span className="font-mono text-foreground font-medium">{u.email}</span>
-                      {u.criadoEm && (
-                        <>
-                          <span aria-hidden="true">·</span>
-                          <span>Cadastrado em: <strong className="text-foreground">{new Date(u.criadoEm).toLocaleDateString('pt-BR')}</strong></span>
-                        </>
-                      )}
+
+                      {/* Campo: crp */}
                       {u.crp && (
                         <>
                           <span aria-hidden="true">·</span>
-                          <span>CRP: {u.crp}</span>
+                          <span>CRP: <strong className="text-foreground">{u.crp}</strong></span>
                         </>
                       )}
-                      {u.telefone && (
-                        <>
-                          <span aria-hidden="true">·</span>
-                          <span>Tel: {u.telefone}</span>
-                        </>
-                      )}
+
+                      {/* Campo: status_usuario */}
                       <span aria-hidden="true">·</span>
-                      <span>Plano: <strong className="text-foreground capitalize">{u.plano || 'Mensal'}</strong></span>
-                      {u.validoAte && (
+                      <span>
+                        Status Usuário: <strong className="text-foreground capitalize">{u.status_usuario}</strong>
+                      </span>
+
+                      {/* Campo: plano */}
+                      <span aria-hidden="true">·</span>
+                      <span>
+                        Plano: <strong className="text-foreground capitalize">{u.plano}</strong>
+                      </span>
+
+                      {/* Campo: status_assinatura */}
+                      <span aria-hidden="true">·</span>
+                      <span>
+                        Status Assinatura: <strong className="text-foreground capitalize">{u.status_assinatura}</strong>
+                      </span>
+
+                      {/* Campo: valido_ate */}
+                      {u.valido_ate && (
                         <>
                           <span aria-hidden="true">·</span>
                           <span>
-                            Válido até: <strong className={new Date(u.validoAte).getTime() < Date.now() ? 'text-destructive font-bold' : 'text-foreground'}>
-                              {new Date(u.validoAte).toLocaleDateString('pt-BR')}
+                            Válido até:{' '}
+                            <strong className={!u.acesso_valido ? 'text-destructive font-semibold' : 'text-foreground'}>
+                              {new Date(u.valido_ate).toLocaleDateString('pt-BR')}
                             </strong>
-                            {(() => {
-                              const diasRestantes = Math.ceil((new Date(u.validoAte).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-                              if (diasRestantes > 0) {
-                                return <span className="text-emerald-600 dark:text-emerald-400 font-semibold ml-1">({diasRestantes}d restantes)</span>;
-                              } else {
-                                return <span className="text-destructive font-semibold ml-1">(expirado)</span>;
-                              }
-                            })()}
+                          </span>
+                        </>
+                      )}
+
+                      {/* Campo: aprovado_por */}
+                      {u.aprovado_por && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <span>Aprovado por: <strong className="text-foreground">{u.aprovado_por}</strong></span>
+                        </>
+                      )}
+
+                      {/* Campo: aprovado_em */}
+                      {u.aprovado_em && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <span>
+                            Aprovado em: <strong className="text-foreground">{new Date(u.aprovado_em).toLocaleDateString('pt-BR')}</strong>
                           </span>
                         </>
                       )}
                     </div>
 
-                    {/* Linha de Senha Cadastrada (Exibição, Revelação & Cópia pelo Administrador Master) */}
-                    <div className="flex flex-wrap items-center gap-2 pt-1 text-xs">
-                      <span className="text-muted-foreground flex items-center gap-1 font-medium text-[11px]">
-                        <Key className="size-3 text-primary" />
-                        Senha de Acesso:
-                      </span>
-                      {u.senhaTexto ? (
-                        <div className="inline-flex items-center gap-1.5 font-mono text-xs bg-muted/70 px-2.5 py-0.5 rounded-lg border border-border">
-                          <span className="text-foreground font-bold tracking-wider">
-                            {senhasReveladas[u.id] ? u.senhaTexto : '••••••••'}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => alternarRevelarSenha(u.id)}
-                            className="text-muted-foreground hover:text-foreground p-0.5 transition-colors cursor-pointer"
-                            title={senhasReveladas[u.id] ? 'Ocultar senha' : 'Ver senha'}
-                          >
-                            {senhasReveladas[u.id] ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              navigator.clipboard.writeText(u.senhaTexto!);
-                              mostrarFeedback(`Senha de ${u.nomeCompleto} copiada!`);
-                            }}
-                            className="text-muted-foreground hover:text-primary p-0.5 transition-colors cursor-pointer"
-                            title="Copiar senha do assinante"
-                          >
-                            <Copy className="size-3.5" />
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground italic text-[11px] flex items-center gap-1">
-                          <span>Não informada no cadastro</span>
-                          <button
-                            type="button"
-                            onClick={() => abrirEdicao(u)}
-                            className="text-primary hover:underline font-semibold ml-1 text-[11px] cursor-pointer"
-                          >
-                            (definir senha)
-                          </button>
-                        </span>
-                      )}
+                    {/* Campo: user_id (identificador UUID) */}
+                    <div className="flex items-center gap-2 pt-0.5 text-[11px] text-muted-foreground font-mono">
+                      <span>user_id: <span className="text-foreground select-all">{u.user_id}</span></span>
                     </div>
                   </div>
 
-                  {/* Ações Administrativas */}
+                  {/* Ações Administrativas conectadas às RPCs oficiais */}
                   <div className="flex flex-wrap items-center gap-2 shrink-0">
-                    {/* Botões de aprovação direta para pendentes (30 dias a contar do cadastro, 60 dias, etc.) */}
-                    {u.status === 'pendente' && (
+                    {/* Botões de aprovação direta para pendentes */}
+                    {(u.status_usuario === 'pendente' || u.status_assinatura === 'pendente') && (
                       <div className="flex items-center gap-1.5">
                         <button
                           type="button"
-                          disabled={usuarioAtualizandoId === u.id || sincronizandoBanco}
+                          disabled={usuarioAtualizandoId === u.user_id}
                           onClick={() => handleAprovar(u, 30)}
                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl gradient-emerald text-primary-foreground text-xs font-bold shadow-md hover:opacity-95 transition-all cursor-pointer disabled:opacity-50"
-                          title="Aprovar acesso por 30 dias a contar da data do cadastro"
+                          title="Aprovar acesso por 30 dias via RPC admin_aprovar_usuario"
                         >
                           <UserCheck className="size-3.5" />
                           <span>Aprovar 30 Dias</span>
                         </button>
                         <button
                           type="button"
-                          disabled={usuarioAtualizandoId === u.id || sincronizandoBanco}
+                          disabled={usuarioAtualizandoId === u.user_id}
                           onClick={() => handleAprovar(u, 60)}
                           className="px-2.5 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
-                          title="Aprovar acesso por 60 dias a contar da data do cadastro"
+                          title="Aprovar acesso por 60 dias"
                         >
                           <span>60 Dias</span>
                         </button>
                         <button
                           type="button"
-                          disabled={usuarioAtualizandoId === u.id || sincronizandoBanco}
+                          disabled={usuarioAtualizandoId === u.user_id}
                           onClick={() => handleAprovar(u, 90)}
                           className="px-2.5 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
-                          title="Aprovar acesso por 90 dias a contar da data do cadastro"
+                          title="Aprovar acesso por 90 dias"
                         >
                           <span>90 Dias</span>
                         </button>
                       </div>
                     )}
 
-                    {/* Ativar / Desativar Acesso Imediato com Sincronização */}
-                    {!isSuperAdmin && u.status !== 'pendente' && (
+                    {/* Ativar / Desativar Acesso via RPC admin_alternar_status_usuario */}
+                    {!isSuperAdmin && u.status_usuario !== 'pendente' && (
                       <button
                         type="button"
-                        disabled={usuarioAtualizandoId === u.id || sincronizandoBanco}
+                        disabled={usuarioAtualizandoId === u.user_id}
                         onClick={() => handleAlternarStatus(u)}
                         className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer disabled:opacity-50 ${
-                          u.status === 'ativo'
+                          u.acesso_valido
                             ? 'border-destructive/30 text-destructive hover:bg-destructive/10'
                             : 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10'
                         }`}
-                        title={u.status === 'ativo' ? 'Bloquear e sincronizar no banco de dados' : 'Ativar e sincronizar no banco de dados'}
+                        title={u.acesso_valido ? 'Desativar acesso via RPC' : 'Ativar acesso via RPC'}
                       >
-                        {usuarioAtualizandoId === u.id ? (
+                        {usuarioAtualizandoId === u.user_id ? (
                           <>
                             <RefreshCw className="size-3.5 animate-spin" />
-                            <span>Sincronizando...</span>
+                            <span>Processando...</span>
                           </>
-                        ) : u.status === 'ativo' ? (
+                        ) : u.acesso_valido ? (
                           <>
                             <Ban className="size-3.5" />
                             <span>Desativar Acesso</span>
@@ -815,23 +857,23 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
                       </button>
                     )}
 
-                    {/* Renovar +30 e +60 dias */}
+                    {/* Renovar +30 e +60 dias via RPC admin_aprovar_usuario */}
                     <button
                       type="button"
-                      disabled={usuarioAtualizandoId === u.id || sincronizandoBanco}
+                      disabled={usuarioAtualizandoId === u.user_id}
                       onClick={() => handleRenovarDias(u, 30)}
                       className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all shadow-xs cursor-pointer disabled:opacity-50"
-                      title="Adicionar mais 30 dias de assinatura mensal"
+                      title="Adicionar mais 30 dias de validade"
                     >
                       <Calendar className="size-3 text-primary" />
                       <span>+30 Dias</span>
                     </button>
                     <button
                       type="button"
-                      disabled={usuarioAtualizandoId === u.id || sincronizandoBanco}
+                      disabled={usuarioAtualizandoId === u.user_id}
                       onClick={() => handleRenovarDias(u, 60)}
                       className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all shadow-xs cursor-pointer disabled:opacity-50"
-                      title="Adicionar mais 60 dias de assinatura"
+                      title="Adicionar mais 60 dias de validade"
                     >
                       <Calendar className="size-3 text-primary" />
                       <span>+60 Dias</span>
@@ -841,23 +883,11 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
                     <button
                       type="button"
                       onClick={() => abrirEdicao(u)}
-                      className="p-2 rounded-xl border border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground transition-all"
-                      title="Editar plano, role e detalhes do usuário"
+                      className="p-2 rounded-xl border border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground transition-all cursor-pointer"
+                      title="Editar plano e dados do assinante"
                     >
                       <Edit className="size-3.5" />
                     </button>
-
-                    {/* Excluir */}
-                    {!isSuperAdmin && (
-                      <button
-                        type="button"
-                        onClick={() => handleExcluir(u)}
-                        className="p-2 rounded-xl border border-border bg-card hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
-                        title="Remover assinante"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
-                    )}
                   </div>
                 </div>
               </Card>
@@ -878,7 +908,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
               <button
                 type="button"
                 onClick={() => setModalNovoAberto(false)}
-                className="text-muted-foreground hover:text-foreground p-1"
+                className="text-muted-foreground hover:text-foreground p-1 cursor-pointer"
               >
                 <X className="size-4" />
               </button>
@@ -919,7 +949,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
                     Senha Provisória
                   </label>
                   <input
-                    type="text"
+                    type="password"
                     required
                     value={novaSenha}
                     onChange={e => setNovaSenha(e.target.value)}
@@ -928,7 +958,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     CRP / Registro (Opcional)
@@ -937,26 +967,11 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
                     type="text"
                     value={novoCrp}
                     onChange={e => setNovoCrp(e.target.value)}
-                    placeholder="Ex: 06/123456"
+                    placeholder="06/123456"
                     className="w-full h-10 px-3.5 rounded-xl border border-border bg-background text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    WhatsApp / Telefone
-                  </label>
-                  <input
-                    type="text"
-                    value={novoTelefone}
-                    onChange={e => setNovoTelefone(e.target.value)}
-                    placeholder="(11) 99999-9999"
-                    className="w-full h-10 px-3.5 rounded-xl border border-border bg-background text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     Plano
@@ -986,36 +1001,22 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
                     className="w-full h-10 px-3.5 rounded-xl border border-border bg-background text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                 </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    Perfil
-                  </label>
-                  <select
-                    value={novoRole}
-                    onChange={e => setNovoRole(e.target.value as 'admin' | 'psicologo')}
-                    className="w-full h-10 px-3 rounded-xl border border-border bg-background text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <option value="psicologo">Psicólogo</option>
-                    <option value="admin">Administrador</option>
-                  </select>
-                </div>
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-border">
                 <button
                   type="button"
                   onClick={() => setModalNovoAberto(false)}
-                  className="px-4 py-2 text-xs font-semibold rounded-xl border border-border hover:bg-muted text-foreground transition-colors"
+                  className="px-4 py-2 text-xs font-semibold rounded-xl border border-border hover:bg-muted text-foreground transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={salvandoNovo}
-                  className="px-5 py-2 rounded-xl gradient-emerald text-primary-foreground font-bold text-xs shadow-md hover:opacity-95 transition-all flex items-center gap-2 disabled:opacity-50"
+                  className="px-5 py-2 rounded-xl gradient-emerald text-primary-foreground font-bold text-xs shadow-md hover:opacity-95 transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer"
                 >
-                  {salvandoNovo ? 'Salvando...' : 'Criar e Liberar Acesso'}
+                  {salvandoNovo ? 'Criando...' : 'Criar Assinante'}
                 </button>
               </div>
             </form>
@@ -1035,7 +1036,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
               <button
                 type="button"
                 onClick={() => setModalEditarAberto(false)}
-                className="text-muted-foreground hover:text-foreground p-1"
+                className="text-muted-foreground hover:text-foreground p-1 cursor-pointer"
               >
                 <X className="size-4" />
               </button>
@@ -1070,25 +1071,11 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
 
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    Telefone
-                  </label>
-                  <input
-                    type="text"
-                    value={editTelefone}
-                    onChange={e => setEditTelefone(e.target.value)}
-                    className="w-full h-10 px-3.5 rounded-xl border border-border bg-background text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     Status de Acesso
                   </label>
                   <select
                     value={editStatus}
-                    onChange={e => setEditStatus(e.target.value as StatusAssinante)}
+                    onChange={e => setEditStatus(e.target.value as any)}
                     className="w-full h-10 px-3 rounded-xl border border-border bg-background text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <option value="ativo">Ativo</option>
@@ -1096,21 +1083,9 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
                     <option value="inativo">Inativo</option>
                   </select>
                 </div>
+              </div>
 
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    Perfil
-                  </label>
-                  <select
-                    value={editRole}
-                    onChange={e => setEditRole(e.target.value as 'admin' | 'psicologo')}
-                    className="w-full h-10 px-3 rounded-xl border border-border bg-background text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <option value="psicologo">Psicólogo</option>
-                    <option value="admin">Administrador</option>
-                  </select>
-                </div>
-
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     Plano
@@ -1126,136 +1101,34 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
                     <option value="saas_pro">SaaS Pro</option>
                   </select>
                 </div>
-              </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
-                  <span>Validade da Assinatura</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const base = usuarioEmEdicao?.criadoEm ? new Date(usuarioEmEdicao.criadoEm) : new Date();
-                        const d = new Date(base.getTime() + 30 * 24 * 60 * 60 * 1000);
-                        setEditValidoAte(d.toISOString().split('T')[0]);
-                      }}
-                      className="text-[10px] text-primary hover:underline font-semibold"
-                      title="30 dias a contar da data de cadastro"
-                    >
-                      30d cadastro
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const base = usuarioEmEdicao?.criadoEm ? new Date(usuarioEmEdicao.criadoEm) : new Date();
-                        const d = new Date(base.getTime() + 60 * 24 * 60 * 60 * 1000);
-                        setEditValidoAte(d.toISOString().split('T')[0]);
-                      }}
-                      className="text-[10px] text-primary hover:underline font-semibold"
-                      title="60 dias a contar da data de cadastro"
-                    >
-                      60d cadastro
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const base = usuarioEmEdicao?.criadoEm ? new Date(usuarioEmEdicao.criadoEm) : new Date();
-                        const d = new Date(base.getTime() + 90 * 24 * 60 * 60 * 1000);
-                        setEditValidoAte(d.toISOString().split('T')[0]);
-                      }}
-                      className="text-[10px] text-primary hover:underline font-semibold"
-                      title="90 dias a contar da data de cadastro"
-                    >
-                      90d cadastro
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const d = new Date();
-                        d.setDate(d.getDate() + 30);
-                        setEditValidoAte(d.toISOString().split('T')[0]);
-                      }}
-                      className="text-[10px] text-muted-foreground hover:text-foreground font-semibold"
-                      title="+30 dias a contar de hoje"
-                    >
-                      +30d hoje
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const d = new Date();
-                        d.setDate(d.getDate() + 365);
-                        setEditValidoAte(d.toISOString().split('T')[0]);
-                      }}
-                      className="text-[10px] text-muted-foreground hover:text-foreground font-semibold"
-                      title="+1 ano a contar de hoje"
-                    >
-                      +1 ano
-                    </button>
-                  </div>
-                </label>
-                <input
-                  type="date"
-                  value={editValidoAte}
-                  onChange={e => setEditValidoAte(e.target.value)}
-                  className="w-full h-10 px-3.5 rounded-xl border border-border bg-background text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <Key className="size-3.5 text-primary" />
-                    Senha de Acesso (Sincronizada no Banco)
-                  </span>
-                  {editSenha && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(editSenha);
-                        mostrarFeedback('Senha copiada para a área de transferência!');
-                      }}
-                      className="text-[10px] text-primary hover:underline font-semibold flex items-center gap-1 cursor-pointer"
-                    >
-                      <Copy className="size-3" />
-                      Copiar
-                    </button>
-                  )}
-                </label>
-                <div className="relative">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Dias de Validade
+                  </label>
                   <input
-                    type={mostrarEditSenha ? 'text' : 'password'}
-                    value={editSenha}
-                    onChange={e => setEditSenha(e.target.value)}
-                    placeholder="Digite para alterar ou definir a senha deste usuário"
-                    className="w-full h-10 px-3.5 pr-10 rounded-xl border border-border bg-background text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring font-mono"
+                    type="number"
+                    min="1"
+                    max="3650"
+                    value={editDiasValidade}
+                    onChange={e => setEditDiasValidade(Number(e.target.value))}
+                    className="w-full h-10 px-3.5 rounded-xl border border-border bg-background text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setMostrarEditSenha(!mostrarEditSenha)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1 cursor-pointer"
-                    title={mostrarEditSenha ? 'Ocultar' : 'Exibir'}
-                  >
-                    {mostrarEditSenha ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                  </button>
                 </div>
-                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                  Ao salvar, a nova senha é sincronizada com o banco de dados e substitui a senha atual do assinante.
-                </p>
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-border">
                 <button
                   type="button"
                   onClick={() => setModalEditarAberto(false)}
-                  className="px-4 py-2 text-xs font-semibold rounded-xl border border-border hover:bg-muted text-foreground transition-colors"
+                  className="px-4 py-2 text-xs font-semibold rounded-xl border border-border hover:bg-muted text-foreground transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={salvandoEdicao}
-                  className="px-5 py-2 rounded-xl gradient-emerald text-primary-foreground font-bold text-xs shadow-md hover:opacity-95 transition-all flex items-center gap-2 disabled:opacity-50"
+                  className="px-5 py-2 rounded-xl gradient-emerald text-primary-foreground font-bold text-xs shadow-md hover:opacity-95 transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer"
                 >
                   {salvandoEdicao ? 'Salvando...' : 'Salvar Alterações'}
                 </button>
@@ -1273,20 +1146,20 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
               <div className="flex items-center gap-2">
                 <FileText className="size-5 text-primary" />
                 <h3 className="text-base font-bold text-foreground">
-                  Script SQL de Inicialização e Políticas RLS (Supabase)
+                  Script SQL Oficial (RPCs & RLS)
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setModalSqlAberto(false)}
-                className="text-muted-foreground hover:text-foreground p-1"
+                className="text-muted-foreground hover:text-foreground p-1 cursor-pointer"
               >
                 <X className="size-4" />
               </button>
             </div>
 
             <p className="text-xs text-muted-foreground leading-relaxed shrink-0">
-              Execute este script no <strong>SQL Editor</strong> do seu painel Supabase para criar as funções administrativas de aprovação e as regras de segurança RLS:
+              Contém as funções RPC <code>admin_listar_assinaturas</code>, <code>usuario_tem_acesso</code>, <code>admin_aprovar_usuario</code> e <code>admin_alternar_status_usuario</code>:
             </p>
 
             <div className="flex-1 overflow-y-auto bg-muted/60 p-4 rounded-xl border border-border font-mono text-[11px] text-foreground space-y-1">
@@ -1297,14 +1170,14 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
               <button
                 type="button"
                 onClick={() => setModalSqlAberto(false)}
-                className="px-4 py-2 text-xs font-semibold rounded-xl border border-border hover:bg-muted text-foreground transition-colors"
+                className="px-4 py-2 text-xs font-semibold rounded-xl border border-border hover:bg-muted text-foreground transition-colors cursor-pointer"
               >
                 Fechar
               </button>
               <button
                 type="button"
                 onClick={copiarSql}
-                className="px-4 py-2 rounded-xl gradient-emerald text-primary-foreground font-bold text-xs shadow-md hover:opacity-95 transition-all flex items-center gap-1.5"
+                className="px-4 py-2 rounded-xl gradient-emerald text-primary-foreground font-bold text-xs shadow-md hover:opacity-95 transition-all flex items-center gap-1.5 cursor-pointer"
               >
                 {copiadoSql ? <Check className="size-4" /> : <Copy className="size-4" />}
                 <span>{copiadoSql ? 'Copiado para Área de Transferência!' : 'Copiar Script SQL'}</span>

@@ -88,6 +88,7 @@ import {
   TrendingUp
 } from 'lucide-react';
 import {
+  supabase,
   getSupabase,
   obterUsuarioAutenticadoSupabase,
   obterSessaoAssinanteAtiva,
@@ -206,6 +207,7 @@ export default function App() {
   // Licença SaaS (Nuvem)
   const [licencaSaas, setLicencaSaas] = useState<any | null>(null);
   const [statusLicenca, setStatusLicenca] = useState({ valida: true, apenasLeitura: false, motivo: '' });
+  const [validandoAcessoUsuario, setValidandoAcessoUsuario] = useState(false);
 
   // Migração e Inventário de Dados Legados
   const [inventarioLegado, setInventarioLegado] = useState<InventarioLegado | null>(null);
@@ -333,29 +335,25 @@ export default function App() {
     })();
   }, []);
 
-  // Monitoramento periódico de status (ativação / bloqueio em tempo real pelo Administrador Master)
+  // Monitoramento periódico de status via RPC oficial usuario_tem_acesso
   useEffect(() => {
     if (!usuarioAutenticado || !contaUsuario?.id || podeGerenciarAcessos) return;
 
     const checarStatusLicenca = async () => {
       try {
-        const lic = await consultarLicencaAssinante(contaUsuario.id);
-        if (lic) {
-          const statusReal: 'ativo' | 'inativo' | 'pendente' =
-            (lic.status === 'inativa' || lic.statusUsuario === 'inativo')
-              ? 'inativo'
-              : (lic.status === 'pendente' || lic.statusUsuario === 'pendente')
-              ? 'pendente'
-              : 'ativo';
-
-          if (contaUsuario.status !== statusReal) {
-            setContaUsuario(prev => prev ? { ...prev, status: statusReal } : null);
+        const { data, error } = await supabase.rpc('usuario_tem_acesso');
+        if (!error && typeof data === 'boolean') {
+          if (!data && contaUsuario.status === 'ativo') {
+            setContaUsuario(prev => prev ? { ...prev, status: 'inativo' } : null);
+          } else if (data && (contaUsuario.status === 'inativo' || contaUsuario.status === 'pendente')) {
+            setContaUsuario(prev => prev ? { ...prev, status: 'ativo' } : null);
           }
         }
       } catch (_) {}
     };
 
-    const intervalId = setInterval(checarStatusLicenca, 10000); // verifica a cada 10s
+    checarStatusLicenca();
+    const intervalId = setInterval(checarStatusLicenca, 15000);
     return () => clearInterval(intervalId);
   }, [usuarioAutenticado, contaUsuario?.id, podeGerenciarAcessos, contaUsuario?.status]);
 
@@ -934,18 +932,31 @@ export default function App() {
           <div className="space-y-2 pt-2">
             <button
               type="button"
+              disabled={validandoAcessoUsuario}
               onClick={async () => {
-                const lic = await consultarLicencaAssinante(contaUsuario.id);
-                if (lic && lic.status === 'ativa' && lic.statusUsuario === 'ativo') {
-                  setContaUsuario(prev => prev ? { ...prev, status: 'ativo' } : null);
-                  alert('Acesso reativado com sucesso pelo Administrador!');
-                } else {
-                  alert('Sua conta ainda se encontra aguardando aprovação ou inativa no banco de dados. Aguarde a liberação do Administrador Master.');
+                setValidandoAcessoUsuario(true);
+                try {
+                  const { data, error } = await supabase.rpc('usuario_tem_acesso');
+                  if (error) {
+                    alert(`Falha na validação de acesso: A função RPC 'usuario_tem_acesso' retornou erro: ${error.message} (Código: ${error.code || 'PGRST'})`);
+                    return;
+                  }
+                  const temAcesso = Boolean(data);
+                  if (temAcesso) {
+                    setContaUsuario(prev => prev ? { ...prev, status: 'ativo' } : null);
+                    alert('Validação concluída: Seu acesso está liberado e ativo no banco de dados!');
+                  } else {
+                    alert('Validação concluída: Seu usuário ainda não possui acesso válido ou está aguardando liberação do administrador no banco de dados.');
+                  }
+                } catch (err: any) {
+                  alert(`Erro ao validar acesso na RPC 'usuario_tem_acesso': ${err?.message || 'Falha de comunicação'}`);
+                } finally {
+                  setValidandoAcessoUsuario(false);
                 }
               }}
-              className="w-full py-2.5 rounded-xl gradient-emerald text-white text-xs font-bold shadow-md hover:opacity-95 transition-all cursor-pointer"
+              className="w-full py-2.5 rounded-xl gradient-emerald text-white text-xs font-bold shadow-md hover:opacity-95 transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              Verificar se Fui Reativado
+              {validandoAcessoUsuario ? 'Validando Acesso via RPC...' : 'Verificar se Fui Reativado (usuario_tem_acesso)'}
             </button>
 
             <button
