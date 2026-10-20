@@ -429,14 +429,14 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
           }, 900);
         } else {
           setSucessoCadastro(
-            'Cadastro realizado com sucesso! Sua conta foi enviada para validação e aprovação do Administrador. Assim que a sua assinatura mensal for ativada pelo administrador, seu acesso estará liberado.'
+            'Cadastro realizado com sucesso! Sua conta foi enviada para validação e aprovação do Administrador Master. Assim que seu acesso for ativado pelo administrador, você poderá entrar no sistema.'
           );
           setTimeout(() => {
             setAba('login');
             setEmailLogin(emailClean);
             setSenhaLogin(senhaCadastro);
             setSucessoCadastro('');
-          }, 4500);
+          }, 3500);
         }
       } else {
         setErroCadastro(res.erro || 'Erro ao criar conta no servidor.');
@@ -616,7 +616,9 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
                   required
                   value={emailLogin}
                   onChange={e => setEmailLogin(e.target.value)}
-                  placeholder="seu-email@dominio.com"
+                  placeholder="Digite seu e-mail"
+                  autoComplete="off"
+                  name="email_acesso_psi"
                   className="w-full h-11 px-3.5 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </div>
@@ -633,6 +635,8 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
                     value={senhaLogin}
                     onChange={e => setSenhaLogin(e.target.value)}
                     placeholder="••••••••"
+                    autoComplete="off"
+                    name="senha_acesso_psi"
                     className="w-full h-11 px-3.5 pr-10 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                   <button
@@ -671,73 +675,6 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
                   </>
                 )}
               </button>
-
-              {/* Contas de Administrador Master (Acesso Rápido) */}
-              <div className="pt-2 border-t border-border/60 space-y-2">
-                <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                  <span className="font-semibold flex items-center gap-1 text-foreground">
-                    <ShieldCheck className="size-3.5 text-primary" />
-                    Contas Master Pré-configuradas:
-                  </span>
-                  <span className="text-[10px]">Clique para preencher</span>
-                </div>
-
-                <div className="grid grid-cols-1 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmailLogin('sup.fin.adm@gmail.com');
-                      setSenhaLogin('Daniel12345');
-                      setErroLogin('');
-                    }}
-                    className={`w-full p-2.5 rounded-xl border text-left text-xs transition-all flex items-center justify-between group cursor-pointer ${
-                      emailLogin === 'sup.fin.adm@gmail.com'
-                        ? 'border-primary bg-primary/10 text-primary font-semibold'
-                        : 'border-border bg-card/60 hover:bg-muted text-foreground'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="size-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 grid place-items-center shrink-0">
-                        <ShieldCheck className="size-3.5" />
-                      </div>
-                      <div className="truncate">
-                        <div className="font-semibold text-xs leading-tight">Suporte Financeiro / Administrador</div>
-                        <div className="text-[10px] text-muted-foreground font-mono">sup.fin.adm@gmail.com</div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-semibold text-primary group-hover:translate-x-0.5 transition-all shrink-0">
-                      Preencher &rarr;
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmailLogin('backupvideomidias@gmail.com');
-                      setSenhaLogin('Daniel12345');
-                      setErroLogin('');
-                    }}
-                    className={`w-full p-2.5 rounded-xl border text-left text-xs transition-all flex items-center justify-between group cursor-pointer ${
-                      emailLogin === 'backupvideomidias@gmail.com'
-                        ? 'border-primary bg-primary/10 text-primary font-semibold'
-                        : 'border-border bg-card/60 hover:bg-muted text-foreground'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="size-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 grid place-items-center shrink-0">
-                        <ShieldCheck className="size-3.5" />
-                      </div>
-                      <div className="truncate">
-                        <div className="font-semibold text-xs leading-tight">Dr. Daniel (Administrador Master)</div>
-                        <div className="text-[10px] text-muted-foreground font-mono">backupvideomidias@gmail.com</div>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-semibold text-primary group-hover:translate-x-0.5 transition-all shrink-0">
-                      Preencher &rarr;
-                    </span>
-                  </button>
-                </div>
-              </div>
             </form>
           )}
 
@@ -790,7 +727,9 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
                   required
                   value={nomeCadastro}
                   onChange={e => setNomeCadastro(e.target.value)}
-                  placeholder="Dra. / Dr. / Analista"
+                  placeholder="Digite seu nome completo"
+                  autoComplete="off"
+                  name="nome_cadastro_psi"
                   className="w-full h-10 px-3.5 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </div>
@@ -804,7 +743,9 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
                   required
                   value={emailCadastro}
                   onChange={e => setEmailCadastro(e.target.value)}
-                  placeholder="analista@dominio.com"
+                  placeholder="Digite seu e-mail"
+                  autoComplete="off"
+                  name="email_cadastro_psi"
                   className="w-full h-10 px-3.5 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
               </div>

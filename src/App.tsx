@@ -927,8 +927,8 @@ export default function App() {
           </div>
 
           <div className="p-3.5 rounded-xl bg-muted/50 border border-border text-xs text-muted-foreground space-y-1">
-            <p className="font-semibold text-foreground">Contato da Administração:</p>
-            <p className="font-mono text-primary font-bold">backupvideomidias@gmail.com</p>
+            <p className="font-semibold text-foreground">Aviso do Sistema:</p>
+            <p className="text-muted-foreground">Aguarde a ativação pelo Administrador Master para ter seu acesso liberado ao consultório.</p>
           </div>
 
           <div className="space-y-2 pt-2">
@@ -940,7 +940,7 @@ export default function App() {
                   setContaUsuario(prev => prev ? { ...prev, status: 'ativo' } : null);
                   alert('Acesso reativado com sucesso pelo Administrador!');
                 } else {
-                  alert('Sua conta ainda se encontra inativa ou pendente. Aguarde a liberação do Administrador Geral.');
+                  alert('Sua conta ainda se encontra aguardando aprovação ou inativa no banco de dados. Aguarde a liberação do Administrador Master.');
                 }
               }}
               className="w-full py-2.5 rounded-xl gradient-emerald text-white text-xs font-bold shadow-md hover:opacity-95 transition-all cursor-pointer"

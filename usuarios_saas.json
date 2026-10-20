@@ -1,0 +1,28 @@
+[
+  {
+    "id": "a1000000-0000-4000-8000-000000000001",
+    "email": "backupvideomidias@gmail.com",
+    "senhaTexto": "Daniel12345",
+    "nomeCompleto": "Administrador Master",
+    "crp": "06/123456",
+    "role": "admin",
+    "status": "ativo",
+    "plano": "saas_pro",
+    "validoAte": "2036-12-31T23:59:59.000Z",
+    "criadoEm": "2026-10-14T12:00:00.000Z",
+    "origem": "local_resiliente"
+  },
+  {
+    "id": "a1000000-0000-4000-8000-000000000002",
+    "email": "sup.fin.adm@gmail.com",
+    "senhaTexto": "Daniel12345",
+    "nomeCompleto": "Administrador Suporte",
+    "crp": "06/654321",
+    "role": "admin",
+    "status": "ativo",
+    "plano": "saas_pro",
+    "validoAte": "2036-12-31T23:59:59.000Z",
+    "criadoEm": "2026-10-14T12:00:00.000Z",
+    "origem": "local_resiliente"
+  }
+]

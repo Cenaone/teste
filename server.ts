@@ -3,6 +3,7 @@ import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
@@ -74,16 +75,356 @@ function isMasterAdminServer(email?: string): boolean {
   return e === 'backupvideomidias@gmail.com' || e === 'sup.fin.adm@gmail.com';
 }
 
-  // Endpoint 2: Alternar status de acesso de usuário com sincronização imediata no Supabase
-  app.post('/api/admin/alternar-status', async (req, res) => {
+const ARQUIVO_USUARIOS_SERVER = path.resolve(__dirname, 'usuarios_saas.json');
+
+const CONTAS_MASTER_PADRAO = [
+  {
+    id: 'a1000000-0000-4000-8000-000000000001',
+    email: 'backupvideomidias@gmail.com',
+    senhaTexto: 'Daniel12345',
+    nomeCompleto: 'Administrador Master',
+    crp: '06/123456',
+    role: 'admin',
+    status: 'ativo',
+    plano: 'saas_pro',
+    validoAte: '2036-12-31T23:59:59.000Z',
+    criadoEm: '2026-10-14T12:00:00.000Z',
+    origem: 'local_resiliente'
+  },
+  {
+    id: 'a1000000-0000-4000-8000-000000000002',
+    email: 'sup.fin.adm@gmail.com',
+    senhaTexto: 'Daniel12345',
+    nomeCompleto: 'Administrador Suporte',
+    crp: '06/654321',
+    role: 'admin',
+    status: 'ativo',
+    plano: 'saas_pro',
+    validoAte: '2036-12-31T23:59:59.000Z',
+    criadoEm: '2026-10-14T12:00:00.000Z',
+    origem: 'local_resiliente'
+  }
+];
+
+function carregarUsuariosServidor(): any[] {
+  try {
+    if (fs.existsSync(ARQUIVO_USUARIOS_SERVER)) {
+      const conteudo = fs.readFileSync(ARQUIVO_USUARIOS_SERVER, 'utf-8');
+      const dados = JSON.parse(conteudo);
+      if (Array.isArray(dados) && dados.length > 0) {
+        // Garante que os master admins estejam sempre presentes e ativos
+        for (const m of CONTAS_MASTER_PADRAO) {
+          const idx = dados.findIndex(u => u.email?.toLowerCase() === m.email.toLowerCase());
+          if (idx >= 0) {
+            dados[idx].role = 'admin';
+            dados[idx].status = 'ativo';
+          } else {
+            dados.unshift(m);
+          }
+        }
+        return dados;
+      }
+    }
+  } catch (err) {
+    console.warn('[carregarUsuariosServidor]:', err);
+  }
+  return [...CONTAS_MASTER_PADRAO];
+}
+
+function salvarUsuariosServidor(lista: any[]): void {
+  try {
+    fs.writeFileSync(ARQUIVO_USUARIOS_SERVER, JSON.stringify(lista, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('[salvarUsuariosServidor]:', err);
+  }
+}
+
+  // Endpoint: Cadastro de novo usuário com inclusão no banco e status pendente para aprovação do master
+  app.post('/api/auth/registrar-usuario', async (req, res) => {
     try {
-      const { userId, novoStatus } = req.body;
-      if (!userId || !novoStatus) {
-        return res.status(400).json({ ok: false, erro: 'userId e novoStatus são obrigatórios.' });
+      const { id, email, nomeCompleto, crp, telefone, senha } = req.body;
+      if (!email) {
+        return res.status(400).json({ ok: false, erro: 'E-mail é obrigatório para cadastro.' });
       }
 
+      const emailClean = email.trim().toLowerCase();
+      const isMaster = isMasterAdminServer(emailClean);
+      const agora = new Date().toISOString();
+      const userId = id || `u_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+      const novoUsuario = {
+        id: userId,
+        email: emailClean,
+        nomeCompleto: nomeCompleto || emailClean.split('@')[0],
+        crp: crp || null,
+        telefone: telefone || null,
+        senhaTexto: senha || null,
+        role: isMaster ? 'admin' : 'psicologo',
+        status: isMaster ? 'ativo' : 'pendente',
+        plano: isMaster ? 'saas_pro' : 'mensal',
+        validoAte: isMaster
+          ? '2036-12-31T23:59:59.000Z'
+          : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        criadoEm: agora,
+        atualizadoEm: agora,
+        origem: 'registro_servidor'
+      };
+
+      // 1. Salva no banco de dados persistente do servidor
+      const lista = carregarUsuariosServidor();
+      const idx = lista.findIndex(u => u.email?.toLowerCase() === emailClean);
+      if (idx >= 0) {
+        lista[idx] = { ...lista[idx], ...novoUsuario };
+      } else {
+        lista.push(novoUsuario);
+      }
+      salvarUsuariosServidor(lista);
+
+      // 2. Sincroniza imediatamente com o Supabase
+      try {
+        await supabaseAdmin.from('usuarios').upsert({
+          id: userId,
+          email: emailClean,
+          nome: novoUsuario.nomeCompleto,
+          crp: novoUsuario.crp,
+          telefone: novoUsuario.telefone,
+          role: novoUsuario.role,
+          status: novoUsuario.status,
+          senha_texto: novoUsuario.senhaTexto,
+          atualizado_em: agora
+        }, { onConflict: 'id' });
+
+        await supabaseAdmin.from('assinaturas_saas').upsert({
+          user_id: userId,
+          status: isMaster ? 'ativa' : 'pendente',
+          plano: novoUsuario.plano,
+          valido_ate: novoUsuario.validoAte,
+          atualizado_em: agora
+        }, { onConflict: 'user_id' });
+      } catch (errDb) {
+        console.warn('[registrar-usuario Supabase sync notice]:', errDb);
+      }
+
+      console.log(`[REGISTRO] Novo usuário registrado: ${emailClean} (status: ${novoUsuario.status})`);
+
+      return res.json({
+        ok: true,
+        usuario: novoUsuario,
+        mensagem: isMaster
+          ? 'Administrador Master ativo.'
+          : 'Cadastro realizado com sucesso! Sua conta está aguardando ativação pelo Administrador Master.'
+      });
+    } catch (err: any) {
+      console.error('[POST /api/auth/registrar-usuario erro]:', err);
+      return res.status(500).json({ ok: false, erro: err?.message || 'Erro ao registrar usuário' });
+    }
+  });
+
+  // Endpoint: Consulta status em tempo real do usuário para validação no login
+  app.get('/api/auth/status-usuario', async (req, res) => {
+    try {
+      const email = typeof req.query.email === 'string' ? req.query.email.trim().toLowerCase() : '';
+      const userId = typeof req.query.userId === 'string' ? req.query.userId.trim() : '';
+
+      if (!email && !userId) {
+        return res.status(400).json({ ok: false, erro: 'Informe email ou userId.' });
+      }
+
+      const lista = carregarUsuariosServidor();
+      const u = lista.find(item => 
+        (email && item.email?.toLowerCase() === email) || 
+        (userId && item.id === userId)
+      );
+
+      if (!u) {
+        return res.json({ ok: false, encontrado: false, status: 'desconhecido' });
+      }
+
+      return res.json({
+        ok: true,
+        encontrado: true,
+        id: u.id,
+        email: u.email,
+        nomeCompleto: u.nomeCompleto,
+        role: u.role,
+        status: u.status,
+        plano: u.plano,
+        validoAte: u.validoAte
+      });
+    } catch (err: any) {
+      console.error('[GET /api/auth/status-usuario erro]:', err);
+      return res.status(500).json({ ok: false, erro: err?.message });
+    }
+  });
+
+  // Endpoint: Listagem consolidada de todos os usuários para o painel de aprovação do master
+  app.get('/api/admin/listar-usuarios', async (_req, res) => {
+    try {
+      const mapa = new Map<string, any>();
+
+      // 1. Carrega do banco persistente local do servidor
+      const usuariosLocais = carregarUsuariosServidor();
+      for (const u of usuariosLocais) {
+        if (u.id) mapa.set(u.id, { ...u });
+        if (u.email) mapa.set(u.email.toLowerCase(), { ...u });
+      }
+
+      // 2. Tenta enriquecer com dados do Supabase
+      try {
+        const { data: remotos } = await supabaseAdmin.from('usuarios').select('*');
+        if (Array.isArray(remotos)) {
+          for (const u of remotos) {
+            const email = (u.email || '').toLowerCase();
+            const existente = mapa.get(u.id) || (email ? mapa.get(email) : undefined);
+            const isMaster = isMasterAdminServer(email);
+
+            const item = {
+              id: u.id,
+              email: u.email || existente?.email || '',
+              nomeCompleto: u.nome || existente?.nomeCompleto || email.split('@')[0],
+              crp: u.crp || existente?.crp,
+              telefone: u.telefone || existente?.telefone,
+              senhaTexto: u.senha_texto || existente?.senhaTexto,
+              role: isMaster ? 'admin' : (u.role || existente?.role || 'psicologo'),
+              status: isMaster ? 'ativo' : (u.status || existente?.status || 'pendente'),
+              plano: isMaster ? 'saas_pro' : (existente?.plano || 'mensal'),
+              validoAte: isMaster
+                ? '2036-12-31T23:59:59.000Z'
+                : (existente?.validoAte || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()),
+              criadoEm: u.criado_em || existente?.criadoEm || new Date().toISOString(),
+              origem: 'supabase'
+            };
+
+            mapa.set(u.id, item);
+            if (email) mapa.set(email, item);
+          }
+        }
+      } catch (errDb) {
+        console.warn('[listar-usuarios Supabase notice]:', errDb);
+      }
+
+      // Deduplica por id
+      const resultado: any[] = [];
+      const idsVistos = new Set<string>();
+      for (const item of mapa.values()) {
+        if (!idsVistos.has(item.id)) {
+          idsVistos.add(item.id);
+          resultado.push(item);
+        }
+      }
+
+      salvarUsuariosServidor(resultado);
+
+      return res.json({ ok: true, usuarios: resultado });
+    } catch (err: any) {
+      console.error('[GET /api/admin/listar-usuarios erro]:', err);
+      return res.status(500).json({ ok: false, erro: err?.message || 'Erro ao listar usuários' });
+    }
+  });
+
+  // Endpoint: Aprovação de usuário pendente pelo Administrador Master
+  app.post('/api/admin/aprovar-usuario', async (req, res) => {
+    try {
+      const { userId, email, diasValidade = 30, plano = 'mensal', adminEmail } = req.body;
+      if (!userId && !email) {
+        return res.status(400).json({ ok: false, erro: 'userId ou email é obrigatório.' });
+      }
+
+      const agora = new Date().toISOString();
+      const validade = new Date(Date.now() + diasValidade * 24 * 60 * 60 * 1000).toISOString();
+      const emailAlvo = email ? email.trim().toLowerCase() : '';
+
+      // 1. Atualiza no armazenamento persistente do servidor
+      const lista = carregarUsuariosServidor();
+      let idx = lista.findIndex(u => (userId && u.id === userId) || (emailAlvo && u.email?.toLowerCase() === emailAlvo));
+      
+      let usuarioAtualizado = null;
+      if (idx >= 0) {
+        lista[idx].status = 'ativo';
+        lista[idx].plano = plano;
+        lista[idx].validoAte = validade;
+        lista[idx].aprovadoEm = agora;
+        lista[idx].aprovadoPor = adminEmail || 'Administrador Master';
+        lista[idx].atualizadoEm = agora;
+        usuarioAtualizado = lista[idx];
+      } else {
+        usuarioAtualizado = {
+          id: userId || `u_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          email: emailAlvo || '',
+          nomeCompleto: emailAlvo ? emailAlvo.split('@')[0] : 'Assinante',
+          role: 'psicologo',
+          status: 'ativo',
+          plano,
+          validoAte: validade,
+          aprovadoEm: agora,
+          aprovadoPor: adminEmail || 'Administrador Master',
+          criadoEm: agora,
+          atualizadoEm: agora,
+          origem: 'aprovacao_servidor'
+        };
+        lista.push(usuarioAtualizado);
+      }
+      salvarUsuariosServidor(lista);
+
+      const targetId = usuarioAtualizado.id;
+
+      // 2. Invoca RPC do Supabase se disponível
+      try {
+        await supabaseAdmin.rpc('admin_aprovar_usuario', {
+          p_user_id: targetId,
+          p_dias_validade: diasValidade,
+          p_plano: plano,
+          p_admin_email: adminEmail || 'Administrador Master'
+        });
+      } catch (_) {}
+
+      // 3. Atualiza diretamente em public.usuarios e public.assinaturas_saas
+      try {
+        await supabaseAdmin
+          .from('usuarios')
+          .update({ status: 'ativo', atualizado_em: agora })
+          .eq('id', targetId);
+
+        await supabaseAdmin
+          .from('assinaturas_saas')
+          .upsert({
+            user_id: targetId,
+            status: 'ativa',
+            plano: plano,
+            valido_ate: validade,
+            atualizado_em: agora
+          }, { onConflict: 'user_id' });
+      } catch (errDb) {
+        console.warn('[aprovar-usuario Supabase sync notice]:', errDb);
+      }
+
+      console.log(`[APROVAÇÃO] Usuário ${targetId} (${usuarioAtualizado.email}) aprovado e ativado pelo Master.`);
+
+      return res.json({
+        ok: true,
+        usuario: usuarioAtualizado,
+        mensagem: 'Usuário aprovado e ativado com sucesso! Acesso liberado no banco de dados.'
+      });
+    } catch (err: any) {
+      console.error('[POST /api/admin/aprovar-usuario erro]:', err);
+      return res.status(500).json({ ok: false, erro: err?.message || 'Erro ao aprovar usuário' });
+    }
+  });
+
+  // Endpoint: Alternar status de acesso de usuário (Ativar / Desativar / Bloquear)
+  app.post('/api/admin/alternar-status', async (req, res) => {
+    try {
+      const { userId, email, novoStatus } = req.body;
+      if ((!userId && !email) || !novoStatus) {
+        return res.status(400).json({ ok: false, erro: 'Informe userId/email e novoStatus.' });
+      }
+
+      const emailAlvo = email ? email.trim().toLowerCase() : '';
+      const lista = carregarUsuariosServidor();
+      let idx = lista.findIndex(u => (userId && u.id === userId) || (emailAlvo && u.email?.toLowerCase() === emailAlvo));
+      const usuarioAlvo = idx >= 0 ? lista[idx] : null;
+
       // Protege Administradores Master de desativação
-      const { data: usuarioAlvo } = await supabaseAdmin.from('usuarios').select('email').eq('id', userId).maybeSingle();
       if (usuarioAlvo?.email && isMasterAdminServer(usuarioAlvo.email) && novoStatus !== 'ativo') {
         return res.status(400).json({ ok: false, erro: 'A conta de Administrador Geral Master não pode ser desativada.' });
       }
@@ -91,38 +432,69 @@ function isMasterAdminServer(email?: string): boolean {
       const agora = new Date().toISOString();
       const statusAssinatura = novoStatus === 'ativo' ? 'ativa' : novoStatus === 'pendente' ? 'pendente' : 'inativa';
 
-      // 1. Invoca RPC segura no PostgreSQL
-      try {
-        await supabaseAdmin.rpc('admin_alternar_status_usuario', {
-          p_user_id: userId,
-          p_novo_status: novoStatus
+      // 1. Atualiza no banco persistente do servidor imediatamente
+      let targetId = userId;
+      if (idx >= 0) {
+        lista[idx].status = novoStatus;
+        lista[idx].atualizadoEm = agora;
+        targetId = lista[idx].id;
+        salvarUsuariosServidor(lista);
+      } else if (emailAlvo) {
+        targetId = userId || `u_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        lista.push({
+          id: targetId,
+          email: emailAlvo,
+          nomeCompleto: emailAlvo.split('@')[0],
+          role: 'psicologo',
+          status: novoStatus,
+          plano: 'mensal',
+          validoAte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          criadoEm: agora,
+          atualizadoEm: agora,
+          origem: 'status_servidor'
         });
-      } catch (errRpc) {
-        console.warn('[RPC admin_alternar_status_usuario notice]:', errRpc);
+        salvarUsuariosServidor(lista);
       }
 
-      // 2. Atualiza diretamente a tabela usuarios
-      await supabaseAdmin
-        .from('usuarios')
-        .update({
-          status: novoStatus,
-          atualizado_em: agora
-        })
-        .eq('id', userId);
+      // 2. Invoca RPC segura no PostgreSQL do Supabase
+      if (targetId) {
+        try {
+          await supabaseAdmin.rpc('admin_alternar_status_usuario', {
+            p_user_id: targetId,
+            p_novo_status: novoStatus
+          });
+        } catch (errRpc) {
+          console.warn('[RPC admin_alternar_status_usuario notice]:', errRpc);
+        }
 
-      // 3. Atualiza ou insere na tabela assinaturas_saas
-      await supabaseAdmin
-        .from('assinaturas_saas')
-        .upsert({
-          user_id: userId,
-          status: statusAssinatura,
-          atualizado_em: agora
-        }, { onConflict: 'user_id' });
+        // 3. Atualiza diretamente a tabela usuarios no Supabase
+        try {
+          await supabaseAdmin
+            .from('usuarios')
+            .update({
+              status: novoStatus,
+              atualizado_em: agora
+            })
+            .eq('id', targetId);
+
+          await supabaseAdmin
+            .from('assinaturas_saas')
+            .upsert({
+              user_id: targetId,
+              status: statusAssinatura,
+              atualizado_em: agora
+            }, { onConflict: 'user_id' });
+        } catch (errDb) {
+          console.warn('[alternar-status Supabase sync notice]:', errDb);
+        }
+      }
+
+      console.log(`[STATUS] Usuário ${targetId} (${emailAlvo}) atualizado para status '${novoStatus}'`);
 
       return res.json({
         ok: true,
         status: novoStatus,
-        mensagem: `Status do assinante atualizado para ${novoStatus} no Supabase com sucesso.`
+        mensagem: `Status do assinante atualizado para '${novoStatus}' com sucesso no banco de dados.`
       });
     } catch (err: any) {
       console.error('[POST /api/admin/alternar-status erro]:', err);
@@ -130,25 +502,84 @@ function isMasterAdminServer(email?: string): boolean {
     }
   });
 
-  // Endpoint 3: Sincronização forçada completa de todos os usuários entre o app e o Supabase
+  // Endpoint: Atualizar dados de perfil e assinatura de usuário
+  app.post('/api/admin/atualizar-usuario', async (req, res) => {
+    try {
+      const { userId, email, dados } = req.body;
+      if (!userId && !email) {
+        return res.status(400).json({ ok: false, erro: 'userId ou email é obrigatório.' });
+      }
+
+      const agora = new Date().toISOString();
+      const emailAlvo = email ? email.trim().toLowerCase() : '';
+      const lista = carregarUsuariosServidor();
+      const idx = lista.findIndex(u => (userId && u.id === userId) || (emailAlvo && u.email?.toLowerCase() === emailAlvo));
+
+      if (idx >= 0) {
+        lista[idx] = {
+          ...lista[idx],
+          ...(dados.nome ? { nomeCompleto: dados.nome } : {}),
+          ...(dados.crp !== undefined ? { crp: dados.crp } : {}),
+          ...(dados.telefone !== undefined ? { telefone: dados.telefone } : {}),
+          ...(dados.role ? { role: dados.role } : {}),
+          ...(dados.status ? { status: dados.status } : {}),
+          ...(dados.plano ? { plano: dados.plano } : {}),
+          ...(dados.validoAte ? { validoAte: dados.validoAte } : {}),
+          ...(dados.senha ? { senhaTexto: dados.senha } : {}),
+          atualizadoEm: agora
+        };
+        salvarUsuariosServidor(lista);
+
+        const targetId = lista[idx].id;
+        try {
+          await supabaseAdmin.from('usuarios').update({
+            ...(dados.nome ? { nome: dados.nome } : {}),
+            ...(dados.crp !== undefined ? { crp: dados.crp } : {}),
+            ...(dados.telefone !== undefined ? { telefone: dados.telefone } : {}),
+            ...(dados.role ? { role: dados.role } : {}),
+            ...(dados.status ? { status: dados.status } : {}),
+            ...(dados.senha ? { senha_texto: dados.senha } : {}),
+            atualizado_em: agora
+          }).eq('id', targetId);
+        } catch (_) {}
+
+        return res.json({ ok: true, usuario: lista[idx], mensagem: 'Usuário atualizado com sucesso no banco de dados.' });
+      }
+
+      return res.status(404).json({ ok: false, erro: 'Usuário não encontrado para atualização.' });
+    } catch (err: any) {
+      console.error('[POST /api/admin/atualizar-usuario erro]:', err);
+      return res.status(500).json({ ok: false, erro: err?.message || 'Erro ao atualizar dados do usuário' });
+    }
+  });
+
+  // Endpoint: Sincronização forçada completa de todos os usuários
   app.post('/api/admin/sincronizar-usuarios', async (req, res) => {
     try {
       const { usuariosLocais } = req.body;
       const agora = new Date().toISOString();
+      const listaAtual = carregarUsuariosServidor();
 
       if (Array.isArray(usuariosLocais) && usuariosLocais.length > 0) {
         for (const u of usuariosLocais) {
           if (u.id && u.email) {
-            try {
-              const isMaster = isMasterAdminServer(u.email);
-              const statusReal = isMaster ? 'ativo' : (u.status || 'ativo');
-              const roleReal = isMaster ? 'admin' : (u.role || 'psicologo');
-              const statusAss = isMaster ? 'ativa' : (u.status === 'ativo' ? 'ativa' : u.status === 'pendente' ? 'pendente' : 'inativa');
-              const planoReal = isMaster ? 'saas_pro' : (u.plano || 'mensal');
-              const validadeReal = isMaster
-                ? '2036-12-31T23:59:59.000Z'
-                : (u.validoAte || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString());
+            const isMaster = isMasterAdminServer(u.email);
+            const statusReal = isMaster ? 'ativo' : (u.status || 'ativo');
+            const roleReal = isMaster ? 'admin' : (u.role || 'psicologo');
+            const statusAss = isMaster ? 'ativa' : (u.status === 'ativo' ? 'ativa' : u.status === 'pendente' ? 'pendente' : 'inativa');
+            const planoReal = isMaster ? 'saas_pro' : (u.plano || 'mensal');
+            const validadeReal = isMaster
+              ? '2036-12-31T23:59:59.000Z'
+              : (u.validoAte || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString());
 
+            const idx = listaAtual.findIndex(item => item.id === u.id || item.email?.toLowerCase() === u.email.toLowerCase());
+            if (idx >= 0) {
+              listaAtual[idx] = { ...listaAtual[idx], ...u, status: statusReal, role: roleReal, atualizadoEm: agora };
+            } else {
+              listaAtual.push({ ...u, status: statusReal, role: roleReal, criadoEm: agora, atualizadoEm: agora });
+            }
+
+            try {
               await supabaseAdmin.from('usuarios').upsert({
                 id: u.id,
                 email: u.email,
@@ -173,16 +604,12 @@ function isMasterAdminServer(email?: string): boolean {
             }
           }
         }
+        salvarUsuariosServidor(listaAtual);
       }
-
-      // Obtém dados remotos consolidados
-      const { data: usuariosRemotos } = await supabaseAdmin.from('usuarios').select('*');
-      const { data: assinaturasRemotas } = await supabaseAdmin.from('assinaturas_saas').select('*');
 
       return res.json({
         ok: true,
-        usuarios: usuariosRemotos || [],
-        assinaturas: assinaturasRemotas || [],
+        usuarios: listaAtual,
         sincronizadoEm: agora
       });
     } catch (err: any) {

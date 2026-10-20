@@ -330,3 +330,51 @@ ON CONFLICT (user_id) DO UPDATE SET
   plano = 'saas_pro',
   valido_ate = now() + interval '3650 days';
 
+-- 7. CONCESSÃO DE PERMISSÕES PARA ANON, AUTHENTICATED E SERVICE_ROLE
+GRANT ALL ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.usuarios TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.assinaturas_saas TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.psi40_dados TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.is_admin() TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.admin_aprovar_usuario(UUID, INTEGER, TEXT) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.admin_alternar_status_usuario(UUID, TEXT) TO anon, authenticated, service_role;
+
+-- Políticas de RLS para leitura de status no login e atualizações administrativas:
+DROP POLICY IF EXISTS "Anon e auth podem consultar status usuarios" ON public.usuarios;
+CREATE POLICY "Anon e auth podem consultar status usuarios"
+ON public.usuarios
+FOR SELECT
+TO anon, authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Anon e auth podem inserir usuarios" ON public.usuarios;
+CREATE POLICY "Anon e auth podem inserir usuarios"
+ON public.usuarios
+FOR INSERT
+TO anon, authenticated
+WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Anon e auth podem atualizar usuarios" ON public.usuarios;
+CREATE POLICY "Anon e auth podem atualizar usuarios"
+ON public.usuarios
+FOR UPDATE
+TO anon, authenticated
+USING (true)
+WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Anon e auth podem consultar assinaturas" ON public.assinaturas_saas;
+CREATE POLICY "Anon e auth podem consultar assinaturas"
+ON public.assinaturas_saas
+FOR SELECT
+TO anon, authenticated
+USING (true);
+
+DROP POLICY IF EXISTS "Anon e auth podem gerenciar assinaturas" ON public.assinaturas_saas;
+CREATE POLICY "Anon e auth podem gerenciar assinaturas"
+ON public.assinaturas_saas
+FOR ALL
+TO anon, authenticated
+USING (true)
+WITH CHECK (true);
+
+

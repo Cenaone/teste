@@ -80,7 +80,7 @@ export default function CofreDesbloqueioModal({
             {estaConfigurado ? 'Desbloquear Cofre Local Clínico' : 'Definir Senha do Cofre Local'}
           </h2>
           <p className="text-xs text-muted-foreground">
-            Conta Autenticada: <strong className="text-foreground">{emailUsuario}</strong>
+            Protegido por criptografia clínica Web Crypto AES-GCM 256-bit
           </p>
         </div>
 
@@ -89,22 +89,9 @@ export default function CofreDesbloqueioModal({
           <div className="space-y-0.5">
             <strong className="block font-semibold text-primary">Qual é esta senha?</strong>
             <span className="text-[11px] text-muted-foreground block">
-              É a mesma senha utilizada no seu login: <strong>{isContaPadrao ? 'Daniel12345' : 'a sua senha cadastrada'}</strong>.
+              Digite a mesma senha cadastrada utilizada no seu login de acesso.
             </span>
           </div>
-          {isContaPadrao && (
-            <button
-              type="button"
-              onClick={() => {
-                setSenha('Daniel12345');
-                setConfirmarSenha('Daniel12345');
-                setErro('');
-              }}
-              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 shrink-0 transition-opacity"
-            >
-              Preencher Senha
-            </button>
-          )}
         </div>
 
         {/* Security Disclaimers */}
@@ -136,7 +123,7 @@ export default function CofreDesbloqueioModal({
               Deseja redefinir a chave deste cofre local?
             </div>
             <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Caso seu cofre local tenha sido inicializado anteriormente com outra chave neste navegador, você pode sincronizá-lo agora com a senha atual ({senha || 'Daniel12345'}).
+              Caso seu cofre local tenha sido inicializado anteriormente com outra chave neste navegador, você pode sincronizá-lo agora com a senha digitada.
             </p>
             <button
               type="button"

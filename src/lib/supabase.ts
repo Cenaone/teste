@@ -368,7 +368,7 @@ export interface ContaAssinanteArmazenada {
   aprovadoEm?: string;
   aprovadoPor?: string;
   criadoEm: string;
-  origem: 'supabase' | 'local_resiliente';
+  origem: 'supabase' | 'local_resiliente' | 'servidor';
   observacoes?: string;
 }
 
@@ -383,7 +383,7 @@ export const CONTAS_ASSINANTES_INICIAIS: ContaAssinanteArmazenada[] = [
     id: 'a1000000-0000-4000-8000-000000000001',
     email: 'backupvideomidias@gmail.com',
     senhaTexto: 'Daniel12345',
-    nomeCompleto: 'Dr. Daniel (Administrador Master)',
+    nomeCompleto: 'Administrador Master',
     crp: '06/123456',
     role: 'admin',
     status: 'ativo',
@@ -396,7 +396,7 @@ export const CONTAS_ASSINANTES_INICIAIS: ContaAssinanteArmazenada[] = [
     id: 'a1000000-0000-4000-8000-000000000002',
     email: 'sup.fin.adm@gmail.com',
     senhaTexto: 'Daniel12345',
-    nomeCompleto: 'Suporte Financeiro / Administrador',
+    nomeCompleto: 'Administrador Suporte',
     crp: '06/654321',
     role: 'admin',
     status: 'ativo',
@@ -485,13 +485,42 @@ export async function listarUsuariosAdmin(): Promise<ContaAssinanteArmazenada[]>
   const contasLocais = obterContasAssinantes();
   const mapa = new Map<string, ContaAssinanteArmazenada>();
 
-  // Popula com dados locais conhecidos
+  // 1. Popula com dados locais conhecidos
   for (const c of contasLocais) {
     mapa.set(c.id, { ...c });
     mapa.set(c.email.toLowerCase(), { ...c });
   }
 
-  // Tenta sincronizar com o banco de dados do Supabase
+  // 2. Consulta banco persistente do servidor
+  try {
+    const resServer = await fetch('/api/admin/listar-usuarios');
+    const dataServer = await resServer.json();
+    if (dataServer.ok && Array.isArray(dataServer.usuarios)) {
+      for (const u of dataServer.usuarios) {
+        const item: ContaAssinanteArmazenada = {
+          id: u.id,
+          email: u.email,
+          senhaTexto: u.senhaTexto,
+          nomeCompleto: u.nomeCompleto || u.email.split('@')[0],
+          crp: u.crp,
+          telefone: u.telefone,
+          role: u.role || 'psicologo',
+          status: u.status || 'pendente',
+          plano: u.plano || 'mensal',
+          validoAte: u.validoAte,
+          criadoEm: u.criadoEm || new Date().toISOString(),
+          origem: 'servidor',
+          aprovadoEm: u.aprovadoEm,
+          aprovadoPor: u.aprovadoPor
+        };
+        mapa.set(u.id, item);
+        mapa.set(u.email.toLowerCase(), item);
+        salvarContaAssinante(item);
+      }
+    }
+  } catch (_) {}
+
+  // 3. Tenta sincronizar com o banco de dados do Supabase
   const cliente = getSupabase();
   if (cliente) {
     try {
@@ -506,6 +535,7 @@ export async function listarUsuariosAdmin(): Promise<ContaAssinanteArmazenada[]>
           const item: ContaAssinanteArmazenada = {
             id: u.id,
             email: u.email || existente?.email || '',
+            senhaTexto: u.senha_texto || existente?.senhaTexto,
             nomeCompleto: u.nome || existente?.nomeCompleto || email.split('@')[0],
             crp: u.crp || existente?.crp,
             telefone: u.telefone || existente?.telefone,
@@ -543,7 +573,7 @@ export async function listarUsuariosAdmin(): Promise<ContaAssinanteArmazenada[]>
         }
       }
     } catch (err) {
-      console.warn('[listarUsuariosAdmin]: Erro ao consultar Supabase, usando repositório local:', err);
+      console.warn('[listarUsuariosAdmin]: Erro ao consultar Supabase, usando repositório consolidado:', err);
     }
   }
 
@@ -573,12 +603,13 @@ export async function aprovarUsuarioAdmin(
   userId: string,
   diasValidade = 30,
   plano: PlanoAssinante = 'mensal',
-  adminEmail = 'backupvideomidias@gmail.com'
+  adminEmail = 'Administrador Master'
 ): Promise<{ ok: boolean; mensagem: string }> {
   const contas = obterContasAssinantes();
   const index = contas.findIndex(c => c.id === userId);
   const dataValidade = new Date(Date.now() + diasValidade * 24 * 60 * 60 * 1000).toISOString();
   const agora = new Date().toISOString();
+  const targetEmail = index >= 0 ? contas[index].email : undefined;
 
   if (index >= 0) {
     contas[index] = {
@@ -592,9 +623,26 @@ export async function aprovarUsuarioAdmin(
     salvarContaAssinante(contas[index]);
   }
 
-  // Tenta sincronizar com o Supabase
+  // 1. Envia comando imediatamente para o servidor / banco de dados
+  try {
+    await fetch('/api/admin/aprovar-usuario', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, email: targetEmail, diasValidade, plano, adminEmail })
+    });
+  } catch (_) {}
+
+  // 2. Sincroniza com o Supabase
   const cliente = getSupabase();
   if (cliente) {
+    try {
+      await cliente.rpc('admin_aprovar_usuario', {
+        p_user_id: userId,
+        p_dias_validade: diasValidade,
+        p_plano: plano
+      });
+    } catch (_) {}
+
     try {
       await cliente.from('usuarios').update({
         status: 'ativo',
@@ -613,7 +661,7 @@ export async function aprovarUsuarioAdmin(
     }
   }
 
-  return { ok: true, mensagem: `Assinante aprovado com sucesso! Acesso liberado por ${diasValidade} dias.` };
+  return { ok: true, mensagem: `Assinante aprovado com sucesso! Comando enviado para o banco de dados e acesso liberado por ${diasValidade} dias.` };
 }
 
 export async function alternarStatusAcessoUsuario(
@@ -623,6 +671,7 @@ export async function alternarStatusAcessoUsuario(
   const contas = obterContasAssinantes();
   const index = contas.findIndex(c => c.id === userId);
   const agora = new Date().toISOString();
+  const targetEmail = index >= 0 ? contas[index].email : undefined;
 
   if (index >= 0) {
     // Não permite desativar contas de Administradores Gerais Master
@@ -644,20 +693,13 @@ export async function alternarStatusAcessoUsuario(
     }
   }
 
-  // Sincronização Imediata e Rápida com Supabase
-  let sincSucesso = false;
-
-  // 1. Tenta rota rápida do servidor Node/Express
+  // 1. Envia comando imediatamente para o servidor / banco de dados
   try {
-    const resServer = await fetch('/api/admin/alternar-status', {
+    await fetch('/api/admin/alternar-status', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, novoStatus })
+      body: JSON.stringify({ userId, email: targetEmail, novoStatus })
     });
-    const dataServer = await resServer.json();
-    if (dataServer.ok) {
-      sincSucesso = true;
-    }
   } catch (_) {}
 
   // 2. Sincroniza via cliente Supabase (RPC + Tabelas)
@@ -665,13 +707,13 @@ export async function alternarStatusAcessoUsuario(
   if (cliente) {
     try {
       // Invoca a RPC segura no PostgreSQL
-      try {
-        await cliente.rpc('admin_alternar_status_usuario', {
-          p_user_id: userId,
-          p_novo_status: novoStatus
-        });
-      } catch (_) {}
+      await cliente.rpc('admin_alternar_status_usuario', {
+        p_user_id: userId,
+        p_novo_status: novoStatus
+      });
+    } catch (_) {}
 
+    try {
       // Atualiza tabelas public.usuarios e public.assinaturas_saas
       await cliente.from('usuarios').update({
         status: novoStatus,
@@ -683,18 +725,16 @@ export async function alternarStatusAcessoUsuario(
         status: novoStatus === 'ativo' ? 'ativa' : novoStatus === 'pendente' ? 'pendente' : 'inativa',
         atualizado_em: agora
       }, { onConflict: 'user_id' });
-
-      sincSucesso = true;
     } catch (err) {
       console.warn('[alternarStatusAcessoUsuario] Supabase sync notice:', err);
     }
   }
 
   const mensagem = novoStatus === 'ativo'
-    ? 'Acesso ativado e sincronizado no banco de dados com sucesso! O profissional agora tem acesso liberado.'
+    ? 'Acesso ativado e comando enviado para o banco de dados com sucesso! O profissional agora tem acesso liberado.'
     : novoStatus === 'pendente'
-    ? 'Assinante marcado como pendente de aprovação e sincronizado.'
-    : 'Acesso bloqueado e sincronizado no banco de dados com sucesso! O usuário não poderá utilizar o sistema até ser reativado.';
+    ? 'Assinante marcado como pendente de aprovação e sincronizado com o banco.'
+    : 'Acesso bloqueado e comando enviado para o banco de dados com sucesso! O usuário não poderá utilizar o sistema até ser reativado.';
 
   return { ok: true, mensagem };
 }
@@ -859,6 +899,16 @@ export async function atualizarUsuarioAdmin(
     salvarContaAssinante(contas[index]);
   }
 
+  // Envia comando para a API do Servidor (persistente)
+  const targetEmail = index >= 0 ? contas[index].email : undefined;
+  try {
+    await fetch('/api/admin/atualizar-usuario', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, email: targetEmail, dados })
+    });
+  } catch (_) {}
+
   const cliente = getSupabase();
   if (cliente) {
     try {
@@ -1019,10 +1069,21 @@ export async function fazerLoginSupabaseAuth(
           data.user.user_metadata?.role === 'admin' ||
           data.user.user_metadata?.is_admin === true;
 
-        // Consulta status atual diretamente no banco de dados do Supabase
+        // Consulta status atual diretamente no banco de dados do Supabase e servidor
         let statusBanco: StatusAssinante | undefined;
         let validoAteBanco: string | undefined;
         if (!isAdmin) {
+          // 1. Consulta API de status em tempo real do banco de dados
+          try {
+            const resStatus = await fetch(`/api/auth/status-usuario?email=${encodeURIComponent(emailClean)}&userId=${encodeURIComponent(data.user.id)}`);
+            const dataStatus = await resStatus.json();
+            if (dataStatus.ok && dataStatus.encontrado && dataStatus.status) {
+              statusBanco = dataStatus.status as StatusAssinante;
+              if (dataStatus.validoAte) validoAteBanco = dataStatus.validoAte;
+            }
+          } catch (_) {}
+
+          // 2. Consulta tabela usuarios no Supabase
           try {
             const { data: uDb } = await cliente
               .from('usuarios')
@@ -1041,6 +1102,8 @@ export async function fazerLoginSupabaseAuth(
             if (assDb) {
               if (assDb.status === 'inativa' || assDb.status === 'cancelada') {
                 statusBanco = 'inativo';
+              } else if (assDb.status === 'ativa' && statusBanco !== 'inativo') {
+                statusBanco = 'ativo';
               }
               validoAteBanco = assDb.valido_ate;
             }
@@ -1059,7 +1122,7 @@ export async function fazerLoginSupabaseAuth(
           return {
             ok: false,
             statusAcesso: 'pendente',
-            erro: 'Sua conta está aguardando aprovação do Administrador. Assim que a sua assinatura mensal for ativada pelo administrador, seu acesso estará liberado. Contato: backupvideomidias@gmail.com'
+            erro: 'Sua conta foi cadastrada e está aguardando aprovação do Administrador Master. Assim que seu acesso for ativado, você poderá entrar no sistema.'
           };
         }
 
@@ -1068,7 +1131,7 @@ export async function fazerLoginSupabaseAuth(
           return {
             ok: false,
             statusAcesso: 'inativo',
-            erro: 'Seu acesso ao sistema foi desativado ou bloqueado pelo Administrador. Para regularizar sua mensalidade e reativar o acesso, entre em contato com backupvideomidias@gmail.com.'
+            erro: 'Seu acesso ao sistema foi desativado ou suspenso pelo Administrador Geral. Entre em contato com a administração para reativar seu acesso.'
           };
         }
 
@@ -1080,7 +1143,7 @@ export async function fazerLoginSupabaseAuth(
             return {
               ok: false,
               statusAcesso: 'expirado',
-              erro: 'Sua assinatura mensal expirou. Entre em contato com a administração (backupvideomidias@gmail.com) para renovar seu plano.'
+              erro: 'Sua assinatura mensal expirou. Entre em contato com a administração para renovar seu plano.'
             };
           }
         }
@@ -1137,7 +1200,7 @@ export async function fazerLoginSupabaseAuth(
       ...adminExistente,
       id: adminExistente?.id || (emailClean === 'sup.fin.adm@gmail.com' ? 'a1000000-0000-4000-8000-000000000002' : 'a1000000-0000-4000-8000-000000000001'),
       email: emailClean,
-      nomeCompleto: emailClean === 'sup.fin.adm@gmail.com' ? 'Suporte Financeiro / Administrador' : (adminExistente?.nomeCompleto || 'Dr. Daniel (Administrador Master)'),
+      nomeCompleto: emailClean === 'sup.fin.adm@gmail.com' ? 'Administrador Suporte' : 'Administrador Master',
       senhaTexto: senhaClean,
       role: 'admin',
       status: 'ativo',
@@ -1176,6 +1239,35 @@ export async function fazerLoginSupabaseAuth(
     (c) => c.email.toLowerCase() === emailClean && (!c.senhaTexto || c.senhaTexto === senhaClean)
   );
 
+  // Consulta status atualizado no servidor
+  let statusRemoto: StatusAssinante | undefined;
+  let validoAteRemoto: string | undefined;
+  try {
+    const resStatus = await fetch(`/api/auth/status-usuario?email=${encodeURIComponent(emailClean)}`);
+    const dataStatus = await resStatus.json();
+    if (dataStatus.ok && dataStatus.encontrado) {
+      statusRemoto = dataStatus.status as StatusAssinante;
+      validoAteRemoto = dataStatus.validoAte;
+      if (!contaEncontrada) {
+        contaEncontrada = {
+          id: dataStatus.id,
+          email: dataStatus.email || emailClean,
+          nomeCompleto: dataStatus.nomeCompleto || emailClean.split('@')[0],
+          role: dataStatus.role || 'psicologo',
+          status: statusRemoto || 'pendente',
+          plano: dataStatus.plano || 'mensal',
+          validoAte: validoAteRemoto,
+          criadoEm: new Date().toISOString(),
+          origem: 'servidor'
+        };
+      } else {
+        contaEncontrada.status = statusRemoto;
+        if (validoAteRemoto) contaEncontrada.validoAte = validoAteRemoto;
+      }
+      salvarContaAssinante(contaEncontrada);
+    }
+  } catch (_) {}
+
   if (!contaEncontrada && cliente) {
     try {
       const { data: uDb } = await cliente
@@ -1193,7 +1285,7 @@ export async function fazerLoginSupabaseAuth(
           crp: uDb.crp,
           telefone: uDb.telefone,
           role: (uDb.role === 'admin' || isMasterAdminEmail(emailClean)) ? 'admin' : 'psicologo',
-          status: isMasterAdminEmail(emailClean) ? 'ativo' : (uDb.status || 'ativo'),
+          status: isMasterAdminEmail(emailClean) ? 'ativo' : (statusRemoto || uDb.status || 'ativo'),
           plano: isMasterAdminEmail(emailClean) ? 'saas_pro' : 'mensal',
           validoAte: isMasterAdminEmail(emailClean) ? '2036-12-31T23:59:59.000Z' : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
           criadoEm: uDb.criado_em || new Date().toISOString(),
@@ -1207,11 +1299,17 @@ export async function fazerLoginSupabaseAuth(
   if (contaEncontrada) {
     const isAdmin = isMasterAdminEmail(emailClean) || contaEncontrada.role === 'admin';
 
+    // Se o banco remoto indicou status ativo, garante a ativação
+    if (statusRemoto === 'ativo') {
+      contaEncontrada.status = 'ativo';
+      salvarContaAssinante(contaEncontrada);
+    }
+
     if (!isAdmin && contaEncontrada.status === 'pendente') {
       return {
         ok: false,
         statusAcesso: 'pendente',
-        erro: 'Sua conta está aguardando aprovação do Administrador. Assim que a sua assinatura mensal for ativada pelo administrador, seu acesso estará liberado. Contato: backupvideomidias@gmail.com'
+        erro: 'Sua conta foi cadastrada e está aguardando aprovação do Administrador Master. Assim que seu acesso for ativado, você poderá entrar no sistema.'
       };
     }
 
@@ -1219,7 +1317,7 @@ export async function fazerLoginSupabaseAuth(
       return {
         ok: false,
         statusAcesso: 'inativo',
-        erro: 'Seu acesso ao sistema foi desativado ou bloqueado pelo Administrador. Para regularizar sua mensalidade e reativar o acesso, entre em contato com backupvideomidias@gmail.com.'
+        erro: 'Seu acesso ao sistema foi desativado ou suspenso pelo Administrador Geral. Entre em contato com a administração para reativar seu acesso.'
       };
     }
 
@@ -1229,7 +1327,7 @@ export async function fazerLoginSupabaseAuth(
         return {
           ok: false,
           statusAcesso: 'expirado',
-          erro: 'Sua assinatura mensal expirou. Entre em contato com a administração (backupvideomidias@gmail.com) para renovar seu plano.'
+          erro: 'Sua assinatura mensal expirou. Entre em contato com a administração para renovar seu plano.'
         };
       }
     }
@@ -1340,6 +1438,21 @@ export async function cadastrarContaSupabaseAuth(
         origem: 'supabase'
       };
       salvarContaAssinante(infoConta);
+
+      // Envia imediatamente para o banco de dados persistente do servidor
+      try {
+        await fetch('/api/auth/registrar-usuario', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: userId,
+            email: emailClean,
+            nomeCompleto: metadados.nomeCompleto,
+            crp: metadados.crp,
+            senha
+          })
+        });
+      } catch (_) {}
 
       if (data.session && isAdmin) {
         definirSessaoAssinanteAtiva(infoConta);
@@ -1648,6 +1761,55 @@ export async function fazerLogoutSupabase(): Promise<void> {
  * Retorna licença ativa para garantir acesso irrestrito ao sistema.
  */
 export async function consultarLicencaAssinante(userId: string): Promise<any | null> {
+  // 1. Consulta em tempo real na API do banco de dados do servidor
+  try {
+    const resStatus = await fetch(`/api/auth/status-usuario?userId=${encodeURIComponent(userId)}`);
+    const dataStatus = await resStatus.json();
+    if (dataStatus.ok && dataStatus.encontrado) {
+      const contas = obterContasAssinantes();
+      const c = contas.find(item => item.id === userId);
+      if (c) {
+        c.status = dataStatus.status;
+        if (dataStatus.validoAte) c.validoAte = dataStatus.validoAte;
+        salvarContaAssinante(c);
+      }
+
+      if (dataStatus.status === 'ativo') {
+        return {
+          id: `lic_saas_${userId.slice(0, 8)}`,
+          user_id: userId,
+          plano: dataStatus.plano || 'mensal',
+          status: 'ativa',
+          statusUsuario: 'ativo',
+          valido_ate: dataStatus.validoAte || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          limite_offline_dias: 30
+        };
+      }
+      if (dataStatus.status === 'pendente') {
+        return {
+          id: `lic_saas_${userId.slice(0, 8)}`,
+          user_id: userId,
+          plano: dataStatus.plano || 'mensal',
+          status: 'pendente',
+          statusUsuario: 'pendente',
+          valido_ate: dataStatus.validoAte,
+          limite_offline_dias: 0
+        };
+      }
+      if (dataStatus.status === 'inativo') {
+        return {
+          id: `lic_saas_${userId.slice(0, 8)}`,
+          user_id: userId,
+          plano: dataStatus.plano || 'mensal',
+          status: 'inativa',
+          statusUsuario: 'inativo',
+          valido_ate: dataStatus.validoAte,
+          limite_offline_dias: 0
+        };
+      }
+    }
+  } catch (_) {}
+
   const cliente = getSupabase();
   if (cliente && userId) {
     try {
