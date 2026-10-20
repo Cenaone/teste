@@ -45,6 +45,32 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
   const [usuarioAtualizandoId, setUsuarioAtualizandoId] = useState<string | null>(null);
   const [validandoMeuAcesso, setValidandoMeuAcesso] = useState(false);
 
+  // Identificação e controle de privilégios de Administrador
+  const [isAdminSessao, setIsAdminSessao] = useState<boolean>(() => {
+    return Boolean(
+      contaUsuario?.isAdmin ||
+      contaUsuario?.role === 'admin' ||
+      isMasterAdminEmail(contaUsuario?.email)
+    );
+  });
+
+  useEffect(() => {
+    const adminCheck = Boolean(
+      contaUsuario?.isAdmin ||
+      contaUsuario?.role === 'admin' ||
+      isMasterAdminEmail(contaUsuario?.email)
+    );
+    if (adminCheck) {
+      setIsAdminSessao(true);
+    } else {
+      supabase.auth.getUser().then(({ data }) => {
+        if (data?.user?.email) {
+          setIsAdminSessao(isMasterAdminEmail(data.user.email) || data.user.user_metadata?.role === 'admin');
+        }
+      });
+    }
+  }, [contaUsuario]);
+
   // Modais
   const [modalNovoAberto, setModalNovoAberto] = useState(false);
   const [modalEditarAberto, setModalEditarAberto] = useState(false);
@@ -210,6 +236,10 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
   };
 
   const handleAlternarStatus = async (u: AssinaturaAdminRpc) => {
+    if (!isAdminSessao) {
+      mostrarFeedback('Apenas o Administrador possui autorização para ativar ou desativar o acesso de usuários.', 'erro');
+      return;
+    }
     const novoStatus = u.acesso_valido ? 'inativo' : 'ativo';
     setUsuarioAtualizandoId(u.user_id);
     try {
@@ -220,7 +250,11 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
       if (error) {
         mostrarFeedback(`Falha na função RPC 'admin_alternar_status_usuario': ${error.message}`, 'erro');
       } else {
-        mostrarFeedback(`Status de ${u.nome} alterado para '${novoStatus}' com sucesso!`);
+        mostrarFeedback(
+          novoStatus === 'ativo'
+            ? `Acesso de ${u.nome} ativado com sucesso pelo Administrador!`
+            : `Acesso de ${u.nome} desativado com sucesso pelo Administrador.`
+        );
         await carregarDados();
       }
     } catch (err: any) {
@@ -374,8 +408,14 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
             <ShieldCheck className="size-6 text-primary" />
             Gestão de Assinaturas & Validação de Acessos
           </h2>
-          <p className="text-sm text-muted-foreground">
-            Painel de Controle integrado ao Supabase via RPCs oficiais.
+          <p className="text-sm text-muted-foreground flex flex-wrap items-center gap-2 mt-0.5">
+            <span>Painel de Controle integrado ao Supabase via RPCs oficiais.</span>
+            {isAdminSessao && (
+              <span className="text-[10px] font-bold uppercase tracking-wider text-primary border border-primary/30 bg-primary/10 px-2 py-0.5 rounded-md inline-flex items-center gap-1">
+                <Shield className="size-3" />
+                Modo Administrador
+              </span>
+            )}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -677,11 +717,11 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
               <Card
                 key={u.user_id}
                 className={`p-4 sm:p-5 transition-all border ${
-                  u.status_usuario === 'pendente' || u.status_assinatura === 'pendente'
+                  u.acesso_valido
+                    ? 'border-border bg-card hover:border-primary/40'
+                    : (u.status_usuario === 'pendente' || u.status_assinatura === 'pendente')
                     ? 'border-amber-500/40 bg-amber-500/5'
-                    : !u.acesso_valido
-                    ? 'border-destructive/30 bg-destructive/5'
-                    : 'border-border hover:border-primary/40'
+                    : 'border-destructive/30 bg-destructive/5'
                 }`}
               >
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -789,105 +829,123 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
                     </div>
                   </div>
 
-                  {/* Ações Administrativas conectadas às RPCs oficiais */}
+                  {/* Ações Administrativas conectadas às RPCs oficiais - Exclusivo para Administrador */}
                   <div className="flex flex-wrap items-center gap-2 shrink-0">
-                    {/* Botões de aprovação direta para pendentes */}
-                    {(u.status_usuario === 'pendente' || u.status_assinatura === 'pendente') && (
+                    {/* Opção de Ativar e Desativar Acesso - Exclusivo para Administrador */}
+                    {isAdminSessao ? (
+                      !isSuperAdmin ? (
+                        <button
+                          type="button"
+                          disabled={usuarioAtualizandoId === u.user_id}
+                          onClick={() => handleAlternarStatus(u)}
+                          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer shadow-xs disabled:opacity-50 ${
+                            u.acesso_valido
+                              ? 'border-destructive/30 text-destructive bg-destructive/10 hover:bg-destructive/20 hover:border-destructive/50'
+                              : 'border-emerald-500/40 text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 hover:border-emerald-500/60'
+                          }`}
+                          title={
+                            u.acesso_valido
+                              ? 'Desativar acesso deste usuário (Ação exclusiva de Administrador)'
+                              : 'Ativar acesso imediato deste usuário (Ação exclusiva de Administrador)'
+                          }
+                        >
+                          {usuarioAtualizandoId === u.user_id ? (
+                            <>
+                              <RefreshCw className="size-3.5 animate-spin" />
+                              <span>Processando...</span>
+                            </>
+                          ) : u.acesso_valido ? (
+                            <>
+                              <Ban className="size-3.5 text-destructive" />
+                              <span>Desativar Acesso</span>
+                            </>
+                          ) : (
+                            <>
+                              <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+                              <span>Ativar Acesso</span>
+                            </>
+                          )}
+                        </button>
+                      ) : (
+                        <span className="text-[11px] font-semibold text-muted-foreground px-2.5 py-1 bg-muted/40 rounded-lg border border-border/60">
+                          Conta Master
+                        </span>
+                      )
+                    ) : (
+                      <span className="text-[11px] text-muted-foreground italic px-2 py-1">
+                        Acesso restrito ao Admin
+                      </span>
+                    )}
+
+                    {/* Botões de aprovação com dias para contas pendentes */}
+                    {isAdminSessao && (u.status_usuario === 'pendente' || u.status_assinatura === 'pendente') && (
                       <div className="flex items-center gap-1.5">
                         <button
                           type="button"
                           disabled={usuarioAtualizandoId === u.user_id}
                           onClick={() => handleAprovar(u, 30)}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl gradient-emerald text-primary-foreground text-xs font-bold shadow-md hover:opacity-95 transition-all cursor-pointer disabled:opacity-50"
-                          title="Aprovar acesso por 30 dias via RPC admin_aprovar_usuario"
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl gradient-emerald text-primary-foreground text-xs font-bold shadow-md hover:opacity-95 transition-all cursor-pointer disabled:opacity-50"
+                          title="Aprovar e liberar por 30 dias via RPC admin_aprovar_usuario"
                         >
                           <UserCheck className="size-3.5" />
-                          <span>Aprovar 30 Dias</span>
+                          <span>Aprovar 30d</span>
                         </button>
                         <button
                           type="button"
                           disabled={usuarioAtualizandoId === u.user_id}
                           onClick={() => handleAprovar(u, 60)}
-                          className="px-2.5 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
-                          title="Aprovar acesso por 60 dias"
+                          className="px-2 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                          title="Aprovar por 60 dias"
                         >
-                          <span>60 Dias</span>
+                          <span>60d</span>
                         </button>
                         <button
                           type="button"
                           disabled={usuarioAtualizandoId === u.user_id}
                           onClick={() => handleAprovar(u, 90)}
-                          className="px-2.5 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
-                          title="Aprovar acesso por 90 dias"
+                          className="px-2 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                          title="Aprovar por 90 dias"
                         >
-                          <span>90 Dias</span>
+                          <span>90d</span>
                         </button>
                       </div>
                     )}
 
-                    {/* Ativar / Desativar Acesso via RPC admin_alternar_status_usuario */}
-                    {!isSuperAdmin && u.status_usuario !== 'pendente' && (
-                      <button
-                        type="button"
-                        disabled={usuarioAtualizandoId === u.user_id}
-                        onClick={() => handleAlternarStatus(u)}
-                        className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer disabled:opacity-50 ${
-                          u.acesso_valido
-                            ? 'border-destructive/30 text-destructive hover:bg-destructive/10'
-                            : 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10'
-                        }`}
-                        title={u.acesso_valido ? 'Desativar acesso via RPC' : 'Ativar acesso via RPC'}
-                      >
-                        {usuarioAtualizandoId === u.user_id ? (
-                          <>
-                            <RefreshCw className="size-3.5 animate-spin" />
-                            <span>Processando...</span>
-                          </>
-                        ) : u.acesso_valido ? (
-                          <>
-                            <Ban className="size-3.5" />
-                            <span>Desativar Acesso</span>
-                          </>
-                        ) : (
-                          <>
-                            <Check className="size-3.5" />
-                            <span>Ativar Acesso</span>
-                          </>
-                        )}
-                      </button>
-                    )}
-
                     {/* Renovar +30 e +60 dias via RPC admin_aprovar_usuario */}
-                    <button
-                      type="button"
-                      disabled={usuarioAtualizandoId === u.user_id}
-                      onClick={() => handleRenovarDias(u, 30)}
-                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all shadow-xs cursor-pointer disabled:opacity-50"
-                      title="Adicionar mais 30 dias de validade"
-                    >
-                      <Calendar className="size-3 text-primary" />
-                      <span>+30 Dias</span>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={usuarioAtualizandoId === u.user_id}
-                      onClick={() => handleRenovarDias(u, 60)}
-                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all shadow-xs cursor-pointer disabled:opacity-50"
-                      title="Adicionar mais 60 dias de validade"
-                    >
-                      <Calendar className="size-3 text-primary" />
-                      <span>+60 Dias</span>
-                    </button>
+                    {isAdminSessao && (
+                      <>
+                        <button
+                          type="button"
+                          disabled={usuarioAtualizandoId === u.user_id}
+                          onClick={() => handleRenovarDias(u, 30)}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                          title="Adicionar mais 30 dias de validade"
+                        >
+                          <Calendar className="size-3 text-primary" />
+                          <span>+30 Dias</span>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={usuarioAtualizandoId === u.user_id}
+                          onClick={() => handleRenovarDias(u, 60)}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                          title="Adicionar mais 60 dias de validade"
+                        >
+                          <Calendar className="size-3 text-primary" />
+                          <span>+60 Dias</span>
+                        </button>
 
-                    {/* Editar */}
-                    <button
-                      type="button"
-                      onClick={() => abrirEdicao(u)}
-                      className="p-2 rounded-xl border border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground transition-all cursor-pointer"
-                      title="Editar plano e dados do assinante"
-                    >
-                      <Edit className="size-3.5" />
-                    </button>
+                        {/* Editar */}
+                        <button
+                          type="button"
+                          onClick={() => abrirEdicao(u)}
+                          className="p-2 rounded-xl border border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground transition-all cursor-pointer"
+                          title="Editar plano e dados do assinante"
+                        >
+                          <Edit className="size-3.5" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </Card>
