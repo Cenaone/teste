@@ -285,6 +285,13 @@ export function traduzirErroAuth(erroMsg: string): string {
   return erroMsg || 'Erro inesperado no serviço de autenticação.';
 }
 
+export function getApiUrl(path: string): string {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return path;
+  }
+  return `http://localhost:3000${path.startsWith('/') ? '' : '/'}${path}`;
+}
+
 /**
  * Garante de forma resiliente e não-bloqueante que os dados da conta de assinante
  * (perfil em public.usuarios e assinatura em public.assinaturas_saas) existam no Supabase.
@@ -482,43 +489,48 @@ export function definirSessaoAssinanteAtiva(conta: ContaAssinanteArmazenada | nu
  * Funções Administrativas de Gestão de Usuários e Assinaturas Mensais
  */
 export async function listarUsuariosAdmin(): Promise<ContaAssinanteArmazenada[]> {
-  const contasLocais = obterContasAssinantes();
-  const mapa = new Map<string, ContaAssinanteArmazenada>();
+  const mapaPorEmail = new Map<string, ContaAssinanteArmazenada>();
 
   // 1. Popula com dados locais conhecidos
+  const contasLocais = obterContasAssinantes();
   for (const c of contasLocais) {
-    mapa.set(c.id, { ...c });
-    mapa.set(c.email.toLowerCase(), { ...c });
+    if (c.email) {
+      mapaPorEmail.set(c.email.toLowerCase(), { ...c });
+    }
   }
 
-  // 2. Consulta banco persistente do servidor
+  // 2. Consulta banco persistente do servidor (fonte de verdade dos cadastros)
   try {
-    const resServer = await fetch('/api/admin/listar-usuarios');
+    const resServer = await fetch(getApiUrl('/api/admin/listar-usuarios'));
     const dataServer = await resServer.json();
     if (dataServer.ok && Array.isArray(dataServer.usuarios)) {
       for (const u of dataServer.usuarios) {
+        if (!u.email) continue;
+        const email = u.email.toLowerCase();
+        const existente = mapaPorEmail.get(email);
         const item: ContaAssinanteArmazenada = {
-          id: u.id,
+          id: u.id || existente?.id || `u_${Date.now()}`,
           email: u.email,
-          senhaTexto: u.senhaTexto,
-          nomeCompleto: u.nomeCompleto || u.email.split('@')[0],
-          crp: u.crp,
-          telefone: u.telefone,
-          role: u.role || 'psicologo',
-          status: u.status || 'pendente',
-          plano: u.plano || 'mensal',
-          validoAte: u.validoAte,
-          criadoEm: u.criadoEm || new Date().toISOString(),
+          senhaTexto: u.senhaTexto || existente?.senhaTexto,
+          nomeCompleto: u.nomeCompleto || existente?.nomeCompleto || email.split('@')[0],
+          crp: u.crp || existente?.crp,
+          telefone: u.telefone || existente?.telefone,
+          role: u.role || existente?.role || 'psicologo',
+          status: (u.status as StatusAssinante) || existente?.status || 'pendente',
+          plano: (u.plano as PlanoAssinante) || existente?.plano || 'mensal',
+          validoAte: u.validoAte || existente?.validoAte,
+          criadoEm: u.criadoEm || existente?.criadoEm || new Date().toISOString(),
           origem: 'servidor',
-          aprovadoEm: u.aprovadoEm,
-          aprovadoPor: u.aprovadoPor
+          aprovadoEm: u.aprovadoEm || existente?.aprovadoEm,
+          aprovadoPor: u.aprovadoPor || existente?.aprovadoPor
         };
-        mapa.set(u.id, item);
-        mapa.set(u.email.toLowerCase(), item);
+        mapaPorEmail.set(email, item);
         salvarContaAssinante(item);
       }
     }
-  } catch (_) {}
+  } catch (errServer) {
+    console.warn('[listarUsuariosAdmin] Falha ao consultar servidor:', errServer);
+  }
 
   // 3. Tenta sincronizar com o banco de dados do Supabase
   const cliente = getSupabase();
@@ -531,25 +543,27 @@ export async function listarUsuariosAdmin(): Promise<ContaAssinanteArmazenada[]>
       if (!errUsers && Array.isArray(usuariosRemotos)) {
         for (const u of usuariosRemotos) {
           const email = (u.email || '').toLowerCase();
-          const existente = mapa.get(u.id) || (email ? mapa.get(email) : undefined);
+          if (!email) continue;
+          const existente = mapaPorEmail.get(email);
+          const isMaster = isMasterAdminEmail(email);
           const item: ContaAssinanteArmazenada = {
             id: u.id,
-            email: u.email || existente?.email || '',
+            email: u.email,
             senhaTexto: u.senha_texto || existente?.senhaTexto,
             nomeCompleto: u.nome || existente?.nomeCompleto || email.split('@')[0],
             crp: u.crp || existente?.crp,
             telefone: u.telefone || existente?.telefone,
-            role: (u.role === 'admin' || isMasterAdminEmail(email)) ? 'admin' : (existente?.role || 'psicologo'),
-            status: isMasterAdminEmail(email) ? 'ativo' : ((u.status as StatusAssinante) || existente?.status || 'ativo'),
-            plano: isMasterAdminEmail(email) ? 'saas_pro' : (existente?.plano || 'mensal'),
-            validoAte: isMasterAdminEmail(email) ? '2036-12-31T23:59:59.000Z' : (existente?.validoAte || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()),
+            role: (u.role === 'admin' || isMaster) ? 'admin' : (existente?.role || 'psicologo'),
+            status: isMaster ? 'ativo' : ((u.status as StatusAssinante) || existente?.status || 'pendente'),
+            plano: isMaster ? 'saas_pro' : ((u.plano as PlanoAssinante) || existente?.plano || 'mensal'),
+            validoAte: isMaster ? '2036-12-31T23:59:59.000Z' : (existente?.validoAte || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()),
             criadoEm: u.criado_em || existente?.criadoEm || new Date().toISOString(),
             origem: 'supabase',
             aprovadoEm: existente?.aprovadoEm,
             aprovadoPor: existente?.aprovadoPor
           };
-          mapa.set(u.id, item);
-          if (email) mapa.set(email, item);
+          mapaPorEmail.set(email, item);
+          salvarContaAssinante(item);
         }
       }
 
@@ -560,14 +574,18 @@ export async function listarUsuariosAdmin(): Promise<ContaAssinanteArmazenada[]>
 
       if (Array.isArray(assinaturasRemotas)) {
         for (const a of assinaturasRemotas) {
-          const existente = mapa.get(a.user_id);
-          if (existente && !isMasterAdminEmail(existente.email)) {
-            existente.plano = (a.plano as PlanoAssinante) || existente.plano || 'mensal';
-            existente.validoAte = a.valido_ate || existente.validoAte;
-            if (a.status === 'inativa' || a.status === 'cancelada') {
-              existente.status = 'inativo';
-            } else if (a.status === 'pendente') {
-              existente.status = 'pendente';
+          for (const item of mapaPorEmail.values()) {
+            if (item.id === a.user_id && !isMasterAdminEmail(item.email)) {
+              item.plano = (a.plano as PlanoAssinante) || item.plano || 'mensal';
+              item.validoAte = a.valido_ate || item.validoAte;
+              if (a.status === 'inativa' || a.status === 'cancelada') {
+                item.status = 'inativo';
+              } else if (a.status === 'pendente') {
+                item.status = 'pendente';
+              } else if (a.status === 'ativa') {
+                item.status = 'ativo';
+              }
+              salvarContaAssinante(item);
             }
           }
         }
@@ -577,16 +595,8 @@ export async function listarUsuariosAdmin(): Promise<ContaAssinanteArmazenada[]>
     }
   }
 
-  // Deduplica por ID
-  const resultado: ContaAssinanteArmazenada[] = [];
-  const idsVistos = new Set<string>();
-
-  for (const c of mapa.values()) {
-    if (!idsVistos.has(c.id)) {
-      idsVistos.add(c.id);
-      resultado.push(c);
-    }
-  }
+  // Converte mapa para array consolidado
+  const resultado: ContaAssinanteArmazenada[] = Array.from(mapaPorEmail.values());
 
   // Garante que ambos os Super Administradores estejam sempre presentes e ativos
   for (const cInicial of CONTAS_ASSINANTES_INICIAIS) {
@@ -607,9 +617,17 @@ export async function aprovarUsuarioAdmin(
 ): Promise<{ ok: boolean; mensagem: string }> {
   const contas = obterContasAssinantes();
   const index = contas.findIndex(c => c.id === userId);
-  const dataValidade = new Date(Date.now() + diasValidade * 24 * 60 * 60 * 1000).toISOString();
-  const agora = new Date().toISOString();
   const targetEmail = index >= 0 ? contas[index].email : undefined;
+  const agora = new Date().toISOString();
+
+  // Validade calculada a contar da data de cadastro do assinante (criadoEm)
+  const dataCadastroStr = index >= 0 ? contas[index].criadoEm : agora;
+  const msCadastro = dataCadastroStr ? new Date(dataCadastroStr).getTime() : Date.now();
+  let msValidade = msCadastro + Number(diasValidade) * 24 * 60 * 60 * 1000;
+  if (msValidade < Date.now()) {
+    msValidade = Date.now() + Number(diasValidade) * 24 * 60 * 60 * 1000;
+  }
+  const dataValidade = new Date(msValidade).toISOString();
 
   if (index >= 0) {
     contas[index] = {
@@ -625,11 +643,15 @@ export async function aprovarUsuarioAdmin(
 
   // 1. Envia comando imediatamente para o servidor / banco de dados
   try {
-    await fetch('/api/admin/aprovar-usuario', {
+    const res = await fetch(getApiUrl('/api/admin/aprovar-usuario'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, email: targetEmail, diasValidade, plano, adminEmail })
+      body: JSON.stringify({ userId, email: targetEmail, diasValidade: Number(diasValidade), plano, adminEmail })
     });
+    const data = await res.json();
+    if (data.ok && data.usuario) {
+      salvarContaAssinante(data.usuario);
+    }
   } catch (_) {}
 
   // 2. Sincroniza com o Supabase
@@ -638,7 +660,7 @@ export async function aprovarUsuarioAdmin(
     try {
       await cliente.rpc('admin_aprovar_usuario', {
         p_user_id: userId,
-        p_dias_validade: diasValidade,
+        p_dias_validade: Number(diasValidade),
         p_plano: plano
       });
     } catch (_) {}
@@ -661,7 +683,10 @@ export async function aprovarUsuarioAdmin(
     }
   }
 
-  return { ok: true, mensagem: `Assinante aprovado com sucesso! Comando enviado para o banco de dados e acesso liberado por ${diasValidade} dias.` };
+  return { 
+    ok: true, 
+    mensagem: `Assinante ativado com sucesso! Acesso concedido por ${diasValidade} dias a contar da data de cadastro (${new Date(dataValidade).toLocaleDateString('pt-BR')}).` 
+  };
 }
 
 export async function alternarStatusAcessoUsuario(
@@ -695,7 +720,7 @@ export async function alternarStatusAcessoUsuario(
 
   // 1. Envia comando imediatamente para o servidor / banco de dados
   try {
-    await fetch('/api/admin/alternar-status', {
+    await fetch(getApiUrl('/api/admin/alternar-status'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, email: targetEmail, novoStatus })
@@ -753,7 +778,7 @@ export async function sincronizarBancoDadosCompleto(): Promise<{
 
   // 1. Tenta sincronizar via API do servidor Express
   try {
-    const res = await fetch('/api/admin/sincronizar-usuarios', {
+    const res = await fetch(getApiUrl('/api/admin/sincronizar-usuarios'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ usuariosLocais: contasLocais })
@@ -840,6 +865,20 @@ export async function renovarAssinaturaUsuario(
     salvarContaAssinante(contas[index]);
   }
 
+  // 1. Envia comando imediatamente para o servidor / banco de dados
+  try {
+    const res = await fetch(getApiUrl('/api/admin/renovar-assinatura'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, email: conta?.email, diasAdicionais: Number(diasAdicionais) })
+    });
+    const data = await res.json();
+    if (data.ok && data.usuario) {
+      salvarContaAssinante(data.usuario);
+    }
+  } catch (_) {}
+
+  // 2. Sincroniza com o Supabase
   const cliente = getSupabase();
   if (cliente) {
     try {
@@ -861,7 +900,7 @@ export async function renovarAssinaturaUsuario(
 
   return {
     ok: true,
-    mensagem: `Assinatura mensal renovada por mais ${diasAdicionais} dias!`,
+    mensagem: `Assinatura renovada por mais ${diasAdicionais} dias com sucesso! Válida até ${new Date(novaValidade).toLocaleDateString('pt-BR')}.`,
     novaValidade
   };
 }
@@ -902,7 +941,7 @@ export async function atualizarUsuarioAdmin(
   // Envia comando para a API do Servidor (persistente)
   const targetEmail = index >= 0 ? contas[index].email : undefined;
   try {
-    await fetch('/api/admin/atualizar-usuario', {
+    await fetch(getApiUrl('/api/admin/atualizar-usuario'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, email: targetEmail, dados })
@@ -1075,7 +1114,7 @@ export async function fazerLoginSupabaseAuth(
         if (!isAdmin) {
           // 1. Consulta API de status em tempo real do banco de dados
           try {
-            const resStatus = await fetch(`/api/auth/status-usuario?email=${encodeURIComponent(emailClean)}&userId=${encodeURIComponent(data.user.id)}`);
+            const resStatus = await fetch(getApiUrl(`/api/auth/status-usuario?email=${encodeURIComponent(emailClean)}&userId=${encodeURIComponent(data.user.id)}`));
             const dataStatus = await resStatus.json();
             if (dataStatus.ok && dataStatus.encontrado && dataStatus.status) {
               statusBanco = dataStatus.status as StatusAssinante;
@@ -1243,7 +1282,7 @@ export async function fazerLoginSupabaseAuth(
   let statusRemoto: StatusAssinante | undefined;
   let validoAteRemoto: string | undefined;
   try {
-    const resStatus = await fetch(`/api/auth/status-usuario?email=${encodeURIComponent(emailClean)}`);
+    const resStatus = await fetch(getApiUrl(`/api/auth/status-usuario?email=${encodeURIComponent(emailClean)}`));
     const dataStatus = await resStatus.json();
     if (dataStatus.ok && dataStatus.encontrado) {
       statusRemoto = dataStatus.status as StatusAssinante;
@@ -1390,96 +1429,81 @@ export async function cadastrarContaSupabaseAuth(
   const isAdmin = isMasterAdminEmail(emailClean);
   const statusInicial: StatusAssinante = isAdmin ? 'ativo' : 'pendente';
   const roleInicial: 'admin' | 'psicologo' = isAdmin ? 'admin' : 'psicologo';
-  const cliente = getSupabase();
+  const agora = new Date().toISOString();
+  let generatedId = `u_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-  if (!cliente) {
-    return {
-      ok: false,
-      erro: 'Serviço de banco de dados (Supabase) não configurado. Verifique a conexão com o Supabase.'
-    };
-  }
-
+  // 1. Registra imediatamente no banco de dados persistente do servidor
+  let userRegistradoServidor: any = null;
   try {
-    const { data, error } = await cliente.auth.signUp({
-      email: emailClean,
-      password: senha,
-      options: {
-        data: {
-          nome_completo: metadados.nomeCompleto,
-          crp: metadados.crp || '',
-          role: roleInicial,
-          status: statusInicial
-        }
-      }
-    });
-
-    if (error) {
-      const msg = error.message || '';
-      const isDbError = msg.toLowerCase().includes('database error') || msg.toLowerCase().includes('trigger');
-      const isRateLimit = msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('over_email_send_rate_limit');
-      return { ok: false, erro: traduzirErroAuth(msg), isRateLimit, isDbError };
-    }
-
-    if (data?.user) {
-      const userId = data.user.id;
-      const precisaConfirmarEmail = Boolean(data.user && !data.session);
-
-      const infoConta: ContaAssinanteArmazenada = {
-        id: userId,
+    const resServer = await fetch(getApiUrl('/api/auth/registrar-usuario'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: generatedId,
         email: emailClean,
-        senhaTexto: senha,
         nomeCompleto: metadados.nomeCompleto,
         crp: metadados.crp,
-        role: roleInicial,
-        status: statusInicial,
-        plano: 'mensal',
-        validoAte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        criadoEm: data.user.created_at || new Date().toISOString(),
-        origem: 'supabase'
-      };
-      salvarContaAssinante(infoConta);
-
-      // Envia imediatamente para o banco de dados persistente do servidor
-      try {
-        await fetch('/api/auth/registrar-usuario', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: userId,
-            email: emailClean,
-            nomeCompleto: metadados.nomeCompleto,
-            crp: metadados.crp,
-            senha
-          })
-        });
-      } catch (_) {}
-
-      if (data.session && isAdmin) {
-        definirSessaoAssinanteAtiva(infoConta);
-      }
-
-      // Sincroniza imediatamente na tabela public.usuarios e public.assinaturas_saas no Supabase
-      await garantirRegistroAssinanteNuvem(cliente, data.user.id, data.user.email || emailClean, { ...metadados, senha });
-
-      return {
-        ok: true,
-        id: userId,
-        user: data.user,
-        session: data.session,
-        precisaConfirmarEmail,
-        statusAcesso: statusInicial
-      };
+        senha
+      })
+    });
+    const dataServer = await resServer.json();
+    if (dataServer.ok && dataServer.usuario) {
+      userRegistradoServidor = dataServer.usuario;
+      generatedId = dataServer.usuario.id || generatedId;
     }
-
-    return {
-      ok: false,
-      erro: 'Não foi possível registrar o usuário no Supabase. Verifique suas credenciais e tente novamente.'
-    };
-  } catch (err: any) {
-    const msg = err?.message || '';
-    const isRateLimit = msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('over_email_send_rate_limit');
-    return { ok: false, erro: traduzirErroAuth(msg), isRateLimit };
+  } catch (errServer) {
+    console.warn('[cadastrarContaSupabaseAuth] Falha no registrar-usuario servidor:', errServer);
   }
+
+  const infoConta: ContaAssinanteArmazenada = {
+    id: generatedId,
+    email: emailClean,
+    senhaTexto: senha,
+    nomeCompleto: metadados.nomeCompleto,
+    crp: metadados.crp,
+    role: roleInicial,
+    status: statusInicial,
+    plano: 'mensal',
+    validoAte: userRegistradoServidor?.validoAte || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    criadoEm: userRegistradoServidor?.criadoEm || agora,
+    origem: 'servidor'
+  };
+  salvarContaAssinante(infoConta);
+
+  // 2. Tenta registrar também no Supabase Auth se o cliente estiver disponível
+  const cliente = getSupabase();
+  if (cliente) {
+    try {
+      const { data } = await cliente.auth.signUp({
+        email: emailClean,
+        password: senha,
+        options: {
+          data: {
+            nome_completo: metadados.nomeCompleto,
+            crp: metadados.crp || '',
+            role: roleInicial,
+            status: statusInicial
+          }
+        }
+      });
+
+      if (data?.user) {
+        infoConta.id = data.user.id;
+        salvarContaAssinante(infoConta);
+        await garantirRegistroAssinanteNuvem(cliente, data.user.id, emailClean, { ...metadados, senha });
+        if (data.session && isAdmin) {
+          definirSessaoAssinanteAtiva(infoConta);
+        }
+      }
+    } catch (_) {}
+  }
+
+  return {
+    ok: true,
+    id: infoConta.id,
+    precisaConfirmarEmail: false,
+    statusAcesso: statusInicial
+  };
 }
 
 export const URL_REDIRECIONAMENTO_RECUPERACAO_VERCEL = 'https://psi40offline.vercel.app/reset-password';
@@ -1763,7 +1787,7 @@ export async function fazerLogoutSupabase(): Promise<void> {
 export async function consultarLicencaAssinante(userId: string): Promise<any | null> {
   // 1. Consulta em tempo real na API do banco de dados do servidor
   try {
-    const resStatus = await fetch(`/api/auth/status-usuario?userId=${encodeURIComponent(userId)}`);
+    const resStatus = await fetch(getApiUrl(`/api/auth/status-usuario?userId=${encodeURIComponent(userId)}`));
     const dataStatus = await resStatus.json();
     if (dataStatus.ok && dataStatus.encontrado) {
       const contas = obterContasAssinantes();

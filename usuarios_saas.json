@@ -24,5 +24,22 @@
     "validoAte": "2036-12-31T23:59:59.000Z",
     "criadoEm": "2026-10-14T12:00:00.000Z",
     "origem": "local_resiliente"
+  },
+  {
+    "id": "u_1792520969732_fsbbekn",
+    "email": "teste.psicologo@gmail.com",
+    "nomeCompleto": "Dr. Teste Silva",
+    "crp": "06/999888",
+    "telefone": null,
+    "senhaTexto": "MinhaSenha123",
+    "role": "psicologo",
+    "status": "ativo",
+    "plano": "mensal",
+    "validoAte": "2027-01-18T18:38:22.141Z",
+    "criadoEm": "2026-10-20T18:29:29.732Z",
+    "atualizadoEm": "2026-10-20T18:38:49.106Z",
+    "origem": "registro_servidor",
+    "aprovadoEm": "2026-10-20T18:38:22.141Z",
+    "aprovadoPor": "backupvideomidias@gmail.com"
   }
 ]

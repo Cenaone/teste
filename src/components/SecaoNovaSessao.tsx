@@ -150,7 +150,7 @@ export default function SecaoNovaSessao({
             <span>Nova Sessão Clínica</span>
           </h2>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-            Registro de atendimento com gravação de áudio, transcrição em tempo real, prontuário e exportação em .mp3.
+            Registro de atendimento com gravação de áudio, transcrição automática em tempo real e prontuário clínico.
           </p>
         </div>
 
@@ -333,13 +333,13 @@ export default function SecaoNovaSessao({
           </div>
         </Card>
 
-        {/* Card 2: Gravação da Sessão, Transcrição ao Vivo & Download .MP3 */}
+        {/* Card 2: Gravação da Sessão & Transcrição Automática */}
         <Card className="p-4 sm:p-6 border-border space-y-4">
           <div className="flex items-center justify-between border-b border-border/60 pb-3">
             <div className="flex items-center gap-2">
               <Sparkles className="size-4 text-primary" />
               <h3 className="text-sm font-bold text-foreground uppercase tracking-wider">
-                Gravação de Áudio, Transcrição & Download .MP3
+                Gravação de Áudio & Transcrição Automática da Sessão
               </h3>
             </div>
             <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-mono bg-muted/60 px-2 py-0.5 rounded border border-border/60">
@@ -348,7 +348,7 @@ export default function SecaoNovaSessao({
           </div>
 
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Inicie a gravação no botão abaixo para capturar o áudio da sessão com total privacidade. Quando desejar, aperte o botão de transcrever para converter o áudio em texto. Você também pode salvar o arquivo em formato <strong>.mp3</strong> no computador e anexar o registro ao prontuário.
+            Inicie a gravação no botão abaixo para capturar o áudio da sessão com total privacidade. A transcrição do diálogo é realizada automaticamente conforme a fala é capturada, e você pode inserir o texto diretamente no prontuário.
           </p>
 
           {/* Componente Gravador com Transcrição e Botão Salvar .MP3 */}

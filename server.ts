@@ -39,7 +39,7 @@ async function startServer() {
       const ai = new GoogleGenAI({ apiKey });
       
       const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: 'gemini-2.5-flash',
         contents: [
           {
             role: 'user',
@@ -331,13 +331,22 @@ function salvarUsuariosServidor(lista: any[]): void {
       }
 
       const agora = new Date().toISOString();
-      const validade = new Date(Date.now() + diasValidade * 24 * 60 * 60 * 1000).toISOString();
       const emailAlvo = email ? email.trim().toLowerCase() : '';
 
       // 1. Atualiza no armazenamento persistente do servidor
       const lista = carregarUsuariosServidor();
       let idx = lista.findIndex(u => (userId && u.id === userId) || (emailAlvo && u.email?.toLowerCase() === emailAlvo));
       
+      // Validade calculada a contar da data de cadastro do usuário (criadoEm)
+      const dataCadastroStr = idx >= 0 ? lista[idx].criadoEm : agora;
+      const msCadastro = dataCadastroStr ? new Date(dataCadastroStr).getTime() : Date.now();
+      let validadeMs = msCadastro + Number(diasValidade) * 24 * 60 * 60 * 1000;
+      // Garante que não resulte em período já vencido se o cadastro foi realizado há mais tempo
+      if (validadeMs < Date.now()) {
+        validadeMs = Date.now() + Number(diasValidade) * 24 * 60 * 60 * 1000;
+      }
+      const validade = new Date(validadeMs).toISOString();
+
       let usuarioAtualizado = null;
       if (idx >= 0) {
         lista[idx].status = 'ativo';
@@ -372,7 +381,7 @@ function salvarUsuariosServidor(lista: any[]): void {
       try {
         await supabaseAdmin.rpc('admin_aprovar_usuario', {
           p_user_id: targetId,
-          p_dias_validade: diasValidade,
+          p_dias_validade: Number(diasValidade),
           p_plano: plano,
           p_admin_email: adminEmail || 'Administrador Master'
         });
@@ -398,16 +407,66 @@ function salvarUsuariosServidor(lista: any[]): void {
         console.warn('[aprovar-usuario Supabase sync notice]:', errDb);
       }
 
-      console.log(`[APROVAÇÃO] Usuário ${targetId} (${usuarioAtualizado.email}) aprovado e ativado pelo Master.`);
+      console.log(`[APROVAÇÃO] Usuário ${targetId} (${usuarioAtualizado.email}) aprovado por ${diasValidade} dias a contar do cadastro.`);
 
       return res.json({
         ok: true,
         usuario: usuarioAtualizado,
-        mensagem: 'Usuário aprovado e ativado com sucesso! Acesso liberado no banco de dados.'
+        mensagem: `Usuário aprovado e ativado com sucesso! Acesso concedido por ${diasValidade} dias a contar da data do cadastro.`
       });
     } catch (err: any) {
       console.error('[POST /api/admin/aprovar-usuario erro]:', err);
       return res.status(500).json({ ok: false, erro: err?.message || 'Erro ao aprovar usuário' });
+    }
+  });
+
+  // Endpoint: Renovar assinatura adicionando dias (+30, +60, +90 dias sucessivamente)
+  app.post('/api/admin/renovar-assinatura', async (req, res) => {
+    try {
+      const { userId, email, diasAdicionais = 30 } = req.body;
+      if (!userId && !email) {
+        return res.status(400).json({ ok: false, erro: 'userId ou email é obrigatório.' });
+      }
+
+      const emailAlvo = email ? email.trim().toLowerCase() : '';
+      const lista = carregarUsuariosServidor();
+      let idx = lista.findIndex(u => (userId && u.id === userId) || (emailAlvo && u.email?.toLowerCase() === emailAlvo));
+      if (idx < 0) {
+        return res.status(404).json({ ok: false, erro: 'Usuário não encontrado.' });
+      }
+
+      const u = lista[idx];
+      const agora = new Date().toISOString();
+      const msAtualValidade = u.validoAte ? new Date(u.validoAte).getTime() : 0;
+      // Se a validade ainda está no futuro, adiciona a partir de validoAte; caso contrário, conta a partir de agora
+      const baseMs = msAtualValidade > Date.now() ? msAtualValidade : Date.now();
+      const novaValidadeMs = baseMs + Number(diasAdicionais) * 24 * 60 * 60 * 1000;
+      const novaValidade = new Date(novaValidadeMs).toISOString();
+
+      lista[idx].validoAte = novaValidade;
+      lista[idx].status = 'ativo';
+      lista[idx].atualizadoEm = agora;
+      salvarUsuariosServidor(lista);
+
+      try {
+        await supabaseAdmin.from('usuarios').update({ status: 'ativo', atualizado_em: agora }).eq('id', u.id);
+        await supabaseAdmin.from('assinaturas_saas').upsert({
+          user_id: u.id,
+          status: 'ativa',
+          valido_ate: novaValidade,
+          atualizado_em: agora
+        }, { onConflict: 'user_id' });
+      } catch (_) {}
+
+      return res.json({
+        ok: true,
+        usuario: lista[idx],
+        novaValidade,
+        mensagem: `Assinatura estendida por mais ${diasAdicionais} dias com sucesso! Válida até ${new Date(novaValidade).toLocaleDateString('pt-BR')}.`
+      });
+    } catch (err: any) {
+      console.error('[POST /api/admin/renovar-assinatura erro]:', err);
+      return res.status(500).json({ ok: false, erro: err?.message || 'Erro ao renovar assinatura' });
     }
   });
 

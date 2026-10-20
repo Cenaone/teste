@@ -149,14 +149,21 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
     });
   }, [usuarios, filtroStatus, busca]);
 
-  // Ações de gerenciamento
-  const handleAprovar = async (u: ContaAssinanteArmazenada) => {
-    const res = await aprovarUsuarioAdmin(u.id, 30, 'mensal', contaUsuario?.email || 'backupvideomidias@gmail.com');
-    if (res.ok) {
-      mostrarFeedback(`Assinatura de ${u.nomeCompleto} aprovada com sucesso! Acesso liberado por 30 dias.`);
-      await carregarDados();
-    } else {
-      mostrarFeedback(res.mensagem, 'erro');
+  // Ações de gerenciamento com cálculo a contar da data de cadastro
+  const handleAprovar = async (u: ContaAssinanteArmazenada, dias = 30) => {
+    setUsuarioAtualizandoId(u.id);
+    try {
+      const res = await aprovarUsuarioAdmin(u.id, dias, 'mensal', contaUsuario?.email || 'backupvideomidias@gmail.com');
+      if (res.ok) {
+        mostrarFeedback(res.mensagem || `Assinatura de ${u.nomeCompleto} aprovada com sucesso! Acesso liberado por ${dias} dias a contar da data do cadastro.`);
+        await carregarDados();
+      } else {
+        mostrarFeedback(res.mensagem, 'erro');
+      }
+    } catch (err: any) {
+      mostrarFeedback(err?.message || 'Erro ao aprovar usuário.', 'erro');
+    } finally {
+      setUsuarioAtualizandoId(null);
     }
   };
 
@@ -167,7 +174,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
       if (res.ok) {
         setUltimaSincronizacao(res.sincronizadoEm);
         await carregarDados();
-        mostrarFeedback(`Sincronização imediata concluída! ${res.totalUsuarios} assinantes sincronizados com o Supabase.`);
+        mostrarFeedback(`Sincronização imediata concluída! ${res.totalUsuarios} assinantes sincronizados com o banco de dados.`);
       } else {
         mostrarFeedback(res.mensagem, 'erro');
       }
@@ -196,13 +203,20 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
     }
   };
 
-  const handleRenovar30Dias = async (u: ContaAssinanteArmazenada) => {
-    const res = await renovarAssinaturaUsuario(u.id, 30);
-    if (res.ok) {
-      mostrarFeedback(`Assinatura mensal de ${u.nomeCompleto} renovada por mais 30 dias!`);
-      await carregarDados();
-    } else {
-      mostrarFeedback(res.mensagem, 'erro');
+  const handleRenovarDias = async (u: ContaAssinanteArmazenada, dias = 30) => {
+    setUsuarioAtualizandoId(u.id);
+    try {
+      const res = await renovarAssinaturaUsuario(u.id, dias);
+      if (res.ok) {
+        mostrarFeedback(res.mensagem || `Assinatura de ${u.nomeCompleto} estendida por mais ${dias} dias com sucesso!`);
+        await carregarDados();
+      } else {
+        mostrarFeedback(res.mensagem, 'erro');
+      }
+    } catch (err: any) {
+      mostrarFeedback(err?.message || 'Erro ao estender validade da assinatura.', 'erro');
+    } finally {
+      setUsuarioAtualizandoId(null);
     }
   };
 
@@ -644,9 +658,15 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
                       )}
                     </div>
 
-                    {/* Metadata line (clean typographic separators) */}
+                    {/* Metadata line com data de cadastro e validade calculada */}
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                      <span className="font-mono text-foreground">{u.email}</span>
+                      <span className="font-mono text-foreground font-medium">{u.email}</span>
+                      {u.criadoEm && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <span>Cadastrado em: <strong className="text-foreground">{new Date(u.criadoEm).toLocaleDateString('pt-BR')}</strong></span>
+                        </>
+                      )}
                       {u.crp && (
                         <>
                           <span aria-hidden="true">·</span>
@@ -664,7 +684,19 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
                       {u.validoAte && (
                         <>
                           <span aria-hidden="true">·</span>
-                          <span>Válido até: {new Date(u.validoAte).toLocaleDateString('pt-BR')}</span>
+                          <span>
+                            Válido até: <strong className={new Date(u.validoAte).getTime() < Date.now() ? 'text-destructive font-bold' : 'text-foreground'}>
+                              {new Date(u.validoAte).toLocaleDateString('pt-BR')}
+                            </strong>
+                            {(() => {
+                              const diasRestantes = Math.ceil((new Date(u.validoAte).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                              if (diasRestantes > 0) {
+                                return <span className="text-emerald-600 dark:text-emerald-400 font-semibold ml-1">({diasRestantes}d restantes)</span>;
+                              } else {
+                                return <span className="text-destructive font-semibold ml-1">(expirado)</span>;
+                              }
+                            })()}
+                          </span>
                         </>
                       )}
                     </div>
@@ -717,16 +749,38 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
 
                   {/* Ações Administrativas */}
                   <div className="flex flex-wrap items-center gap-2 shrink-0">
-                    {/* Botão de aprovação direta para pendentes */}
+                    {/* Botões de aprovação direta para pendentes (30 dias a contar do cadastro, 60 dias, etc.) */}
                     {u.status === 'pendente' && (
-                      <button
-                        type="button"
-                        onClick={() => handleAprovar(u)}
-                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl gradient-emerald text-primary-foreground text-xs font-bold shadow-md hover:opacity-95 transition-all"
-                      >
-                        <UserCheck className="size-3.5" />
-                        <span>Aprovar Acesso (Mensal)</span>
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={usuarioAtualizandoId === u.id || sincronizandoBanco}
+                          onClick={() => handleAprovar(u, 30)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl gradient-emerald text-primary-foreground text-xs font-bold shadow-md hover:opacity-95 transition-all cursor-pointer disabled:opacity-50"
+                          title="Aprovar acesso por 30 dias a contar da data do cadastro"
+                        >
+                          <UserCheck className="size-3.5" />
+                          <span>Aprovar 30 Dias</span>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={usuarioAtualizandoId === u.id || sincronizandoBanco}
+                          onClick={() => handleAprovar(u, 60)}
+                          className="px-2.5 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                          title="Aprovar acesso por 60 dias a contar da data do cadastro"
+                        >
+                          <span>60 Dias</span>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={usuarioAtualizandoId === u.id || sincronizandoBanco}
+                          onClick={() => handleAprovar(u, 90)}
+                          className="px-2.5 py-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+                          title="Aprovar acesso por 90 dias a contar da data do cadastro"
+                        >
+                          <span>90 Dias</span>
+                        </button>
+                      </div>
                     )}
 
                     {/* Ativar / Desativar Acesso Imediato com Sincronização */}
@@ -740,7 +794,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
                             ? 'border-destructive/30 text-destructive hover:bg-destructive/10'
                             : 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10'
                         }`}
-                        title={u.status === 'ativo' ? 'Bloquear e sincronizar no banco Supabase' : 'Ativar e sincronizar no banco Supabase'}
+                        title={u.status === 'ativo' ? 'Bloquear e sincronizar no banco de dados' : 'Ativar e sincronizar no banco de dados'}
                       >
                         {usuarioAtualizandoId === u.id ? (
                           <>
@@ -761,15 +815,26 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
                       </button>
                     )}
 
-                    {/* Renovar +30 dias */}
+                    {/* Renovar +30 e +60 dias */}
                     <button
                       type="button"
-                      onClick={() => handleRenovar30Dias(u)}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all shadow-xs"
+                      disabled={usuarioAtualizandoId === u.id || sincronizandoBanco}
+                      onClick={() => handleRenovarDias(u, 30)}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all shadow-xs cursor-pointer disabled:opacity-50"
                       title="Adicionar mais 30 dias de assinatura mensal"
                     >
-                      <Calendar className="size-3.5 text-primary" />
+                      <Calendar className="size-3 text-primary" />
                       <span>+30 Dias</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={usuarioAtualizandoId === u.id || sincronizandoBanco}
+                      onClick={() => handleRenovarDias(u, 60)}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                      title="Adicionar mais 60 dias de assinatura"
+                    >
+                      <Calendar className="size-3 text-primary" />
+                      <span>+60 Dias</span>
                     </button>
 
                     {/* Editar */}
@@ -1066,7 +1131,43 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
               <div className="space-y-1.5">
                 <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center justify-between">
                   <span>Validade da Assinatura</span>
-                  <div className="flex gap-1.5">
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const base = usuarioEmEdicao?.criadoEm ? new Date(usuarioEmEdicao.criadoEm) : new Date();
+                        const d = new Date(base.getTime() + 30 * 24 * 60 * 60 * 1000);
+                        setEditValidoAte(d.toISOString().split('T')[0]);
+                      }}
+                      className="text-[10px] text-primary hover:underline font-semibold"
+                      title="30 dias a contar da data de cadastro"
+                    >
+                      30d cadastro
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const base = usuarioEmEdicao?.criadoEm ? new Date(usuarioEmEdicao.criadoEm) : new Date();
+                        const d = new Date(base.getTime() + 60 * 24 * 60 * 60 * 1000);
+                        setEditValidoAte(d.toISOString().split('T')[0]);
+                      }}
+                      className="text-[10px] text-primary hover:underline font-semibold"
+                      title="60 dias a contar da data de cadastro"
+                    >
+                      60d cadastro
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const base = usuarioEmEdicao?.criadoEm ? new Date(usuarioEmEdicao.criadoEm) : new Date();
+                        const d = new Date(base.getTime() + 90 * 24 * 60 * 60 * 1000);
+                        setEditValidoAte(d.toISOString().split('T')[0]);
+                      }}
+                      className="text-[10px] text-primary hover:underline font-semibold"
+                      title="90 dias a contar da data de cadastro"
+                    >
+                      90d cadastro
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
@@ -1074,9 +1175,10 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
                         d.setDate(d.getDate() + 30);
                         setEditValidoAte(d.toISOString().split('T')[0]);
                       }}
-                      className="text-[10px] text-primary hover:underline font-semibold"
+                      className="text-[10px] text-muted-foreground hover:text-foreground font-semibold"
+                      title="+30 dias a contar de hoje"
                     >
-                      +30d
+                      +30d hoje
                     </button>
                     <button
                       type="button"
@@ -1085,7 +1187,8 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
                         d.setDate(d.getDate() + 365);
                         setEditValidoAte(d.toISOString().split('T')[0]);
                       }}
-                      className="text-[10px] text-primary hover:underline font-semibold"
+                      className="text-[10px] text-muted-foreground hover:text-foreground font-semibold"
+                      title="+1 ano a contar de hoje"
                     >
                       +1 ano
                     </button>
