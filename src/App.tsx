@@ -3473,7 +3473,19 @@ export default function App() {
                   nomePaciente={analisandos.find(a => a.id === sessaoForm.analisandoId)?.nome || 'Paciente'}
                   textoAtual={sessaoForm.notasSessao || ''}
                   onInserirTexto={(novoTexto) => {
-                    setSessaoForm({ ...sessaoForm, notasSessao: novoTexto });
+                    setSessaoForm(prev => prev ? {
+                      ...prev,
+                      notasSessao: novoTexto,
+                      transcricao: novoTexto
+                    } : null);
+                  }}
+                  onAudioGravado={(blob, url, transcricao) => {
+                    setSessaoForm(prev => prev ? {
+                      ...prev,
+                      audioUrl: url,
+                      transcricao: transcricao || prev.transcricao,
+                      notasSessao: prev.notasSessao?.trim() ? prev.notasSessao : transcricao
+                    } : null);
                   }}
                 />
 
@@ -3506,12 +3518,13 @@ export default function App() {
                   
                   const novaSessao = {
                     ...sessaoForm,
+                    transcricao: sessaoForm.transcricao || sessaoForm.notasSessao || undefined,
                     proximaSessaoData: proximaData
                   };
 
                   atualizarSessoes([novaSessao, ...sessoes]);
                   setMostrarFormSessao(false);
-                  alert('Sessão registrada no setting clínico!');
+                  alert('Sessão registrada no setting clínico com áudio e transcrição no prontuário!');
                 }}
                 className="px-4 py-2 text-sm font-semibold text-white gradient-emerald rounded-xl shadow-md"
               >

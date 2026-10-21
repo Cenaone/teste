@@ -543,7 +543,7 @@ export default function SecaoNovaSessao({
               <span className="text-[11px] text-muted-foreground lowercase">rascunho preservado automaticamente</span>
             </label>
             <textarea
-              required
+              required={!transcricaoSessao.trim()}
               rows={6}
               value={notasSessao}
               onChange={e => setNotasSessao(e.target.value)}
