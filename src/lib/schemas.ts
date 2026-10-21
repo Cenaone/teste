@@ -6,12 +6,25 @@ import { z } from 'zod';
 export const AnalisandoSchema = z.object({
   id: z.union([z.string(), z.number()]).transform(v => String(v)),
   nome: z.string().min(1, 'Nome é obrigatório'),
+  nomeSocial: z.string().optional(),
   whatsapp: z.string().optional().default(''),
   telefone: z.string().optional().default(''),
   email: z.string().optional().default(''),
   nascimento: z.string().optional().default(''),
+  cpf: z.string().optional(),
+  cep: z.string().optional(),
+  logradouro: z.string().optional(),
+  numero: z.string().optional(),
+  complemento: z.string().optional(),
+  bairro: z.string().optional(),
   cidade: z.string().optional().default(''),
+  uf: z.string().optional(),
   endereco: z.string().optional().default(''),
+  temResponsavel: z.boolean().optional().default(false),
+  responsavelNome: z.string().optional(),
+  responsavelParentesco: z.string().optional(),
+  responsavelContato: z.string().optional(),
+  responsavelCpf: z.string().optional(),
   status: z.union([
     z.enum(['novo', 'ativo', 'recorrente', 'inativo', 'pausado', 'concluido', 'alta']),
     z.string()
@@ -49,17 +62,26 @@ export const SessaoSchema = z.object({
   id: z.union([z.string(), z.number()]).transform(v => String(v)),
   analisandoId: z.union([z.string(), z.number()]).transform(v => String(v)),
   modalidadeId: z.union([z.string(), z.number()]).optional().transform(v => v ? String(v) : 'm1'),
+  agendamentoOrigemId: z.string().optional(),
   data: z.string(),
   hora: z.string().optional(),
   horario: z.string().optional(),
   valorCobrado: z.number().optional().default(0),
   valor: z.number().optional(),
-  pagamentoStatus: z.union([z.enum(['pago', 'pendente', 'parcial', 'atrasado']), z.string()]).optional().default('pago'),
+  valorPago: z.number().optional(),
+  saldoDevedor: z.number().optional(),
+  pagamentoStatus: z.union([z.enum(['pago', 'pendente', 'parcial', 'atrasado']), z.string()]).optional().default('pendente'),
   meioPagamento: z.union([z.enum(['pix', 'dinheiro', 'transferencia', 'cartao']), z.string()]).optional().default('pix'),
   proximaSessaoData: z.string().optional(),
+  proximaSessaoAgendada: z.boolean().optional().default(false),
   notasSessao: z.string().optional().default(''),
+  complementos: z.array(z.any()).optional().default([]),
+  transcricao: z.string().optional(),
+  audioUrl: z.string().optional(),
+  audioDuracaoSegundos: z.number().optional(),
   resumoIA: z.string().optional(),
-  anotacoesClinicas: z.string().optional()
+  anotacoesClinicas: z.string().optional(),
+  criadoEm: z.string().optional()
 }).passthrough().transform(s => ({
   ...s,
   valorCobrado: s.valorCobrado !== undefined ? s.valorCobrado : (s.valor || 0),
@@ -72,13 +94,18 @@ export const SessaoSchema = z.object({
 export const HonorarioSchema = z.object({
   id: z.union([z.string(), z.number()]).transform(v => String(v)),
   analisandoId: z.union([z.string(), z.number()]).transform(v => String(v)),
+  sessaoId: z.string().optional(),
   analisandoNome: z.string().optional(),
   valor: z.number().optional().default(0),
+  valorPago: z.number().optional(),
+  saldoDevedor: z.number().optional(),
   vencimento: z.string().optional(),
   data: z.string().optional(),
-  status: z.union([z.enum(['pago', 'pendente', 'atrasado', 'cancelado']), z.string()]).optional().default('pendente'),
+  status: z.union([z.enum(['pago', 'pendente', 'parcial', 'atrasado', 'cancelado']), z.string()]).optional().default('pendente'),
+  meioPagamento: z.string().optional(),
   observacao: z.string().optional().default(''),
-  descricao: z.string().optional()
+  descricao: z.string().optional(),
+  criadoEm: z.string().optional()
 }).passthrough().transform(h => ({
   ...h,
   vencimento: h.vencimento || h.data || new Date().toISOString().slice(0, 10),
@@ -96,7 +123,9 @@ export const AgendamentoSchema = z.object({
   data: z.string(),
   hora: z.string().optional(),
   horario: z.string().optional(),
+  duracaoMinutos: z.number().optional().default(50),
   status: z.union([z.enum(['confirmado', 'pendente', 'realizado', 'cancelado']), z.string()]).optional().default('confirmado'),
+  sessaoRealizadaId: z.string().optional(),
   observacao: z.string().optional().default('')
 }).passthrough().transform(a => ({
   ...a,
@@ -143,7 +172,6 @@ export function validarArquivoBackupJSON(conteudoJson: any) {
     };
   }
 
-  // Suporte a arquivos snapshot empacotados com { dados: { ... } }
   let payloadParaValidar = conteudoJson;
   if (conteudoJson && typeof conteudoJson === 'object' && conteudoJson.dados && typeof conteudoJson.dados === 'object') {
     payloadParaValidar = {
@@ -152,16 +180,25 @@ export function validarArquivoBackupJSON(conteudoJson: any) {
     };
   }
 
-  // Deve possuir ao menos uma coleção clínica reconhecida
   const camposReconhecidos = ['analisandos', 'sessoes', 'honorarios', 'agendamentos', 'modalidades', 'perfil', 'consultorio'];
   const possuiAoMenosUm = camposReconhecidos.some(campo => campo in payloadParaValidar);
   if (!possuiAoMenosUm) {
     return {
       success: false as const,
-      error: new z.ZodError([{ code: 'custom', message: 'O arquivo não contém nenhuma coleção clínica reconhecida (analisandos, sessões, honorários, etc.)', path: [] }])
+      error: new z.ZodError([{ code: 'custom', message: 'Arquivo não possui coleções clínicas válidas do PSi 4.0', path: [] }])
     };
   }
 
-  return BackupPSiSchema.safeParse(payloadParaValidar);
+  try {
+    const validado = BackupPSiSchema.parse(payloadParaValidar);
+    return {
+      success: true as const,
+      data: validado
+    };
+  } catch (err: any) {
+    return {
+      success: false as const,
+      error: err instanceof z.ZodError ? err : new z.ZodError([{ code: 'custom', message: err?.message || 'Falha de validação', path: [] }])
+    };
+  }
 }
-

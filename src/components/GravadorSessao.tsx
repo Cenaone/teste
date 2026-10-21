@@ -8,13 +8,15 @@ import {
   Trash2, 
   AlertCircle,
   Clock,
-  Shield,
+  ShieldCheck,
   Copy,
   Volume2,
   Sparkles,
-  FileAudio,
   RefreshCw,
-  Loader2
+  Loader2,
+  Download,
+  Info,
+  Plus
 } from 'lucide-react';
 import { Card } from './ui-compact';
 
@@ -22,36 +24,46 @@ interface GravadorSessaoProps {
   nomePaciente?: string;
   onInserirTexto: (texto: string) => void;
   textoAtual?: string;
-  onAudioSalvo?: (blob: Blob, url: string) => void;
+  onAudioGravado?: (blob: Blob, url: string, transcricao: string) => void;
 }
+
+type EstadoGravador = 'ocioso' | 'gravando' | 'pausado' | 'processando' | 'concluido' | 'falha';
 
 export default function GravadorSessao({
   nomePaciente = 'Paciente',
   onInserirTexto,
   textoAtual = '',
-  onAudioSalvo
+  onAudioGravado
 }: GravadorSessaoProps) {
-  const [estaGravando, setEstaGravando] = useState(false);
-  const [estaPausado, setEstaPausado] = useState(false);
+  const [estado, setEstado] = useState<EstadoGravador>('ocioso');
   const [tempoSegundos, setTempoSegundos] = useState(0);
   const [transcricaoTexto, setTranscricaoTexto] = useState('');
-  const [transcrevendo, setTranscrevendo] = useState(false);
-  const [erroMicrofone, setErroMicrofone] = useState<string | null>(null);
-  const [erroTranscricao, setErroTranscricao] = useState<string | null>(null);
-  const [mostrarPainel, setMostrarPainel] = useState(false);
+  const [erroMensagem, setErroMensagem] = useState<string | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
-  const [copiadoTexto, setCopiadoTexto] = useState(false);
+  const [copiado, setCopiado] = useState(false);
+  const [suportaFalaAoVivo, setSuportaFalaAoVivo] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const speechRecognitionRef = useRef<any>(null);
-  const estaGravandoRef = useRef(false);
-  const estaPausadoRef = useRef(false);
+  const estadoRef = useRef<EstadoGravador>('ocioso');
 
-  // Formatar tempo MM:SS ou HH:MM:SS
+  // Verifica suporte da API de Fala contínua do navegador na montagem
+  useEffect(() => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    setSuportaFalaAoVivo(Boolean(SpeechRecognition));
+
+    return () => {
+      pararHardware();
+      if (audioUrl) {
+        URL.revokeObjectURL(audioUrl);
+      }
+    };
+  }, []);
+
   const formatarTempo = (segundos: number) => {
     const min = Math.floor(segundos / 60);
     const seg = segundos % 60;
@@ -63,23 +75,36 @@ export default function GravadorSessao({
     return `${String(min).padStart(2, '0')}:${String(seg).padStart(2, '0')}`;
   };
 
-  useEffect(() => {
-    return () => {
-      pararGravacaoGeral();
-      if (audioUrl) {
-        URL.revokeObjectURL(audioUrl);
-      }
-    };
-  }, []);
+  const pararHardware = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
 
-  // Inicializa o reconhecimento de fala contínuo e automático
-  const iniciarReconhecimentoAoVivo = () => {
+    if (speechRecognitionRef.current) {
+      try {
+        speechRecognitionRef.current.stop();
+      } catch (_) {}
+      speechRecognitionRef.current = null;
+    }
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (_) {}
+    }
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+  };
+
+  // Inicia reconhecimento de fala ao vivo via Web Speech API nativa se suportada
+  const iniciarFalaAoVivo = () => {
     try {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (!SpeechRecognition) {
-        console.warn('SpeechRecognition não é suportado nativamente neste navegador.');
-        return;
-      }
+      if (!SpeechRecognition) return;
 
       if (speechRecognitionRef.current) {
         try { speechRecognitionRef.current.stop(); } catch (_) {}
@@ -90,7 +115,7 @@ export default function GravadorSessao({
       recognition.interimResults = true;
       recognition.lang = 'pt-BR';
 
-      let textoBase = transcricaoTexto ? transcricaoTexto.trim() + ' ' : '';
+      let baseTexto = transcricaoTexto ? transcricaoTexto.trim() + ' ' : '';
 
       recognition.onresult = (event: any) => {
         let textoFinal = '';
@@ -106,22 +131,22 @@ export default function GravadorSessao({
         }
 
         if (textoFinal) {
-          textoBase += textoFinal;
-          setTranscricaoTexto((textoBase + textoIntermediario).trim());
+          baseTexto += textoFinal;
+          setTranscricaoTexto((baseTexto + textoIntermediario).trim());
         } else if (textoIntermediario) {
-          setTranscricaoTexto((textoBase + textoIntermediario).trim());
+          setTranscricaoTexto((baseTexto + textoIntermediario).trim());
         }
       };
 
       recognition.onerror = (event: any) => {
         if (event.error !== 'no-speech') {
-          console.warn('[SpeechRecognition erro]:', event.error);
+          console.warn('[WebSpeech erro]:', event.error);
         }
       };
 
       recognition.onend = () => {
-        // Reinicia automaticamente se ainda estiver no estado gravando e não pausado
-        if (estaGravandoRef.current && !estaPausadoRef.current) {
+        // Reinicia se o gravador ainda estiver no estado gravando e não pausado
+        if (estadoRef.current === 'gravando') {
           try {
             recognition.start();
           } catch (_) {}
@@ -130,162 +155,12 @@ export default function GravadorSessao({
 
       recognition.start();
       speechRecognitionRef.current = recognition;
-    } catch (e) {
-      console.warn('Erro ao disparar SpeechRecognition:', e);
+    } catch (err) {
+      console.warn('[SpeechRecognition falha]:', err);
     }
   };
 
-  const pararReconhecimentoAoVivo = () => {
-    if (speechRecognitionRef.current) {
-      try {
-        speechRecognitionRef.current.stop();
-      } catch (_) {}
-      speechRecognitionRef.current = null;
-    }
-  };
-
-  // 1. Iniciar gravação de áudio E transcrição automática imediata
-  const iniciarGravacao = async () => {
-    setErroMicrofone(null);
-    setErroTranscricao(null);
-    setTempoSegundos(0);
-    setMostrarPainel(true);
-    setAudioUrl(null);
-    setAudioBlob(null);
-    audioChunksRef.current = [];
-
-    estaGravandoRef.current = true;
-    estaPausadoRef.current = false;
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        } 
-      });
-      streamRef.current = stream;
-
-      try {
-        let options: MediaRecorderOptions = {};
-        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-          options = { mimeType: 'audio/webm;codecs=opus' };
-        } else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
-          options = { mimeType: 'audio/ogg;codecs=opus' };
-        } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
-          options = { mimeType: 'audio/mp4' };
-        }
-
-        const mediaRecorder = new MediaRecorder(stream, options);
-        mediaRecorderRef.current = mediaRecorder;
-
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data && event.data.size > 0) {
-            audioChunksRef.current.push(event.data);
-          }
-        };
-
-        mediaRecorder.onstop = () => {
-          if (audioChunksRef.current.length > 0) {
-            const mime = audioChunksRef.current[0]?.type || 'audio/webm';
-            const blob = new Blob(audioChunksRef.current, { type: mime });
-            const url = URL.createObjectURL(blob);
-            setAudioBlob(blob);
-            setAudioUrl(url);
-            if (onAudioSalvo) {
-              onAudioSalvo(blob, url);
-            }
-          }
-        };
-
-        mediaRecorder.start(1000);
-      } catch (e) {
-        console.warn('MediaRecorder não disponível ou formato restrito:', e);
-      }
-
-      setEstaGravando(true);
-      setEstaPausado(false);
-
-      // Inicia imediatamente a transcrição ao vivo por voz
-      iniciarReconhecimentoAoVivo();
-
-      // Timer
-      timerRef.current = setInterval(() => {
-        setTempoSegundos((prev) => prev + 1);
-      }, 1000);
-
-    } catch (err: any) {
-      console.error('Erro ao acessar microfone:', err);
-      setErroMicrofone('Não foi possível acessar o microfone. Verifique as permissões de áudio do seu navegador.');
-      setEstaGravando(false);
-      estaGravandoRef.current = false;
-    }
-  };
-
-  const alternarPausa = () => {
-    if (!estaGravando) return;
-
-    if (estaPausado) {
-      // Retomar
-      estaPausadoRef.current = false;
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'paused') {
-        mediaRecorderRef.current.resume();
-      }
-      iniciarReconhecimentoAoVivo();
-      timerRef.current = setInterval(() => {
-        setTempoSegundos((prev) => prev + 1);
-      }, 1000);
-      setEstaPausado(false);
-    } else {
-      // Pausar
-      estaPausadoRef.current = true;
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-        mediaRecorderRef.current.pause();
-      }
-      pararReconhecimentoAoVivo();
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-      setEstaPausado(true);
-    }
-  };
-
-  const pararGravacaoGeral = () => {
-    estaGravandoRef.current = false;
-    estaPausadoRef.current = false;
-
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-
-    pararReconhecimentoAoVivo();
-
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      try {
-        mediaRecorderRef.current.stop();
-      } catch (e) {}
-    }
-
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-
-    setEstaGravando(false);
-    setEstaPausado(false);
-  };
-
-  const handleFinalizarGravacao = async () => {
-    pararGravacaoGeral();
-    // Se a transcrição ao vivo não captou ou para melhorar pontuação via IA:
-    setTimeout(() => {
-      verificarOuRefinarTranscricaoServidor();
-    }, 600);
-  };
-
-  // Converte Blob de áudio para base64 para envio à API de transcrição
+  // Converte Blob para base64 para envio à API do servidor quando necessário
   const blobToBase64 = (blob: Blob): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -299,21 +174,15 @@ export default function GravadorSessao({
     });
   };
 
-  // Refina ou gera a transcrição pelo modelo do servidor (Gemini 2.5 Flash)
-  const verificarOuRefinarTranscricaoServidor = async () => {
-    const blobParaTranscrever = audioBlob || (audioChunksRef.current.length > 0 ? new Blob(audioChunksRef.current, { type: 'audio/webm' }) : null);
-
-    if (!blobParaTranscrever || blobParaTranscrever.size === 0) {
-      return;
-    }
-
-    // Se já temos transcrição ao vivo extensa, só tenta se solicitado ou se estiver vazio
-    setTranscrevendo(true);
-    setErroTranscricao(null);
+  // Processa áudio após o término no servidor (Gemini 2.5 Flash) se necessário
+  const processarTranscricaoServidor = async (blob: Blob) => {
+    setEstado('processando');
+    estadoRef.current = 'processando';
+    setErroMensagem(null);
 
     try {
-      const base64 = await blobToBase64(blobParaTranscrever);
-      const mime = blobParaTranscrever.type || 'audio/webm';
+      const base64 = await blobToBase64(blob);
+      const mime = blob.type || 'audio/webm';
 
       const response = await fetch('/api/transcrever-audio', {
         method: 'POST',
@@ -326,289 +195,405 @@ export default function GravadorSessao({
 
       const data = await response.json();
 
-      if (data.ok && data.transcricao && data.transcricao.trim()) {
-        setTranscricaoTexto(data.transcricao.trim());
+      if (data.ok && data.transcricao) {
+        setTranscricaoTexto(data.transcricao);
+        setEstado('concluido');
+        estadoRef.current = 'concluido';
+        if (onAudioGravado && audioUrl) {
+          onAudioGravado(blob, audioUrl, data.transcricao);
+        }
+      } else {
+        // Se a transcrição ao vivo já havia captado algo, mantém
+        if (transcricaoTexto.trim()) {
+          setEstado('concluido');
+          estadoRef.current = 'concluido';
+        } else {
+          setEstado('falha');
+          estadoRef.current = 'falha';
+          setErroMensagem(data.erro || 'Não foi possível transcrever o áudio automaticamente.');
+        }
       }
     } catch (err: any) {
-      console.warn('Transcrição remota não disponível, preservando transcrição em tempo real:', err);
-    } finally {
-      setTranscrevendo(false);
+      console.warn('[Erro transcrição servidor]:', err);
+      if (transcricaoTexto.trim()) {
+        setEstado('concluido');
+        estadoRef.current = 'concluido';
+      } else {
+        setEstado('falha');
+        estadoRef.current = 'falha';
+        setErroMensagem('Falha na conexão com o serviço de transcrição. O áudio foi preservado e você pode tentar novamente.');
+      }
     }
   };
 
-  const handleTranscreverManualmente = async () => {
-    if (estaGravando) {
-      pararGravacaoGeral();
+  // 1. Iniciar Gravação
+  const iniciarGravacao = async () => {
+    setErroMensagem(null);
+    setTempoSegundos(0);
+    audioChunksRef.current = [];
+
+    if (audioUrl) {
+      URL.revokeObjectURL(audioUrl);
+      setAudioUrl(null);
     }
-    await verificarOuRefinarTranscricaoServidor();
-  };
+    setAudioBlob(null);
 
-  // Inserir registro e transcrição clínica no prontuário sem opção de baixar áudio
-  const handleInserirRegistroAudio = () => {
-    const timestamp = new Date().toLocaleDateString('pt-BR') + ' às ' + new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    const cabecalho = `\n\n--- [Sessão Registrada - ${timestamp} (Duração: ${formatarTempo(tempoSegundos)})] ---\n`;
-    
-    const blocoTranscricao = transcricaoTexto.trim()
-      ? `\n[Transcrição Automática da Sessão]:\n"${transcricaoTexto.trim()}"\n`
-      : '\n[Áudio registrado na sessão clínica.]\n';
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+      streamRef.current = stream;
 
-    const nota = `[Registro clínico gravado e protegido sob sigilo profissional.]\n`;
-    const resultado = textoAtual 
-      ? `${textoAtual.trim()}${cabecalho}${nota}${blocoTranscricao}` 
-      : `${cabecalho.trim()}\n${nota}${blocoTranscricao}`;
+      let options: MediaRecorderOptions = {};
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        options = { mimeType: 'audio/webm;codecs=opus' };
+      } else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
+        options = { mimeType: 'audio/ogg;codecs=opus' };
+      } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        options = { mimeType: 'audio/mp4' };
+      }
 
-    onInserirTexto(resultado);
-  };
+      const mediaRecorder = new MediaRecorder(stream, options);
+      mediaRecorderRef.current = mediaRecorder;
 
-  const handleCopiarTranscricao = () => {
-    if (!transcricaoTexto) return;
-    navigator.clipboard.writeText(transcricaoTexto);
-    setCopiadoTexto(true);
-    setTimeout(() => setCopiadoTexto(false), 3000);
-  };
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
 
-  const handleLimparGravacao = () => {
-    if (estaGravando) {
-      pararGravacaoGeral();
+      mediaRecorder.onstop = async () => {
+        if (audioChunksRef.current.length > 0) {
+          const mime = audioChunksRef.current[0]?.type || 'audio/webm';
+          const blob = new Blob(audioChunksRef.current, { type: mime });
+          const url = URL.createObjectURL(blob);
+          setAudioBlob(blob);
+          setAudioUrl(url);
+
+          // Se não havia reconhecimento ao vivo ou texto está vazio, processa no servidor
+          if (!transcricaoTexto.trim()) {
+            await processarTranscricaoServidor(blob);
+          } else {
+            setEstado('concluido');
+            estadoRef.current = 'concluido';
+            if (onAudioGravado) {
+              onAudioGravado(blob, url, transcricaoTexto);
+            }
+          }
+        }
+      };
+
+      mediaRecorder.start(1000);
+
+      setEstado('gravando');
+      estadoRef.current = 'gravando';
+
+      // Dispara transcrição de fala contínua imediatamente
+      iniciarFalaAoVivo();
+
+      // Timer
+      timerRef.current = setInterval(() => {
+        setTempoSegundos(prev => prev + 1);
+      }, 1000);
+
+    } catch (err: any) {
+      console.error('[Microfone]:', err);
+      setEstado('falha');
+      estadoRef.current = 'falha';
+      setErroMensagem('Permissão de microfone negada ou dispositivo indisponível. Verifique as configurações de áudio do seu navegador.');
     }
+  };
+
+  // 2. Pausar / Retomar
+  const alternarPausa = () => {
+    if (estado === 'gravando') {
+      // Pausa
+      setEstado('pausado');
+      estadoRef.current = 'pausado';
+
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.pause();
+      }
+      if (speechRecognitionRef.current) {
+        try { speechRecognitionRef.current.stop(); } catch (_) {}
+      }
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    } else if (estado === 'pausado') {
+      // Retoma
+      setEstado('gravando');
+      estadoRef.current = 'gravando';
+
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'paused') {
+        mediaRecorderRef.current.resume();
+      }
+      iniciarFalaAoVivo();
+      timerRef.current = setInterval(() => {
+        setTempoSegundos(prev => prev + 1);
+      }, 1000);
+    }
+  };
+
+  // 3. Concluir / Parar Gravação
+  const finalizarGravacao = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    if (speechRecognitionRef.current) {
+      try { speechRecognitionRef.current.stop(); } catch (_) {}
+      speechRecognitionRef.current = null;
+    }
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+
+    setEstado('processando');
+    estadoRef.current = 'processando';
+  };
+
+  // 4. Descartar gravação atual para recomeçar
+  const descartarGravacao = () => {
+    pararHardware();
+    if (audioUrl) {
+      URL.revokeObjectURL(audioUrl);
+      setAudioUrl(null);
+    }
+    setAudioBlob(null);
     audioChunksRef.current = [];
     setTranscricaoTexto('');
     setTempoSegundos(0);
-    setAudioUrl(null);
-    setAudioBlob(null);
-    setTranscrevendo(false);
-    setMostrarPainel(false);
+    setErroMensagem(null);
+    setEstado('ocioso');
+    estadoRef.current = 'ocioso';
   };
 
-  const temAudioGravado = tempoSegundos > 0 || !!audioBlob || audioChunksRef.current.length > 0;
+  // Inserir a transcrição obtida nas notas da sessão
+  const handleInserirNasNotas = () => {
+    if (!transcricaoTexto.trim()) return;
+
+    let novoConteudo = textoAtual ? `${textoAtual}\n\n` : '';
+    novoConteudo += `--- Transcrição do Diálogo da Sessão (${nomePaciente}) ---\n${transcricaoTexto.trim()}`;
+
+    onInserirTexto(novoConteudo);
+    setCopiado(true);
+    setTimeout(() => setCopiado(false), 2000);
+  };
 
   return (
-    <div className="space-y-3">
-      {/* Botão de Disparo Inicial quando o painel está recolhido */}
-      {!mostrarPainel && !estaGravando && (
-        <button
-          type="button"
-          onClick={() => {
-            setMostrarPainel(true);
-            iniciarGravacao();
-          }}
-          className="w-full py-2.5 px-3 sm:px-4 rounded-xl border border-primary/30 bg-primary/5 hover:bg-primary/10 text-primary font-bold text-xs flex items-center justify-between transition-all group cursor-pointer"
-        >
-          <div className="flex items-center gap-2">
-            <div className="size-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform shrink-0">
-              <Mic className="size-3.5" />
-            </div>
-            <div className="text-left">
-              <span className="font-semibold block">Gravar Áudio da Sessão</span>
-              <span className="text-[10px] text-muted-foreground font-normal">
-                A transcrição automática é realizada em tempo real enquanto você grava
-              </span>
-            </div>
+    <Card className="p-4 sm:p-5 border-border bg-card space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border/60 pb-3">
+        <div className="flex items-center gap-2">
+          <div className={`p-2 rounded-xl ${
+            estado === 'gravando'
+              ? 'bg-rose-500/20 text-rose-500 animate-pulse'
+              : estado === 'pausado'
+              ? 'bg-amber-500/20 text-amber-500'
+              : estado === 'processando'
+              ? 'bg-primary/20 text-primary'
+              : 'bg-muted text-muted-foreground'
+          }`}>
+            <Mic className="size-5" />
           </div>
-          <span className="text-[10px] text-muted-foreground font-mono font-medium uppercase tracking-wider bg-background px-2 py-0.5 rounded border border-border shrink-0 flex items-center gap-1">
-            <Shield className="size-3 text-emerald-600" />
-            Transcrição Automática
+          <div>
+            <h4 className="text-sm font-bold text-foreground">
+              Gravação de Áudio & Transcrição da Sessão
+            </h4>
+            <p className="text-xs text-muted-foreground">
+              Atendimento com: <strong className="text-foreground">{nomePaciente}</strong>
+            </p>
+          </div>
+        </div>
+
+        {/* Badge de Estado Atual */}
+        <div className="flex items-center gap-2">
+          <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+            estado === 'gravando'
+              ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 animate-pulse'
+              : estado === 'pausado'
+              ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+              : estado === 'processando'
+              ? 'bg-primary/15 text-primary'
+              : estado === 'concluido'
+              ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+              : estado === 'falha'
+              ? 'bg-destructive/15 text-destructive'
+              : 'bg-muted text-muted-foreground'
+          }`}>
+            {estado === 'ocioso' && 'Pronto para Gravar'}
+            {estado === 'gravando' && `Gravando (${formatarTempo(tempoSegundos)})`}
+            {estado === 'pausado' && `Pausado (${formatarTempo(tempoSegundos)})`}
+            {estado === 'processando' && 'Processando Transcrição...'}
+            {estado === 'concluido' && 'Gravação & Transcrição Concluídas'}
+            {estado === 'falha' && 'Falha no Processamento'}
           </span>
-        </button>
-      )}
+        </div>
+      </div>
 
-      {/* Painel do Gravador */}
-      {mostrarPainel && (
-        <Card className={`p-3.5 sm:p-5 border-2 transition-all space-y-4 ${
-          estaGravando 
-            ? 'border-primary/50 bg-primary/5 shadow-md ring-1 ring-primary/20' 
-            : 'border-border bg-card'
-        }`}>
-          {/* Topo do Gravador com Status, Cronômetro e Controles de Gravação */}
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-3">
-            <div className="flex items-center gap-2.5">
-              <div className={`size-3 rounded-full shrink-0 ${
-                estaGravando 
-                  ? (estaPausado ? 'bg-amber-500' : 'bg-red-500 animate-pulse') 
-                  : 'bg-zinc-400'
-              }`} />
-              <div className="leading-tight">
-                <span className="font-bold text-xs text-foreground uppercase tracking-wider block">
-                  {estaGravando 
-                    ? (estaPausado ? 'Gravação em Pausa' : 'Gravando e Transcrevendo...') 
-                    : 'Gravação Concluída'}
-                </span>
-                <span className="text-[11px] text-muted-foreground truncate max-w-[150px] sm:max-w-[240px] block">
-                  {nomePaciente}
-                </span>
-              </div>
-            </div>
+      {/* Informativo de Tecnologia e Privacidade Ética */}
+      <div className="p-3 rounded-xl bg-muted/30 border border-border/60 text-xs text-muted-foreground flex items-start gap-2.5 leading-relaxed">
+        <Info className="size-4 text-primary shrink-0 mt-0.5" />
+        <div className="space-y-0.5">
+          <p>
+            {suportaFalaAoVivo
+              ? 'Seu navegador suporta reconhecimento de fala contínuo em tempo real. O diálogo é transcrito conforme você fala.'
+              : 'Seu navegador processará a transcrição completa do diálogo automaticamente no término da gravação através do processamento seguro do servidor.'
+            }
+          </p>
+          <span className="text-[11px] text-muted-foreground block">
+            Armazenamento seguro e confidencial do consultório sob guarda do profissional responsável.
+          </span>
+        </div>
+      </div>
 
-            {/* Timer de Duração */}
-            <div className="flex items-center gap-1.5 bg-background px-3 py-1.5 rounded-xl border border-border shadow-xs">
-              <Clock className="size-3.5 text-primary shrink-0" />
-              <span className="font-mono text-xs font-bold text-foreground">
-                {formatarTempo(tempoSegundos)}
-              </span>
-            </div>
-
-            {/* Controles de Gravação */}
-            <div className="flex items-center gap-1.5">
-              {estaGravando ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={alternarPausa}
-                    className="px-3 py-1.5 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground flex items-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    {estaPausado ? <Play className="size-3 text-emerald-500" /> : <Pause className="size-3 text-amber-500" />}
-                    <span>{estaPausado ? 'Retomar' : 'Pausar'}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleFinalizarGravacao}
-                    className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-                  >
-                    <Square className="size-3 fill-current" />
-                    <span>Concluir Gravação</span>
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={iniciarGravacao}
-                  className="px-3 py-1.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <RefreshCw className="size-3" />
-                  <span>Gravar Novamente</span>
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={handleLimparGravacao}
-                className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-xl transition-colors cursor-pointer"
-                title="Descartar gravação"
-              >
-                <Trash2 className="size-4" />
-              </button>
-            </div>
+      {/* Alerta de Erro */}
+      {erroMensagem && (
+        <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/30 text-destructive text-xs flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="size-4 shrink-0" />
+            <span>{erroMensagem}</span>
           </div>
-
-          {/* Player de áudio interno da sessão quando disponível */}
-          {audioUrl && (
-            <div className="p-3 rounded-xl bg-muted/40 border border-border space-y-2">
-              <div className="flex items-center justify-between text-xs font-semibold text-foreground">
-                <span className="flex items-center gap-1.5">
-                  <Volume2 className="size-3.5 text-primary" />
-                  Reproduzir Áudio da Sessão
-                </span>
-                <span className="text-[10px] text-muted-foreground font-mono">
-                  Duração: {formatarTempo(tempoSegundos)}
-                </span>
-              </div>
-              <audio src={audioUrl} controls className="w-full h-9 rounded-lg" />
-            </div>
-          )}
-
-          {/* Bloco de Transcrição Automática */}
-          <div className="p-3.5 rounded-2xl bg-primary/5 border border-primary/20 space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="space-y-0.5">
-                <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                  <Sparkles className="size-4 text-primary" />
-                  Transcrição Automática da Sessão
-                </span>
-                <p className="text-[11px] text-muted-foreground">
-                  {estaGravando 
-                    ? 'Capturando e transcrevendo a fala em tempo real...' 
-                    : 'Texto transcrito pronto para conferência e inserção no prontuário.'}
-                </p>
-              </div>
-
-              {/* Botão de Refinar Transcrição com IA */}
-              <button
-                type="button"
-                disabled={!temAudioGravado || transcrevendo}
-                onClick={handleTranscreverManualmente}
-                className="px-3.5 py-1.5 rounded-xl border border-primary/30 bg-background hover:bg-primary/10 text-primary text-xs font-semibold flex items-center justify-center gap-1.5 shadow-2xs transition-all cursor-pointer disabled:opacity-40 shrink-0"
-                title="Refinar pontuação e formatação com Inteligência Artificial"
-              >
-                {transcrevendo ? (
-                  <>
-                    <Loader2 className="size-3.5 animate-spin" />
-                    <span>Ajustando texto...</span>
-                  </>
-                ) : (
-                  <>
-                    <FileAudio className="size-3.5" />
-                    <span>Refinar Transcrição</span>
-                  </>
-                )}
-              </button>
-            </div>
-
-            {/* Caixa de exibição da Transcrição Gerada */}
-            <div className="space-y-1.5 pt-1">
-              <div className="flex items-center justify-between">
-                <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
-                  Texto Transcrito
-                </label>
-                {transcricaoTexto && (
-                  <button
-                    type="button"
-                    onClick={handleCopiarTranscricao}
-                    className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1 cursor-pointer"
-                  >
-                    {copiadoTexto ? <Check className="size-3 text-emerald-600" /> : <Copy className="size-3" />}
-                    <span>{copiadoTexto ? 'Copiado!' : 'Copiar texto'}</span>
-                  </button>
-                )}
-              </div>
-
-              <textarea
-                value={transcricaoTexto}
-                onChange={(e) => setTranscricaoTexto(e.target.value)}
-                placeholder="A transcrição do áudio aparecerá aqui automaticamente durante a gravação..."
-                rows={4}
-                className="w-full rounded-xl border border-border bg-background p-3 text-xs sm:text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring leading-relaxed resize-y font-sans"
-              />
-            </div>
-          </div>
-
-          {/* Alertas de erro */}
-          {erroMicrofone && (
-            <div className="p-2.5 rounded-xl bg-destructive/10 border border-destructive/30 text-destructive text-xs flex items-center gap-2">
-              <AlertCircle className="size-4 shrink-0" />
-              <span>{erroMicrofone}</span>
-            </div>
-          )}
-
-          {erroTranscricao && (
-            <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs flex items-center gap-2">
-              <AlertCircle className="size-4 shrink-0" />
-              <span>{erroTranscricao}</span>
-            </div>
-          )}
-
-          {/* Alerta de Sigilo Profissional */}
-          <div className="p-2.5 rounded-xl bg-muted/40 border border-border text-[11px] text-muted-foreground flex items-start gap-2 leading-relaxed">
-            <Shield className="size-4 text-emerald-600 shrink-0 mt-0.5" />
-            <div>
-              <strong className="text-foreground">Sigilo e Privacidade:</strong> O diálogo da sessão é transcrito para fins de evolução clínica e incorporado ao prontuário sob sigilo profissional.
-            </div>
-          </div>
-
-          {/* Botão de Inserção Direta no Prontuário */}
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+          {audioBlob && (
             <button
               type="button"
-              disabled={!temAudioGravado && !transcricaoTexto.trim()}
-              onClick={handleInserirRegistroAudio}
-              className="w-full sm:w-auto px-4 py-2.5 rounded-xl gradient-emerald text-primary-foreground text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:opacity-95 transition-all cursor-pointer disabled:opacity-40"
+              onClick={() => processarTranscricaoServidor(audioBlob)}
+              className="text-xs underline font-bold shrink-0 cursor-pointer"
             >
-              <Check className="size-4" />
-              <span>Inserir Registro & Transcrição no Prontuário</span>
+              Tentar Novamente
             </button>
-          </div>
-        </Card>
+          )}
+        </div>
       )}
-    </div>
+
+      {/* Barra de Controles de Gravação */}
+      <div className="flex flex-wrap items-center gap-2.5 pt-1">
+        {estado === 'ocioso' && (
+          <button
+            type="button"
+            onClick={iniciarGravacao}
+            className="px-5 py-2.5 rounded-xl gradient-emerald text-primary-foreground text-xs font-bold shadow-md hover:opacity-95 transition-all flex items-center gap-2 cursor-pointer"
+          >
+            <Mic className="size-4" />
+            <span>Iniciar Gravação e Transcrição</span>
+          </button>
+        )}
+
+        {(estado === 'gravando' || estado === 'pausado') && (
+          <>
+            <button
+              type="button"
+              onClick={alternarPausa}
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition-colors flex items-center gap-2 cursor-pointer ${
+                estado === 'pausado'
+                  ? 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700'
+                  : 'bg-card text-foreground border-border hover:bg-muted'
+              }`}
+            >
+              {estado === 'pausado' ? <Play className="size-4" /> : <Pause className="size-4" />}
+              <span>{estado === 'pausado' ? 'Retomar Gravação' : 'Pausar Gravação'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={finalizarGravacao}
+              className="px-5 py-2.5 rounded-xl bg-rose-600 text-white hover:bg-rose-700 text-xs font-bold shadow-md transition-all flex items-center gap-2 cursor-pointer"
+            >
+              <Square className="size-4" />
+              <span>Concluir Gravação</span>
+            </button>
+          </>
+        )}
+
+        {estado === 'processando' && (
+          <div className="flex items-center gap-2 text-xs font-bold text-primary py-2 px-3">
+            <Loader2 className="size-4 animate-spin" />
+            <span>Processando áudio e gerando transcrição fiel...</span>
+          </div>
+        )}
+
+        {(estado === 'concluido' || estado === 'falha') && (
+          <button
+            type="button"
+            onClick={descartarGravacao}
+            className="px-4 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5 cursor-pointer"
+          >
+            <Trash2 className="size-3.5" />
+            <span>Gravar Nova Sessão</span>
+          </button>
+        )}
+      </div>
+
+      {/* Player de Áudio Gravado */}
+      {audioUrl && (
+        <div className="p-3 rounded-xl bg-muted/40 border border-border/70 space-y-2">
+          <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <Volume2 className="size-3.5 text-primary" />
+              Áudio Gravado da Sessão ({formatarTempo(tempoSegundos)})
+            </span>
+            <a
+              href={audioUrl}
+              download={`sessao_${nomePaciente.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.webm`}
+              className="text-xs text-primary hover:underline flex items-center gap-1 font-bold"
+            >
+              <Download className="size-3.5" />
+              <span>Baixar Áudio (.webm)</span>
+            </a>
+          </div>
+          <audio controls src={audioUrl} className="w-full h-9 rounded-lg" />
+        </div>
+      )}
+
+      {/* Caixa de Exibição da Transcrição Real */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+            <Sparkles className="size-3.5 text-primary" />
+            Transcrição Textual da Sessão
+          </label>
+
+          {transcricaoTexto.trim() && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleInserirNasNotas}
+                className="text-xs font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                {copiado ? <Check className="size-3.5 text-emerald-600" /> : <Plus className="size-3.5" />}
+                <span>{copiado ? 'Inserido no Prontuário!' : 'Inserir nas Anotações da Sessão'}</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="relative">
+          <textarea
+            rows={5}
+            readOnly={estado === 'gravando'}
+            value={transcricaoTexto}
+            onChange={e => setTranscricaoTexto(e.target.value)}
+            placeholder={
+              estado === 'gravando'
+                ? 'Gravando... As falas da sessão estão sendo captadas e transcritas...'
+                : 'A transcrição automática da gravação de áudio aparecerá aqui. Você poderá editar o texto livremente antes de inseri-lo no prontuário.'
+            }
+            className="w-full rounded-xl border border-border bg-background p-3.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring leading-relaxed resize-y font-mono"
+          />
+        </div>
+      </div>
+    </Card>
   );
 }

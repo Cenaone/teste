@@ -15,7 +15,8 @@ import {
   ConsultorioData,
   RetornoStatus,
   AgendamentoClinico,
-  UsuarioConta
+  UsuarioConta,
+  MensagemEnviada
 } from './types';
 import {
   MODALIDADES_PADRAO,
@@ -31,14 +32,21 @@ import {
 import {
   formatarMoeda,
   formatarData,
+  formatarDataHora,
   diferencaDias,
   adicionarDias,
-  abrirWhatsApp
+  abrirWhatsApp,
+  formatarTelefone,
+  formatarCPF,
+  calcularMetricasFinanceiras,
+  verificarConflitoHorario,
+  arredondarMoeda
 } from './utils/helpers';
 import ProntuarioModal from './components/ProntuarioModal';
 import WhatsAppModal from './components/WhatsAppModal';
 import GravadorSessao from './components/GravadorSessao';
 import SecaoNovaSessao from './components/SecaoNovaSessao';
+import ModalCadastroPaciente from './components/ModalCadastroPaciente';
 import TelaAutenticacao from './components/TelaAutenticacao';
 import TelaRedefinirSenha from './components/TelaRedefinirSenha';
 import { Card, Badge } from './components/ui-compact';
@@ -73,6 +81,7 @@ import {
   Moon,
   LogOut,
   Send,
+  Play,
   Activity,
   Heart,
   Briefcase,
@@ -273,6 +282,8 @@ export default function App() {
   const [analisandoForm, setAnalisandoForm] = useState<Analisando | null>(null);
   const [mostrarFormSessao, setMostrarFormSessao] = useState(false);
   const [sessaoForm, setSessaoForm] = useState<SessaoClinica | null>(null);
+  const [sessaoOrigemAgendamentoId, setSessaoOrigemAgendamentoId] = useState<string | null>(null);
+  const [sessaoOrigemPacienteId, setSessaoOrigemPacienteId] = useState<string | null>(null);
   const [mostrarFormModalidade, setMostrarFormModalidade] = useState(false);
   const [modalidadeForm, setModalidadeForm] = useState<ModalidadeAtendimento | null>(null);
   const [mostrarFormHonorario, setMostrarFormHonorario] = useState(false);
@@ -591,9 +602,11 @@ export default function App() {
     const recorrentes = analisandos.filter(a => a.status === 'recorrente').length;
     const inativos = analisandos.filter(a => a.status === 'inativo').length;
 
-    const totalFaturamento = sessoes
-      .filter(s => s.pagamentoStatus === 'pago')
-      .reduce((sum, s) => sum + s.valorCobrado, 0);
+    // Métricas financeiras unificadas sem duplicidade de faturamento
+    const metricasFin = calcularMetricasFinanceiras(sessoes, honorarios);
+    const totalFaturamento = metricasFin.receitaRecebida;
+    const saldoPendente = metricasFin.saldoPendente;
+    const saldoVencido = metricasFin.saldoVencido;
 
     const ticketMedio = sessoes.length
       ? totalFaturamento / sessoes.length
@@ -602,15 +615,13 @@ export default function App() {
     const hojeStr = new Date().toISOString().slice(0, 10);
     const retornosHoje = sessoes.filter(s => s.proximaSessaoData && s.proximaSessaoData.slice(0, 10) === hojeStr).length;
 
-    const honorariosPendentes = honorarios.filter(h => h.status !== 'pago').length;
+    const honorariosPendentes = metricasFin.qtdVencidos;
 
     const acompanhamentosCriticos = sessoes.filter(s => {
-      // Cases with less than 5 days interval needing critical review
       const dias = s.proximaSessaoData ? diferencaDias(s.data, s.proximaSessaoData) : 7;
       return dias <= 3;
     }).length;
 
-    // Monthly Session Stats
     const volumeSessoesMes = sessoes.filter(s => s.data.slice(5, 7) === String(new Date().getMonth() + 1).padStart(2, '0')).length;
 
     return {
@@ -619,6 +630,8 @@ export default function App() {
       recorrentes,
       inativos,
       totalFaturamento,
+      saldoPendente,
+      saldoVencido,
       ticketMedio,
       retornosHoje,
       honorariosPendentes,
@@ -644,14 +657,23 @@ export default function App() {
   }, [analisandos, analisandoFiltro, filtroCasoPrioritario]);
 
   // Log new WhatsApp message sent
-  const handleMensagemEnviada = (analisandoId: string, texto: string, tipo: string) => {
+  const handleMensagemEnviada = (
+    analisandoId: string,
+    texto: string,
+    tipo: string,
+    statusEnvio: 'aberta_whatsapp' | 'preparada' = 'aberta_whatsapp'
+  ) => {
     const novosAnalisandos = analisandos.map(a => {
       if (a.id === analisandoId) {
-        const novaMensagem = {
+        const novaMensagem: MensagemEnviada = {
           id: `${Date.now()}`,
           data: new Date().toISOString(),
           tipo,
-          texto
+          texto,
+          destinatarioNome: a.nome,
+          destinatarioContato: a.whatsapp,
+          status: statusEnvio,
+          statusDetalhe: 'Abertura no WhatsApp iniciada pelo usuário. Confirmação externa pendente.'
         };
         return {
           ...a,
@@ -1412,11 +1434,50 @@ export default function App() {
               analisandos={analisandos}
               modalidades={modalidades}
               sessoes={sessoes}
-              onSalvarSessao={(novaSessao) => {
-                atualizarSessoes([novaSessao, ...sessoes]);
+              agendamentos={agendamentos}
+              agendamentoInicialId={sessaoOrigemAgendamentoId}
+              pacienteInicialId={sessaoOrigemPacienteId}
+              contaUsuario={contaUsuario}
+              onSalvarSessao={(novaSessao, agendamentoRetorno) => {
+                const novasSessoes = [novaSessao, ...sessoes];
+                atualizarSessoes(novasSessoes);
+
+                let agendamentosAtualizados = [...agendamentos];
+                if (novaSessao.agendamentoOrigemId) {
+                  agendamentosAtualizados = agendamentosAtualizados.map(ag =>
+                    ag.id === novaSessao.agendamentoOrigemId
+                      ? { ...ag, status: 'realizado' as const, sessaoRealizadaId: novaSessao.id }
+                      : ag
+                  );
+                }
+                if (agendamentoRetorno) {
+                  agendamentosAtualizados = [agendamentoRetorno, ...agendamentosAtualizados];
+                }
+                if (novaSessao.agendamentoOrigemId || agendamentoRetorno) {
+                  atualizarAgendamentos(agendamentosAtualizados);
+                }
+
+                setSessaoOrigemAgendamentoId(null);
+                setSessaoOrigemPacienteId(null);
               }}
               onNavegarSessoes={() => setSecaoAtiva('sessoes')}
-              onCadastrarPaciente={() => setSecaoAtiva('analisandos')}
+              onCadastrarPaciente={() => {
+                setAnalisandoForm({
+                  id: `p_${Date.now()}`,
+                  nome: '',
+                  whatsapp: '',
+                  email: '',
+                  nascimento: '',
+                  cidade: '',
+                  status: 'novo',
+                  vip: false,
+                  tags: [],
+                  observacoes: '',
+                  criadoEm: new Date().toISOString(),
+                  mensagensEnviadas: []
+                });
+                setMostrarFormAnalisando(true);
+              }}
             />
           )}
 
@@ -2008,26 +2069,23 @@ export default function App() {
                                 <select
                                   value={h.status}
                                   onChange={e => {
-                                    const novos = honorarios.map(x => x.id === h.id ? { ...x, status: e.target.value as any } : x);
+                                    const novoStatus = e.target.value as any;
+                                    const novos = honorarios.map(x => x.id === h.id ? { ...x, status: novoStatus } : x);
                                     atualizarHonorarios(novos);
-                                    if (e.target.value === 'pago' && paciente) {
-                                      // Log an automatic paid session setting
-                                      const novaSessao = {
-                                        id: `${Date.now()}`,
-                                        analisandoId: paciente.id,
-                                        modalidadeId: 'm1', // Default
-                                        data: new Date().toISOString().slice(0, 10),
-                                        valorCobrado: h.valor,
-                                        pagamentoStatus: 'pago' as any,
-                                        meioPagamento: 'pix' as any,
-                                        notasSessao: `Honorários compensados referentes ao acerto lançado de vencimento em ${formatarData(h.vencimento)}.`
-                                      };
-                                      atualizarSessoes([novaSessao, ...sessoes]);
+                                    // Se estiver vinculado a uma sessão, sincroniza o status na sessão correspondente sem duplicar
+                                    if (h.sessaoId) {
+                                      const sessoesAtualizadas = sessoes.map(s =>
+                                        s.id === h.sessaoId
+                                          ? { ...s, pagamentoStatus: (novoStatus === 'pago' ? 'pago' : novoStatus === 'parcial' ? 'parcial' : 'pendente') as any }
+                                          : s
+                                      );
+                                      atualizarSessoes(sessoesAtualizadas);
                                     }
                                   }}
                                   className="px-2.5 py-1 rounded-md border border-border text-xs bg-card text-foreground font-semibold"
                                 >
                                   <option value="pendente">Pendente</option>
+                                  <option value="parcial">Parcial</option>
                                   <option value="pago">Pago</option>
                                   <option value="atrasado">Atrasado</option>
                                 </select>
@@ -2815,31 +2873,27 @@ export default function App() {
 
                                     {/* Action overlays on hover */}
                                     <div className="absolute inset-0 bg-background/95 backdrop-blur-sm rounded-xl p-2 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-1.5 transition-all duration-150">
-                                      {a.status !== 'realizado' && (
+                                      {a.status !== 'realizado' ? (
                                         <button
                                           onClick={() => {
-                                            const confirmacao = window.confirm(`Deseja marcar o agendamento de ${paciente?.nome} como REALIZADO e registrá-lo automaticamente no histórico de Sessões Realizadas?`);
-                                            if (!confirmacao) return;
-                                            // Conclude
-                                            const novos = agendamentos.map(x => x.id === a.id ? { ...x, status: 'realizado' as const } : x);
-                                            atualizarAgendamentos(novos);
-                                            // Add to sessions
-                                            const novaSessao: SessaoClinica = {
-                                              id: `sess_${Date.now()}`,
-                                              analisandoId: a.analisandoId,
-                                              modalidadeId: a.modalidadeId,
-                                              data: a.data,
-                                              valorCobrado: modalidade ? modalidade.preco : 0,
-                                              pagamentoStatus: 'pago',
-                                              meioPagamento: 'pix',
-                                              notasSessao: a.observacao || 'Sessão concluída automaticamente via Agenda.'
-                                            };
-                                            atualizarSessoes([novaSessao, ...sessoes]);
+                                            setSessaoOrigemAgendamentoId(a.id);
+                                            setSessaoOrigemPacienteId(a.analisandoId);
+                                            setSecaoAtiva('nova_sessao');
                                           }}
-                                          title="Concluir e Registrar"
+                                          title="Iniciar Atendimento e Registrar Sessão"
                                           className="size-7 rounded-lg bg-emerald-500 text-white flex items-center justify-center hover:opacity-90 transition-opacity"
                                         >
-                                          <Check className="size-3.5" />
+                                          <Play className="size-3.5" />
+                                        </button>
+                                      ) : (
+                                        <button
+                                          onClick={() => {
+                                            if (paciente) setProntuarioSelecionado(paciente);
+                                          }}
+                                          title="Ver Atendimento no Prontuário"
+                                          className="size-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center hover:opacity-90 transition-opacity"
+                                        >
+                                          <FileText className="size-3.5" />
                                         </button>
                                       )}
                                       <button
@@ -2937,29 +2991,27 @@ export default function App() {
                                   </td>
                                   <td className="px-4 py-3 text-right">
                                     <div className="flex justify-end gap-1.5">
-                                      {a.status !== 'realizado' && (
+                                      {a.status !== 'realizado' ? (
                                         <button
                                           onClick={() => {
-                                            const confirmacao = window.confirm(`Deseja marcar o agendamento de ${paciente?.nome} como REALIZADO e registrá-lo automaticamente no histórico de Sessões Realizadas?`);
-                                            if (!confirmacao) return;
-                                            const novos = agendamentos.map(x => x.id === a.id ? { ...x, status: 'realizado' as const } : x);
-                                            atualizarAgendamentos(novos);
-                                            const novaSessao: SessaoClinica = {
-                                              id: `sess_${Date.now()}`,
-                                              analisandoId: a.analisandoId,
-                                              modalidadeId: a.modalidadeId,
-                                              data: a.data,
-                                              valorCobrado: modalidade ? modalidade.preco : 0,
-                                              pagamentoStatus: 'pago',
-                                              meioPagamento: 'pix',
-                                              notasSessao: a.observacao || 'Sessão concluída automaticamente via Agenda.'
-                                            };
-                                            atualizarSessoes([novaSessao, ...sessoes]);
+                                            setSessaoOrigemAgendamentoId(a.id);
+                                            setSessaoOrigemPacienteId(a.analisandoId);
+                                            setSecaoAtiva('nova_sessao');
                                           }}
-                                          title="Concluir Atendimento"
+                                          title="Iniciar Atendimento e Registrar Sessão"
                                           className="p-1.5 rounded-lg border border-border bg-card hover:bg-emerald-500/10 hover:text-emerald-500 text-muted-foreground transition-colors"
                                         >
-                                          <Check className="size-4" />
+                                          <Play className="size-4" />
+                                        </button>
+                                      ) : (
+                                        <button
+                                          onClick={() => {
+                                            if (paciente) setProntuarioSelecionado(paciente);
+                                          }}
+                                          title="Ver Prontuário / Sessão"
+                                          className="p-1.5 rounded-lg border border-border bg-card hover:bg-emerald-500/10 hover:text-emerald-500 text-muted-foreground transition-colors"
+                                        >
+                                          <FileText className="size-4" />
                                         </button>
                                       )}
                                       <button
@@ -3248,6 +3300,8 @@ export default function App() {
           analisando={prontuarioSelecionado}
           sessoes={sessoes}
           modalidades={modalidades}
+          honorarios={honorarios}
+          contaUsuario={contaUsuario}
           onFechar={() => setProntuarioSelecionado(null)}
           onAtualizarObservacoes={novasObs => {
             const atualizados = analisandos.map(a =>
@@ -3255,6 +3309,9 @@ export default function App() {
             );
             atualizarAnalisandos(atualizados);
             setProntuarioSelecionado({ ...prontuarioSelecionado, observacoes: novasObs });
+          }}
+          onAtualizarSessoes={novasSessoes => {
+            atualizarSessoes(novasSessoes);
           }}
           onAbrirMensagem={a => {
             setProntuarioSelecionado(null);
@@ -3267,17 +3324,9 @@ export default function App() {
           }}
           onNovaSessaoRapida={analisandoId => {
             setProntuarioSelecionado(null);
-            setSessaoForm({
-              id: `${Date.now()}`,
-              analisandoId,
-              modalidadeId: '',
-              data: new Date().toISOString().slice(0, 10),
-              valorCobrado: 0,
-              pagamentoStatus: 'pago',
-              meioPagamento: 'pix',
-              notasSessao: ''
-            });
-            setMostrarFormSessao(true);
+            setSessaoOrigemAgendamentoId(null);
+            setSessaoOrigemPacienteId(analisandoId);
+            setSecaoAtiva('nova_sessao');
           }}
         />
       )}
@@ -3297,190 +3346,27 @@ export default function App() {
         />
       )}
 
-      {/* 3. NEW/EDIT ANALISANDO FORM MODAL */}
-      {mostrarFormAnalisando && analisandoForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-card border border-border w-full max-w-xl max-h-[92vh] sm:max-h-[85vh] rounded-2xl flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 my-auto">
-            <div className="gradient-emerald text-primary-foreground px-5 py-4 shrink-0 flex items-center justify-between">
-              <h3 className="text-lg font-bold">
-                {analisandos.some(a => a.id === analisandoForm.id) ? 'Editar dados do paciente' : 'Novo Paciente'}
-              </h3>
-              <button
-                onClick={() => setMostrarFormAnalisando(false)}
-                className="p-1 rounded-lg text-primary-foreground/80 hover:text-primary-foreground hover:bg-white/10 transition-colors"
-                title="Fechar formulário"
-              >
-                <X className="size-5" />
-              </button>
-            </div>
-            <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground uppercase">Nome completo *</label>
-                <input
-                  type="text"
-                  value={analisandoForm.nome || ''}
-                  onChange={e => setAnalisandoForm({ ...analisandoForm, nome: e.target.value })}
-                  className="w-full h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  placeholder="Nome do paciente"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase">WhatsApp / Celular</label>
-                  <input
-                    type="text"
-                    value={analisandoForm.whatsapp || ''}
-                    onChange={e => setAnalisandoForm({ ...analisandoForm, whatsapp: e.target.value })}
-                    className="w-full h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    placeholder="5511999999999"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase">E-mail</label>
-                  <input
-                    type="text"
-                    value={analisandoForm.email || ''}
-                    onChange={e => setAnalisandoForm({ ...analisandoForm, email: e.target.value })}
-                    className="w-full h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    placeholder="paciente@email.com"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase">Nascimento</label>
-                  <input
-                    type="date"
-                    value={analisandoForm.nascimento ? analisandoForm.nascimento.slice(0, 10) : ''}
-                    onChange={e => setAnalisandoForm({ ...analisandoForm, nascimento: e.target.value })}
-                    className="w-full h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase">Cidade de residência</label>
-                  <input
-                    type="text"
-                    value={analisandoForm.cidade || ''}
-                    onChange={e => setAnalisandoForm({ ...analisandoForm, cidade: e.target.value })}
-                    className="w-full h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    placeholder="São Paulo"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground uppercase">Endereço completo</label>
-                <input
-                  type="text"
-                  value={analisandoForm.endereco || ''}
-                  onChange={e => setAnalisandoForm({ ...analisandoForm, endereco: e.target.value })}
-                  className="w-full h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  placeholder="Logradouro, número, apto"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase">Estado setting</label>
-                  <select
-                    value={analisandoForm.status || 'novo'}
-                    onChange={e => setAnalisandoForm({ ...analisandoForm, status: e.target.value as any })}
-                    className="w-full h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <option value="novo">Triagem / Entrevistas Preliminares</option>
-                    <option value="ativo">Em Análise (Regular)</option>
-                    <option value="recorrente">Frequência Recorrente</option>
-                    <option value="inativo">Alta Clínica / Pausa</option>
-                  </select>
-                </div>
-                <div className="flex items-center gap-2 pt-2 sm:pt-6">
-                  <input
-                    type="checkbox"
-                    id="vip-form"
-                    checked={Boolean(analisandoForm.vip)}
-                    onChange={e => setAnalisandoForm({ ...analisandoForm, vip: e.target.checked })}
-                    className="rounded border-border text-primary focus:ring-ring size-4"
-                  />
-                  <label htmlFor="vip-form" className="text-xs font-semibold text-muted-foreground uppercase cursor-pointer select-none">
-                    Caso Prioritário (VIP)
-                  </label>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground uppercase">Tags clínicas (separadas por vírgula)</label>
-                <input
-                  type="text"
-                  value={Array.isArray(analisandoForm.tags) ? analisandoForm.tags.join(', ') : ''}
-                  onChange={e => setAnalisandoForm({
-                    ...analisandoForm,
-                    tags: e.target.value.split(',').map(tag => tag.trim()).filter(Boolean)
-                  })}
-                  className="w-full h-10 px-3 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  placeholder="ex: divã, lacaniano, neurose-grave"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground uppercase">Demanda / Notas iniciais</label>
-                <textarea
-                  value={analisandoForm.observacoes || ''}
-                  onChange={e => setAnalisandoForm({ ...analisandoForm, observacoes: e.target.value })}
-                  rows={3}
-                  className="w-full rounded-xl border border-border bg-card p-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
-                  placeholder="Motivo da busca, queixa inicial ou impressões clínicas do setting terapêutico"
-                />
-              </div>
-            </div>
-            <div className="border-t border-border px-5 py-3.5 sm:py-4 flex justify-end gap-2 bg-muted/30 shrink-0">
-              <button
-                onClick={() => setMostrarFormAnalisando(false)}
-                className="px-4 py-2 text-sm font-medium border border-border hover:bg-muted text-muted-foreground rounded-xl"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={() => {
-                  if (!analisandoForm.nome?.trim()) {
-                    alert('Por favor, informe o nome do paciente.');
-                    return;
-                  }
-                  const pacienteFormatado: Analisando = {
-                    id: String(analisandoForm.id || Date.now()),
-                    nome: analisandoForm.nome.trim(),
-                    whatsapp: analisandoForm.whatsapp ? analisandoForm.whatsapp.trim() : '',
-                    email: analisandoForm.email ? analisandoForm.email.trim() : '',
-                    nascimento: analisandoForm.nascimento || '',
-                    cidade: analisandoForm.cidade ? analisandoForm.cidade.trim() : '',
-                    endereco: analisandoForm.endereco ? analisandoForm.endereco.trim() : '',
-                    status: analisandoForm.status || 'novo',
-                    vip: Boolean(analisandoForm.vip),
-                    tags: Array.isArray(analisandoForm.tags) ? analisandoForm.tags : [],
-                    observacoes: analisandoForm.observacoes || '',
-                    criadoEm: analisandoForm.criadoEm || new Date().toISOString(),
-                    mensagensEnviadas: Array.isArray(analisandoForm.mensagensEnviadas) ? analisandoForm.mensagensEnviadas : []
-                  };
-
-                  const cadastrado = analisandos.some(a => a.id === pacienteFormatado.id);
-                  if (cadastrado) {
-                    atualizarAnalisandos(analisandos.map(a => a.id === pacienteFormatado.id ? pacienteFormatado : a));
-                    if (prontuarioSelecionado && prontuarioSelecionado.id === pacienteFormatado.id) {
-                      setProntuarioSelecionado(pacienteFormatado);
-                    }
-                  } else {
-                    atualizarAnalisandos([...analisandos, pacienteFormatado]);
-                  }
-                  setMostrarFormAnalisando(false);
-                }}
-                className="px-4 py-2 text-sm font-semibold text-white gradient-emerald rounded-xl shadow-md hover:opacity-95 transition-opacity"
-              >
-                Salvar Paciente
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* 3. MODAL COMPLETO DE CADASTRO/EDIÇÃO DE PACIENTE (ORGANIZADO COM VIACEP E VALIDAÇÕES) */}
+      {mostrarFormAnalisando && (
+        <ModalCadastroPaciente
+          pacienteExistente={analisandos.some(a => a.id === analisandoForm?.id) ? analisandoForm : null}
+          pacientesCadastrados={analisandos}
+          onFechar={() => setMostrarFormAnalisando(false)}
+          onSalvar={pacienteSalvo => {
+            const cadastrado = analisandos.some(a => a.id === pacienteSalvo.id);
+            let novosAnalisandos: Analisando[];
+            if (cadastrado) {
+              novosAnalisandos = analisandos.map(a => a.id === pacienteSalvo.id ? pacienteSalvo : a);
+              if (prontuarioSelecionado && prontuarioSelecionado.id === pacienteSalvo.id) {
+                setProntuarioSelecionado(pacienteSalvo);
+              }
+            } else {
+              novosAnalisandos = [...analisandos, pacienteSalvo];
+            }
+            atualizarAnalisandos(novosAnalisandos);
+            setMostrarFormAnalisando(false);
+          }}
+        />
       )}
 
       {/* 4. NEW/EDIT SESSÃO CLINICA FORM MODAL */}
@@ -4087,6 +3973,22 @@ export default function App() {
                   if (!agendamentoForm.analisandoId) {
                     alert('Por favor, selecione um paciente cadastrado!');
                     return;
+                  }
+                  const resultadoConflito = verificarConflitoHorario(
+                    agendamentoForm.data,
+                    agendamentoForm.hora,
+                    50,
+                    agendamentos,
+                    agendamentoForm.id
+                  );
+                  if (resultadoConflito.conflito) {
+                    const conflitoPaciente = resultadoConflito.agendamentoConflitante
+                      ? (analisandos.find(a => a.id === resultadoConflito.agendamentoConflitante?.analisandoId)?.nome || 'Outro atendimento')
+                      : 'Outro atendimento';
+                    const prosseguir = window.confirm(
+                      `Atenção: Conflito de agenda detectado com "${conflitoPaciente}" às ${resultadoConflito.agendamentoConflitante?.hora || agendamentoForm.hora} neste mesmo dia.\n\nDeseja salvar o agendamento mesmo assim?`
+                    );
+                    if (!prosseguir) return;
                   }
                   const existe = agendamentos.some(x => x.id === agendamentoForm.id);
                   if (existe) {

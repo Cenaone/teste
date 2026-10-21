@@ -27,7 +27,6 @@ import {
   isMasterAdminEmail,
   PlanoAssinante
 } from '../lib/supabase';
-import { SQL_MIGRACAO_NOVO_SUPABASE } from '../lib/sqlScript';
 
 interface SecaoAdminSaasProps {
   contaUsuario: { id: string; email: string; nomeCompleto: string; crp?: string; isAdmin?: boolean; role?: string } | null;
@@ -74,7 +73,6 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
   // Modais
   const [modalNovoAberto, setModalNovoAberto] = useState(false);
   const [modalEditarAberto, setModalEditarAberto] = useState(false);
-  const [modalSqlAberto, setModalSqlAberto] = useState(false);
   const [usuarioEmEdicao, setUsuarioEmEdicao] = useState<AssinaturaAdminRpc | null>(null);
 
   // Form states - Novo Usuário Manual
@@ -96,13 +94,20 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
   const [editDiasValidade, setEditDiasValidade] = useState(30);
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
 
-  // SQL Copied State
-  const [copiadoSql, setCopiadoSql] = useState(false);
+  /**
+   * Determina o acesso real e efetivo do usuário:
+   * Usuários com data de validade futura, administradores master ou marcados como ativo possuem acesso válido.
+   */
+  const verificarAcessoRealUsuario = (u: AssinaturaAdminRpc): boolean => {
+    if (u.acesso_valido === true) return true;
+    if (isMasterAdminEmail(u.email) || u.role === 'admin') return true;
+    if (u.valido_ate && new Date(u.valido_ate).getTime() > Date.now()) return true;
+    if (u.status_usuario === 'ativo' || u.status_assinatura === 'ativa') return true;
+    return false;
+  };
 
   /**
-   * 1. Quando a tela de gestão abrir, busque os dados chamando:
-   *    supabase.rpc('admin_listar_assinaturas')
-   * Se a RPC não existir ou retornar erro, mostre o erro de forma clara e indique qual função falhou.
+   * Busca os dados chamando: supabase.rpc('admin_listar_assinaturas')
    */
   const carregarDados = async () => {
     setCarregando(true);
@@ -112,7 +117,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
       if (error) {
         console.error("Erro retornado por supabase.rpc('admin_listar_assinaturas'):", error);
         setErroRpc(
-          `A função RPC 'admin_listar_assinaturas' retornou um erro: ${error.message} (Código: ${error.code || '42501/PGRST'}). Verifique se o script SQL foi executado no Supabase e se o usuário atual possui permissão de administrador.`
+          `A função RPC 'admin_listar_assinaturas' retornou um erro: ${error.message} (Código: ${error.code || '42501/PGRST'}).`
         );
         setUsuarios([]);
         return;
@@ -136,41 +141,15 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
     setTimeout(() => setFeedback(null), 5000);
   };
 
-  /**
-   * 5. Para a validação de acesso do usuário autenticado, conecta à chamada:
-   *    supabase.rpc('usuario_tem_acesso')
-   *    Usa o booleano retornado para atualizar o estado de acesso.
-   */
-  const handleValidarMeuAcesso = async () => {
-    setValidandoMeuAcesso(true);
-    try {
-      const { data, error } = await supabase.rpc('usuario_tem_acesso');
-      if (error) {
-        mostrarFeedback(`Falha na validação: A função RPC 'usuario_tem_acesso' retornou erro: ${error.message}`, 'erro');
-        return;
-      }
-      const temAcesso = Boolean(data);
-      if (temAcesso) {
-        mostrarFeedback("Validação com sucesso! A RPC 'usuario_tem_acesso' retornou TRUE (Acesso Válido no banco de dados).");
-      } else {
-        mostrarFeedback("Validação: A RPC 'usuario_tem_acesso' retornou FALSE (Acesso Inválido ou Pendente no banco de dados).", 'erro');
-      }
-    } catch (err: any) {
-      mostrarFeedback(`Erro ao chamar a RPC 'usuario_tem_acesso': ${err?.message || 'Erro de comunicação'}`, 'erro');
-    } finally {
-      setValidandoMeuAcesso(false);
-    }
-  };
-
-  // Contadores baseados estritamente nos dados retornados pela RPC
+  // Contadores calculados considerando o acesso real validado
   const contadores = useMemo(() => {
     const total = usuarios.length;
     const pendentes = usuarios.filter(
-      u => u.status_usuario === 'pendente' || u.status_assinatura === 'pendente'
+      u => !verificarAcessoRealUsuario(u) && (u.status_usuario === 'pendente' || u.status_assinatura === 'pendente')
     ).length;
-    const ativos = usuarios.filter(u => u.acesso_valido === true).length;
+    const ativos = usuarios.filter(u => verificarAcessoRealUsuario(u)).length;
     const inativos = usuarios.filter(
-      u => u.acesso_valido === false && u.status_usuario !== 'pendente' && u.status_assinatura !== 'pendente'
+      u => !verificarAcessoRealUsuario(u) && u.status_usuario !== 'pendente' && u.status_assinatura !== 'pendente'
     ).length;
     return { total, pendentes, ativos, inativos };
   }, [usuarios]);
@@ -178,13 +157,15 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
   // Lista Filtrada preservando busca e filtros existentes
   const usuariosFiltrados = useMemo(() => {
     return usuarios.filter(u => {
-      // Filtro de status usando campos da RPC
+      const isValido = verificarAcessoRealUsuario(u);
+
+      // Filtro de status
       if (filtroStatus === 'pendente') {
-        if (u.status_usuario !== 'pendente' && u.status_assinatura !== 'pendente') return false;
+        if (isValido || (u.status_usuario !== 'pendente' && u.status_assinatura !== 'pendente')) return false;
       } else if (filtroStatus === 'ativo') {
-        if (!u.acesso_valido) return false;
+        if (!isValido) return false;
       } else if (filtroStatus === 'inativo') {
-        if (u.acesso_valido || u.status_usuario === 'pendente' || u.status_assinatura === 'pendente') return false;
+        if (isValido || u.status_usuario === 'pendente' || u.status_assinatura === 'pendente') return false;
       }
 
       // Filtro de texto conectado a todos os campos
@@ -393,12 +374,6 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
     }
   };
 
-  const copiarSql = () => {
-    navigator.clipboard.writeText(SQL_MIGRACAO_NOVO_SUPABASE);
-    setCopiadoSql(true);
-    setTimeout(() => setCopiadoSql(false), 2500);
-  };
-
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Top Header */}
@@ -431,35 +406,13 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={() => setModalSqlAberto(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all shadow-xs cursor-pointer"
-            title="Ver Script de Migração do Banco no Supabase"
-          >
-            <FileText className="size-3.5 text-muted-foreground" />
-            <span className="hidden sm:inline">Script SQL</span>
-          </button>
-
-          {/* Botão de Validação do Usuário Autenticado via RPC usuario_tem_acesso */}
-          <button
-            type="button"
-            onClick={handleValidarMeuAcesso}
-            disabled={validandoMeuAcesso}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-primary/40 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold transition-all shadow-xs cursor-pointer disabled:opacity-50"
-            title="Testa a validação de acesso do usuário autenticado chamando supabase.rpc('usuario_tem_acesso')"
-          >
-            <Shield className={`size-3.5 ${validandoMeuAcesso ? 'animate-spin' : ''}`} />
-            <span>{validandoMeuAcesso ? 'Validando...' : 'Validar Meu Acesso (RPC)'}</span>
-          </button>
-
-          {/* Botão Atualizar chamando supabase.rpc('admin_listar_assinaturas') */}
+          {/* Botão Atualizar */}
           <button
             type="button"
             onClick={carregarDados}
             disabled={carregando}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all shadow-xs cursor-pointer disabled:opacity-50"
-            title="Atualizar lista de assinaturas chamando admin_listar_assinaturas"
+            title="Atualizar lista de assinaturas"
           >
             <RefreshCw className={`size-3.5 ${carregando ? 'animate-spin' : ''}`} />
             <span>Atualizar</span>
@@ -673,14 +626,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
               <RefreshCw className="size-3.5" />
               <span>Tentar Novamente</span>
             </button>
-            <button
-              type="button"
-              onClick={() => setModalSqlAberto(true)}
-              className="px-4 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all inline-flex items-center gap-1.5 cursor-pointer"
-            >
-              <FileText className="size-3.5 text-muted-foreground" />
-              <span>Ver Script SQL no Supabase</span>
-            </button>
+
           </div>
         </Card>
       )}
@@ -1196,54 +1142,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
         </div>
       )}
 
-      {/* Modal: Visualizador do Script SQL do Supabase */}
-      {modalSqlAberto && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col p-6 space-y-4 shadow-2xl animate-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between border-b border-border pb-3 shrink-0">
-              <div className="flex items-center gap-2">
-                <FileText className="size-5 text-primary" />
-                <h3 className="text-base font-bold text-foreground">
-                  Script SQL Oficial (RPCs & RLS)
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setModalSqlAberto(false)}
-                className="text-muted-foreground hover:text-foreground p-1 cursor-pointer"
-              >
-                <X className="size-4" />
-              </button>
-            </div>
 
-            <p className="text-xs text-muted-foreground leading-relaxed shrink-0">
-              Contém as funções RPC <code>admin_listar_assinaturas</code>, <code>usuario_tem_acesso</code>, <code>admin_aprovar_usuario</code> e <code>admin_alternar_status_usuario</code>:
-            </p>
-
-            <div className="flex-1 overflow-y-auto bg-muted/60 p-4 rounded-xl border border-border font-mono text-[11px] text-foreground space-y-1">
-              <pre className="whitespace-pre-wrap">{SQL_MIGRACAO_NOVO_SUPABASE}</pre>
-            </div>
-
-            <div className="flex items-center justify-between pt-2 border-t border-border shrink-0">
-              <button
-                type="button"
-                onClick={() => setModalSqlAberto(false)}
-                className="px-4 py-2 text-xs font-semibold rounded-xl border border-border hover:bg-muted text-foreground transition-colors cursor-pointer"
-              >
-                Fechar
-              </button>
-              <button
-                type="button"
-                onClick={copiarSql}
-                className="px-4 py-2 rounded-xl gradient-emerald text-primary-foreground font-bold text-xs shadow-md hover:opacity-95 transition-all flex items-center gap-1.5 cursor-pointer"
-              >
-                {copiadoSql ? <Check className="size-4" /> : <Copy className="size-4" />}
-                <span>{copiadoSql ? 'Copiado para Área de Transferência!' : 'Copiar Script SQL'}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

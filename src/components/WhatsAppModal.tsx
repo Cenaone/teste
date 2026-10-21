@@ -1,11 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { Analisando, ModeloMensagem, PerfilAnalista, ConsultorioData } from '../types';
-import { abrirWhatsApp, substituirVariaveis, formatarMoeda, formatarData } from '../utils/helpers';
+import { 
+  abrirWhatsApp, 
+  substituirVariaveis, 
+  formatarMoeda, 
+  formatarData, 
+  formatarTelefone, 
+  formatarDataHora 
+} from '../utils/helpers';
 import { 
   Send, 
   X, 
   ShieldAlert,
-  ChevronDown
+  ChevronDown,
+  Clock,
+  User,
+  Info,
+  CheckCircle2,
+  ExternalLink
 } from 'lucide-react';
 
 interface WhatsAppModalProps {
@@ -14,9 +26,10 @@ interface WhatsAppModalProps {
   perfil: PerfilAnalista;
   consultorio: ConsultorioData;
   onFechar: () => void;
-  onMensagemEnviada: (analisandoId: string, textoMensagem: string, tipoCategoria: string) => void;
+  onMensagemEnviada: (analisandoId: string, textoMensagem: string, tipoCategoria: string, statusEnvio: 'aberta_whatsapp' | 'preparada') => void;
   valorReferencia?: number;
   dataReferencia?: string;
+  horaReferencia?: string;
   servicoReferencia?: string;
 }
 
@@ -29,21 +42,29 @@ export default function WhatsAppModal({
   onMensagemEnviada,
   valorReferencia,
   dataReferencia,
+  horaReferencia,
   servicoReferencia
 }: WhatsAppModalProps) {
   const [modeloSelecionadoId, setModeloSelecionadoId] = useState('');
   const [textoMensagem, setTextoMensagem] = useState('');
   const [consentimentoExterno, setConsentimentoExterno] = useState(false);
 
-  // Generate variables to substitute
+  // Data e hora do atendimento no fuso da clínica
+  const dataHoraClinica = dataReferencia 
+    ? `${formatarData(dataReferencia)}${horaReferencia ? ` às ${horaReferencia}` : ''}`
+    : formatarDataHora(new Date().toISOString());
+
+  // Gera variáveis para substituição fidedigna
   const variables = {
-    nome: analisando.nome.split(' ')[0] || analisando.nome,
+    nome: analisando.nomeSocial || (analisando.nome ? analisando.nome.split(' ')[0] : 'Paciente'),
+    nomeCompleto: analisando.nome,
     analista: perfil.nome,
     empresa: consultorio.nome,
     servico: servicoReferencia || 'nossa sessão de análise',
     valor: valorReferencia ? formatarMoeda(valorReferencia) : '—',
-    data: dataReferencia ? formatarData(dataReferencia) : formatarData(new Date().toISOString()),
-    pix: perfil.whatsapp || consultorio.whatsapp || 'chave Pix cadastrada'
+    data: dataHoraClinica,
+    horario: horaReferencia || 'conforme combinado',
+    pix: perfil.whatsapp || consultorio.whatsapp || 'chave Pix cadastrada no consultório'
   };
 
   useEffect(() => {
@@ -57,9 +78,9 @@ export default function WhatsAppModal({
     }
   }, [modeloSelecionadoId, modelos]);
 
-  const handleEnviar = () => {
+  const handleAbrirWhatsApp = () => {
     if (!analisando.whatsapp.trim()) {
-      alert('Este paciente não possui número de WhatsApp cadastrado.');
+      alert('Este paciente não possui número de WhatsApp cadastrado na ficha.');
       return;
     }
     if (!textoMensagem.trim()) {
@@ -67,7 +88,7 @@ export default function WhatsAppModal({
       return;
     }
     if (!consentimentoExterno) {
-      alert('Por favor, confirme que está ciente de que o envio compartilha este contato e texto com os servidores externos do WhatsApp.');
+      alert('Por favor, confirme que está ciente de que o link redirecionará para os servidores externos do WhatsApp.');
       return;
     }
 
@@ -77,21 +98,25 @@ export default function WhatsAppModal({
     // Ação explícita do profissional
     abrirWhatsApp(analisando.whatsapp, textoMensagem);
 
-    // Registra envio localmente sem dados sensíveis
-    onMensagemEnviada(analisando.id, textoMensagem, categoria);
+    // Registra como "aberta_whatsapp" distinguindo de entrega confirmada
+    onMensagemEnviada(analisando.id, textoMensagem, categoria, 'aberta_whatsapp');
     onFechar();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-card border border-border w-full max-w-lg rounded-2xl flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-        {/* Header */}
-        <div className="gradient-emerald text-primary-foreground px-5 py-4 flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+      <div className="bg-card border border-border w-full max-w-xl max-h-[94vh] rounded-2xl flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 my-auto">
+        
+        {/* Cabeçalho */}
+        <div className="gradient-emerald text-primary-foreground px-5 py-4 flex items-center justify-between shrink-0">
           <div>
-            <h3 className="text-lg font-bold">Contato Clínico via WhatsApp</h3>
-            <p className="text-xs opacity-90 mt-0.5">Destinatário: {analisando.nome} ({analisando.whatsapp || 'Sem número'})</p>
+            <h3 className="text-base sm:text-lg font-bold">Comunicação Clínica via WhatsApp</h3>
+            <p className="text-xs opacity-90 mt-0.5">
+              Preparação de notificação com revisão ética prévia
+            </p>
           </div>
           <button
+            type="button"
             onClick={onFechar}
             className="rounded-full p-2 text-primary-foreground/80 hover:text-primary-foreground hover:bg-white/10 transition-colors"
           >
@@ -99,18 +124,42 @@ export default function WhatsAppModal({
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-5 space-y-4">
-          {/* Template select */}
+        {/* Conteúdo com rolagem */}
+        <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
+          
+          {/* Informações Prévias de Origem (Destinatário e Horário no Fuso da Clínica) */}
+          <div className="p-3.5 rounded-xl bg-muted/40 border border-border/70 space-y-2 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-muted-foreground uppercase flex items-center gap-1.5">
+                <User className="size-3.5 text-primary" />
+                Destinatário:
+              </span>
+              <strong className="text-foreground">
+                {analisando.nome} {analisando.whatsapp ? `(${formatarTelefone(analisando.whatsapp)})` : '(Sem telefone)'}
+              </strong>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-muted-foreground uppercase flex items-center gap-1.5">
+                <Clock className="size-3.5 text-primary" />
+                Data / Horário de Referência:
+              </span>
+              <span className="font-mono text-foreground font-semibold">
+                {dataHoraClinica}
+              </span>
+            </div>
+          </div>
+
+          {/* Seleção do Modelo de Mensagem */}
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
-              Selecione um Modelo de Mensagem
+            <label className="text-xs font-semibold text-muted-foreground uppercase block">
+              Modelo Pré-configurado de Mensagem
             </label>
             <div className="relative">
               <select
                 value={modeloSelecionadoId}
                 onChange={e => setModeloSelecionadoId(e.target.value)}
-                className="w-full h-10 px-3 py-2 rounded-xl border border-border bg-card text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring appearance-none pr-10"
+                className="w-full h-10 px-3 py-2 rounded-xl border border-border bg-background text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring appearance-none pr-10"
               >
                 <option value="">— Escrever mensagem personalizada —</option>
                 {modelos.map(m => (
@@ -123,62 +172,73 @@ export default function WhatsAppModal({
             </div>
           </div>
 
-          {/* Text Area */}
+          {/* Texto Completo Revisável Antes do Envio */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
-                Conteúdo da Mensagem para Envio
+              <label className="text-xs font-semibold text-muted-foreground uppercase block">
+                Texto Completo da Mensagem para Envio
               </label>
               <span className="text-[10px] text-muted-foreground font-medium">
-                Revise antes de autorizar o envio
+                Revise antes de autorizar a abertura
               </span>
             </div>
             <textarea
               value={textoMensagem}
               onChange={e => setTextoMensagem(e.target.value)}
               rows={6}
-              placeholder="Selecione um modelo acima ou digite sua mensagem personalizada aqui..."
-              className="w-full rounded-xl border border-border bg-card p-4 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none placeholder:text-muted-foreground"
+              placeholder="Digite o texto da mensagem ou selecione um modelo acima..."
+              className="w-full rounded-xl border border-border bg-background p-3.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y leading-relaxed"
             />
           </div>
 
-          {/* Aviso Explícito de Compartilhamento Externo */}
-          <div className="flex gap-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3.5 text-xs text-amber-900 dark:text-amber-200 leading-relaxed">
-            <ShieldAlert className="size-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-            <div className="space-y-2">
-              <p>
-                <strong>Aviso de Privacidade:</strong> O envio desta mensagem abrirá o aplicativo/web do WhatsApp e transmitirá o número de telefone <code>{analisando.whatsapp || 'não cadastrado'}</code> e o texto acima para os servidores externos da Meta/WhatsApp. Notas de prontuário sigilosas nunca são incluídas automaticamente.
-              </p>
-              <label className="flex items-center gap-2 cursor-pointer font-semibold text-foreground pt-1">
-                <input
-                  type="checkbox"
-                  checked={consentimentoExterno}
-                  onChange={e => setConsentimentoExterno(e.target.checked)}
-                  className="rounded border-border text-primary focus:ring-primary size-4"
-                />
-                <span>Estou ciente e autorizo a transmissão externa ao WhatsApp</span>
-              </label>
+          {/* Distinção de Status & Alerta de Transmissão */}
+          <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-900 dark:text-amber-200 space-y-2 leading-relaxed">
+            <div className="flex items-start gap-2">
+              <Info className="size-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p>
+                  <strong>Distinção Importante:</strong> O clique no botão abaixo abrirá o link oficial do WhatsApp Web ou App. Abrir o link <u>não comprova envio ou entrega</u> até que a mensagem seja efetivamente disparada dentro do WhatsApp.
+                </p>
+                <p className="text-[11px] opacity-90">
+                  O registro no prontuário será gravado com o status <code>Aberta no WhatsApp (confirmação externa pendente)</code>.
+                </p>
+              </div>
             </div>
+
+            <label className="flex items-center gap-2 cursor-pointer font-bold text-foreground pt-1 border-t border-amber-500/20">
+              <input
+                type="checkbox"
+                checked={consentimentoExterno}
+                onChange={e => setConsentimentoExterno(e.target.checked)}
+                className="rounded border-border text-primary focus:ring-primary size-4"
+              />
+              <span>Autorizo a abertura externa no WhatsApp para este paciente</span>
+            </label>
           </div>
+
         </div>
 
-        {/* Footer */}
-        <div className="border-t border-border px-5 py-4 flex justify-end gap-2 bg-muted/30">
+        {/* Rodapé com Ações */}
+        <div className="border-t border-border px-5 py-3.5 flex justify-end gap-2 bg-muted/30 shrink-0">
           <button
+            type="button"
             onClick={onFechar}
-            className="px-4 py-2 text-sm font-medium border border-border hover:bg-muted text-muted-foreground hover:text-foreground rounded-xl transition-all"
+            className="px-4 py-2 text-xs font-semibold border border-border hover:bg-muted text-muted-foreground hover:text-foreground rounded-xl transition-all cursor-pointer"
           >
             Cancelar
           </button>
+
           <button
-            onClick={handleEnviar}
+            type="button"
+            onClick={handleAbrirWhatsApp}
             disabled={!consentimentoExterno || !textoMensagem.trim() || !analisando.whatsapp.trim()}
-            className="px-4 py-2 text-sm font-semibold text-white gradient-emerald rounded-xl shadow-md hover:opacity-95 transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-5 py-2 text-xs font-bold text-white gradient-emerald rounded-xl shadow-md hover:opacity-95 transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
-            <Send className="size-4" />
-            Abrir WhatsApp
+            <ExternalLink className="size-3.5" />
+            <span>Abrir no WhatsApp</span>
           </button>
         </div>
+
       </div>
     </div>
   );
