@@ -193,17 +193,24 @@ export function verificarConflitoHorario(
   agendamentos: AgendamentoClinico[],
   agendamentoIdIgnorar?: string
 ): { conflito: boolean; agendamentoConflitante?: AgendamentoClinico; mensagem?: string } {
-  if (!data || !horaInicio) return { conflito: false };
+  if (!data || !horaInicio || horaInicio === '00:00' || horaInicio === '00:00:00') {
+    return { conflito: false };
+  }
 
   const [hIni, mIni] = horaInicio.split(':').map(Number);
   if (Number.isNaN(hIni) || Number.isNaN(mIni)) return { conflito: false };
   const inicioEmMinutos = hIni * 60 + mIni;
   const fimEmMinutos = inicioEmMinutos + (duracaoMin || 50);
 
+  // Considera apenas agendamentos ativos e com horário clínico válido (ignora cancelados, realizados e placeholders 00:00)
   const mesmoDia = agendamentos.filter(a => 
     a.data === data && 
     a.status !== 'cancelado' && 
-    a.id !== agendamentoIdIgnorar
+    a.status !== 'realizado' && 
+    a.id !== agendamentoIdIgnorar &&
+    a.hora && 
+    a.hora !== '00:00' && 
+    a.hora !== '00:00:00'
   );
 
   for (const item of mesmoDia) {

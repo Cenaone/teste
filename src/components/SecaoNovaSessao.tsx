@@ -97,7 +97,9 @@ export default function SecaoNovaSessao({
   // 4. Próximo Atendimento e Retorno
   const [proximaSessaoData, setProximaSessaoData] = useState('');
   const [reservarNaAgenda, setReservarNaAgenda] = useState(false);
-  const [horaRetornoAgenda, setHoraRetornoAgenda] = useState('09:00');
+  const [horaRetornoAgenda, setHoraRetornoAgenda] = useState(() => {
+    return agendamentoOrigem?.hora || '09:00';
+  });
   const [avisoConflitoRetorno, setAvisoConflitoRetorno] = useState<string | null>(null);
 
   // 5. Dados Financeiros e Conclusão
@@ -109,12 +111,26 @@ export default function SecaoNovaSessao({
 
   // Estados de controle e feedback
   const [sucessoSalvo, setSucessoSalvo] = useState(false);
+  const [detalhesSucesso, setDetalhesSucesso] = useState<{
+    pacienteNome: string;
+    data: string;
+    hora: string;
+    proximaData?: string;
+    temTranscricao: boolean;
+  } | null>(null);
   const [erroValidacao, setErroValidacao] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
 
   // Analisando e Modalidade Selecionados
   const analisandoSelecionado = analisandos.find(a => a.id === analisandoId);
   const modalidadeSelecionada = modalidades.find(m => m.id === modalidadeId);
+
+  // Sincroniza horário padrão de retorno com o horário da sessão
+  useEffect(() => {
+    if (horaSessao && (!horaRetornoAgenda || horaRetornoAgenda === '00:00')) {
+      setHoraRetornoAgenda(horaSessao);
+    }
+  }, [horaSessao]);
 
   // Inicializa preço e próxima data quando modalidade mudar
   useEffect(() => {
@@ -131,7 +147,7 @@ export default function SecaoNovaSessao({
 
   // Checagem de conflitos para reserva de retorno na agenda
   useEffect(() => {
-    if (reservarNaAgenda && proximaSessaoData && horaRetornoAgenda) {
+    if (reservarNaAgenda && proximaSessaoData && horaRetornoAgenda && horaRetornoAgenda !== '00:00') {
       const conflito = verificarConflitoHorario(
         proximaSessaoData,
         horaRetornoAgenda,
@@ -233,6 +249,8 @@ export default function SecaoNovaSessao({
 
     try {
       const sessaoId = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const textoFinalNotas = notasSessao.trim() || transcricaoSessao.trim() || undefined;
+      const textoFinalTranscricao = transcricaoSessao.trim() || undefined;
 
       const novaSessao: SessaoClinica = {
         id: sessaoId,
@@ -248,8 +266,8 @@ export default function SecaoNovaSessao({
         meioPagamento,
         proximaSessaoData: proximaSessaoData || undefined,
         proximaSessaoAgendada: reservarNaAgenda,
-        notasSessao: notasSessao.trim() || undefined,
-        transcricao: transcricaoSessao.trim() || undefined,
+        notasSessao: textoFinalNotas,
+        transcricao: textoFinalTranscricao,
         audioUrl: audioUrlSessao || undefined,
         criadoEm: new Date().toISOString()
       };
@@ -262,7 +280,7 @@ export default function SecaoNovaSessao({
           analisandoId,
           modalidadeId,
           data: proximaSessaoData,
-          hora: horaRetornoAgenda || '09:00',
+          hora: (horaRetornoAgenda && horaRetornoAgenda !== '00:00') ? horaRetornoAgenda : (horaSessao || '09:00'),
           duracaoMinutos: modalidadeSelecionada?.duracao || 50,
           status: 'confirmado',
           observacao: `Retorno programado na conclusão da sessão de ${formatarData(dataSessao)}.`
@@ -276,6 +294,13 @@ export default function SecaoNovaSessao({
         localStorage.removeItem(RASCUNHO_STORAGE_KEY);
       } catch (_) {}
 
+      setDetalhesSucesso({
+        pacienteNome: analisandoSelecionado?.nome || 'Paciente',
+        data: dataSessao,
+        hora: horaSessao,
+        proximaData: (reservarNaAgenda && proximaSessaoData) ? proximaSessaoData : undefined,
+        temTranscricao: Boolean(textoFinalTranscricao)
+      });
       setSucessoSalvo(true);
       setSalvando(false);
 
@@ -308,16 +333,13 @@ export default function SecaoNovaSessao({
   return (
     <div className="space-y-6 max-w-5xl mx-auto animate-in fade-in duration-300">
       
-      {/* Cabeçalho da Seção com Sequência 1 a 5 */}
+      {/* Cabeçalho da Seção */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-4">
         <div>
           <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
             <Clock className="size-6 text-primary" />
             <span>Fluxo de Registro de Atendimento Clínico</span>
           </h2>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-            Sequência clínica: 1. Setting &bull; 2. Gravação &bull; 3. Evolução &bull; 4. Retorno &bull; 5. Conclusão Financeira
-          </p>
         </div>
 
         <button
@@ -339,28 +361,6 @@ export default function SecaoNovaSessao({
               Sessão vinculada ao agendamento de <strong>{analisandoSelecionado?.nome}</strong> em {formatarData(agendamentoOrigem.data)} às {agendamentoOrigem.hora}. Ao salvar, o agendamento será concluído automaticamente.
             </span>
           </div>
-        </div>
-      )}
-
-      {/* Alerta de Sucesso */}
-      {sucessoSalvo && (
-        <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 flex items-center justify-between gap-3 animate-in zoom-in-95">
-          <div className="flex items-center gap-2.5">
-            <CheckCircle2 className="size-5 text-emerald-600 shrink-0" />
-            <div>
-              <strong className="block text-sm font-bold">Atendimento registrado com sucesso no prontuário!</strong>
-              <span className="text-xs">
-                Sessão, notas clínicas e dados financeiros foram salvos de forma consistente.
-              </span>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onNavegarSessoes}
-            className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shrink-0 cursor-pointer"
-          >
-            Ver no Histórico
-          </button>
         </div>
       )}
 
@@ -484,12 +484,18 @@ export default function SecaoNovaSessao({
             nomePaciente={analisandoSelecionado?.nome || 'Paciente'}
             textoAtual={notasSessao}
             onInserirTexto={(novoTexto) => {
-              setNotasSessao(novoTexto);
+              setTranscricaoSessao(novoTexto);
+              if (!notasSessao.trim()) {
+                setNotasSessao(novoTexto);
+              }
             }}
             onAudioGravado={(blob, url, transcricao) => {
               setAudioBlobSessao(blob);
               setAudioUrlSessao(url);
               setTranscricaoSessao(transcricao);
+              if (!notasSessao.trim() && transcricao.trim()) {
+                setNotasSessao(transcricao.trim());
+              }
             }}
           />
         </div>
@@ -512,6 +518,24 @@ export default function SecaoNovaSessao({
               <span>Armazenamento Seguro do Consultório</span>
             </div>
           </div>
+
+          {transcricaoSessao.trim() && (
+            <div className="flex items-center justify-between p-2.5 rounded-xl bg-primary/10 border border-primary/20 text-xs text-primary font-medium">
+              <span className="flex items-center gap-1.5">
+                <Sparkles className="size-3.5 text-primary shrink-0" />
+                Transcrição gravada ativa ({transcricaoSessao.length} caracteres) &mdash; será salva no prontuário deste paciente.
+              </span>
+              {!notasSessao.trim() && (
+                <button
+                  type="button"
+                  onClick={() => setNotasSessao(transcricaoSessao)}
+                  className="underline font-bold text-primary hover:opacity-80 shrink-0 cursor-pointer ml-2"
+                >
+                  Usar na evolução
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-muted-foreground uppercase flex items-center justify-between">
@@ -585,8 +609,11 @@ export default function SecaoNovaSessao({
                   </label>
                   <input
                     type="time"
-                    value={horaRetornoAgenda}
-                    onChange={e => setHoraRetornoAgenda(e.target.value)}
+                    value={horaRetornoAgenda || horaSessao || '09:00'}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setHoraRetornoAgenda(val && val !== '00:00' ? val : (horaSessao || '09:00'));
+                    }}
                     className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
                   {avisoConflitoRetorno && (
@@ -731,6 +758,87 @@ export default function SecaoNovaSessao({
         </div>
 
       </form>
+
+      {/* ======================================================== */}
+      {/* CAIXA DE SUCESSO NO MEIO DA TELA (MODAL CENTRAL) */}
+      {/* ======================================================== */}
+      {sucessoSalvo && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-card border border-border/90 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-5 text-center animate-in zoom-in-95 duration-200">
+            <div className="size-16 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 mx-auto flex items-center justify-center ring-8 ring-emerald-500/10">
+              <CheckCircle2 className="size-9" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="text-lg sm:text-xl font-bold text-foreground">
+                Atendimento registrado com sucesso!
+              </h3>
+              <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                A sessão clínica, transcrição e dados financeiros foram salvos com segurança no prontuário do paciente.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-muted/40 border border-border/70 text-left text-xs space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Paciente:</span>
+                <span className="font-bold text-foreground truncate max-w-[200px]">
+                  {detalhesSucesso?.pacienteNome || analisandoSelecionado?.nome || '—'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Data do Atendimento:</span>
+                <span className="font-semibold text-foreground">
+                  {formatarData(detalhesSucesso?.data || dataSessao)} às {detalhesSucesso?.hora || horaSessao}
+                </span>
+              </div>
+              {detalhesSucesso?.temTranscricao && (
+                <div className="flex justify-between items-center text-emerald-600 dark:text-emerald-400 font-semibold">
+                  <span className="flex items-center gap-1">
+                    <Sparkles className="size-3.5" />
+                    Transcrição de Áudio:
+                  </span>
+                  <span>Salva no Prontuário</span>
+                </div>
+              )}
+              {detalhesSucesso?.proximaData && (
+                <div className="flex justify-between items-center">
+                  <span className="text-muted-foreground">Próximo Retorno:</span>
+                  <span className="font-semibold text-primary">
+                    {formatarData(detalhesSucesso.proximaData)} (Reservado na Agenda)
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSucessoSalvo(false);
+                  onNavegarSessoes();
+                }}
+                className="flex-1 py-3 px-4 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:opacity-95 transition-all flex items-center justify-center gap-1.5 shadow-md cursor-pointer"
+              >
+                <span>Ver no Histórico</span>
+                <ArrowRight className="size-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSucessoSalvo(false);
+                }}
+                className="py-3 px-4 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all cursor-pointer"
+              >
+                Novo Atendimento
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

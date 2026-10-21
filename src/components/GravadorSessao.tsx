@@ -50,6 +50,12 @@ export default function GravadorSessao({
   const audioChunksRef = useRef<Blob[]>([]);
   const speechRecognitionRef = useRef<any>(null);
   const estadoRef = useRef<EstadoGravador>('ocioso');
+  const transcricaoTextoRef = useRef('');
+
+  // Sincroniza ref com estado
+  useEffect(() => {
+    transcricaoTextoRef.current = transcricaoTexto;
+  }, [transcricaoTexto]);
 
   // Verifica suporte da API de Fala contínua do navegador na montagem
   useEffect(() => {
@@ -115,7 +121,7 @@ export default function GravadorSessao({
       recognition.interimResults = true;
       recognition.lang = 'pt-BR';
 
-      let baseTexto = transcricaoTexto ? transcricaoTexto.trim() + ' ' : '';
+      let baseTexto = transcricaoTextoRef.current ? transcricaoTextoRef.current.trim() + ' ' : '';
 
       recognition.onresult = (event: any) => {
         let textoFinal = '';
@@ -132,9 +138,14 @@ export default function GravadorSessao({
 
         if (textoFinal) {
           baseTexto += textoFinal;
-          setTranscricaoTexto((baseTexto + textoIntermediario).trim());
+          const completo = (baseTexto + textoIntermediario).trim();
+          transcricaoTextoRef.current = completo;
+          setTranscricaoTexto(completo);
+          onInserirTexto(completo);
         } else if (textoIntermediario) {
-          setTranscricaoTexto((baseTexto + textoIntermediario).trim());
+          const completo = (baseTexto + textoIntermediario).trim();
+          transcricaoTextoRef.current = completo;
+          setTranscricaoTexto(completo);
         }
       };
 
@@ -176,6 +187,17 @@ export default function GravadorSessao({
 
   // Processa áudio após o término no servidor (Gemini 2.5 Flash) se necessário
   const processarTranscricaoServidor = async (blob: Blob) => {
+    // Se a transcrição ao vivo já capturou o texto do paciente, mantém com sucesso imediato
+    if (transcricaoTextoRef.current.trim()) {
+      setEstado('concluido');
+      estadoRef.current = 'concluido';
+      setErroMensagem(null);
+      if (onAudioGravado && audioUrl) {
+        onAudioGravado(blob, audioUrl, transcricaoTextoRef.current.trim());
+      }
+      return;
+    }
+
     setEstado('processando');
     estadoRef.current = 'processando';
     setErroMensagem(null);
@@ -197,16 +219,19 @@ export default function GravadorSessao({
 
       if (data.ok && data.transcricao) {
         setTranscricaoTexto(data.transcricao);
+        transcricaoTextoRef.current = data.transcricao;
         setEstado('concluido');
         estadoRef.current = 'concluido';
         if (onAudioGravado && audioUrl) {
           onAudioGravado(blob, audioUrl, data.transcricao);
         }
+        onInserirTexto(data.transcricao);
       } else {
         // Se a transcrição ao vivo já havia captado algo, mantém
-        if (transcricaoTexto.trim()) {
+        if (transcricaoTextoRef.current.trim()) {
           setEstado('concluido');
           estadoRef.current = 'concluido';
+          setErroMensagem(null);
         } else {
           setEstado('falha');
           estadoRef.current = 'falha';
@@ -215,13 +240,14 @@ export default function GravadorSessao({
       }
     } catch (err: any) {
       console.warn('[Erro transcrição servidor]:', err);
-      if (transcricaoTexto.trim()) {
+      if (transcricaoTextoRef.current.trim()) {
         setEstado('concluido');
         estadoRef.current = 'concluido';
+        setErroMensagem(null);
       } else {
         setEstado('falha');
         estadoRef.current = 'falha';
-        setErroMensagem('Falha na conexão com o serviço de transcrição. O áudio foi preservado e você pode tentar novamente.');
+        setErroMensagem('Falha na conexão com o serviço de transcrição. O áudio foi preservado e você pode digitar as notas.');
       }
     }
   };
@@ -274,15 +300,19 @@ export default function GravadorSessao({
           setAudioBlob(blob);
           setAudioUrl(url);
 
-          // Se não havia reconhecimento ao vivo ou texto está vazio, processa no servidor
-          if (!transcricaoTexto.trim()) {
-            await processarTranscricaoServidor(blob);
-          } else {
+          const textoCapturado = transcricaoTextoRef.current.trim();
+
+          // Se a fala ao vivo já reconheceu o texto, conclui com êxito e preserva o áudio e texto
+          if (textoCapturado) {
             setEstado('concluido');
             estadoRef.current = 'concluido';
+            setErroMensagem(null);
             if (onAudioGravado) {
-              onAudioGravado(blob, url, transcricaoTexto);
+              onAudioGravado(blob, url, textoCapturado);
             }
+            onInserirTexto(textoCapturado);
+          } else {
+            await processarTranscricaoServidor(blob);
           }
         }
       };
@@ -361,8 +391,14 @@ export default function GravadorSessao({
       streamRef.current = null;
     }
 
-    setEstado('processando');
-    estadoRef.current = 'processando';
+    if (transcricaoTextoRef.current.trim()) {
+      setEstado('concluido');
+      estadoRef.current = 'concluido';
+      setErroMensagem(null);
+    } else {
+      setEstado('processando');
+      estadoRef.current = 'processando';
+    }
   };
 
   // 4. Descartar gravação atual para recomeçar
@@ -375,6 +411,7 @@ export default function GravadorSessao({
     setAudioBlob(null);
     audioChunksRef.current = [];
     setTranscricaoTexto('');
+    transcricaoTextoRef.current = '';
     setTempoSegundos(0);
     setErroMensagem(null);
     setEstado('ocioso');
@@ -584,7 +621,12 @@ export default function GravadorSessao({
             rows={5}
             readOnly={estado === 'gravando'}
             value={transcricaoTexto}
-            onChange={e => setTranscricaoTexto(e.target.value)}
+            onChange={e => {
+              const val = e.target.value;
+              setTranscricaoTexto(val);
+              transcricaoTextoRef.current = val;
+              onInserirTexto(val);
+            }}
             placeholder={
               estado === 'gravando'
                 ? 'Gravando... As falas da sessão estão sendo captadas e transcritas...'

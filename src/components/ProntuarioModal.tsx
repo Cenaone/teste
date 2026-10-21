@@ -453,13 +453,25 @@ export default function ProntuarioModal({
                             >
                               {sessao.pagamentoStatus} ({sessao.meioPagamento})
                             </span>
+                            {temTranscricao && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-primary/10 text-primary border border-primary/20 flex items-center gap-1">
+                                <Sparkles className="size-2.5" />
+                                Transcrição Salva
+                              </span>
+                            )}
+                            {temAudio && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-primary/10 text-primary border border-primary/20 flex items-center gap-1">
+                                <Volume2 className="size-2.5" />
+                                Áudio
+                              </span>
+                            )}
                           </div>
 
                           <div className="flex items-center gap-2 self-end sm:self-auto">
                             <button
                               type="button"
                               onClick={() => setSessaoExpandidaId(estaExpandida ? null : sessao.id)}
-                              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 font-semibold"
+                              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 font-semibold cursor-pointer"
                             >
                               <span>{estaExpandida ? 'Recolher' : 'Ler Completo'}</span>
                               {estaExpandida ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
@@ -474,11 +486,11 @@ export default function ProntuarioModal({
                               <FileText className="size-3.5 text-primary" />
                               Registro Clínico Original (Confidencial)
                             </span>
-                            {sessao.notasSessao && (
+                            {(sessao.notasSessao || sessao.transcricao) && (
                               <button
                                 type="button"
-                                onClick={() => copiarTexto(sessao.notasSessao || '', sessao.id)}
-                                className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 font-medium"
+                                onClick={() => copiarTexto(sessao.notasSessao || sessao.transcricao || '', sessao.id)}
+                                className="text-[11px] text-muted-foreground hover:text-foreground flex items-center gap-1 font-medium cursor-pointer"
                                 title="Copiar notas do atendimento"
                               >
                                 {copiadoId === sessao.id ? (
@@ -499,6 +511,14 @@ export default function ProntuarioModal({
                           <div className="p-3.5 rounded-xl bg-muted/20 border border-border/50 text-sm text-foreground leading-relaxed whitespace-pre-wrap font-sans">
                             {sessao.notasSessao ? (
                               sessao.notasSessao
+                            ) : sessao.transcricao ? (
+                              <div className="space-y-1.5">
+                                <span className="text-[11px] font-bold uppercase text-primary flex items-center gap-1">
+                                  <Sparkles className="size-3" />
+                                  Transcrição Salva da Sessão:
+                                </span>
+                                <div>{sessao.transcricao}</div>
+                              </div>
                             ) : (
                               <span className="text-xs text-muted-foreground italic">
                                 Nenhum texto clínico registrado nesta sessão.
@@ -507,13 +527,13 @@ export default function ProntuarioModal({
                           </div>
                         </div>
 
-                        {/* Bloco de Áudio e Transcrição (se disponíveis na sessão) */}
+                        {/* Bloco de Áudio e Transcrição Salva no Prontuário */}
                         {(temAudio || temTranscricao) && estaExpandida && (
                           <div className="p-3.5 rounded-xl border border-primary/20 bg-primary/5 space-y-3">
                             <div className="flex items-center justify-between">
                               <span className="text-xs font-bold text-primary flex items-center gap-1.5 uppercase tracking-wider">
                                 <Volume2 className="size-3.5" />
-                                Áudio & Transcrição da Sessão
+                                Transcrição & Áudio Salvos no Prontuário
                               </span>
                             </div>
 
@@ -535,19 +555,20 @@ export default function ProntuarioModal({
                             {temTranscricao && (
                               <div className="space-y-1">
                                 <div className="flex items-center justify-between">
-                                  <span className="text-[10px] text-muted-foreground uppercase font-semibold">
-                                    Transcrição do Diálogo:
+                                  <span className="text-[10px] text-primary uppercase font-bold flex items-center gap-1">
+                                    <Sparkles className="size-3" />
+                                    Transcrição Completa da Fala:
                                   </span>
                                   <button
                                     type="button"
                                     onClick={() => copiarTexto(sessao.transcricao || '', `transc_${sessao.id}`)}
-                                    className="text-[10px] text-primary hover:underline flex items-center gap-1 font-bold"
+                                    className="text-[10px] text-primary hover:underline flex items-center gap-1 font-bold cursor-pointer"
                                   >
                                     <Copy className="size-3" />
                                     <span>Copiar Transcrição</span>
                                   </button>
                                 </div>
-                                <div className="p-3 rounded-lg bg-card border border-border text-xs text-muted-foreground leading-relaxed max-h-40 overflow-y-auto whitespace-pre-wrap">
+                                <div className="p-3 rounded-lg bg-card border border-border text-xs text-foreground leading-relaxed max-h-48 overflow-y-auto whitespace-pre-wrap font-mono">
                                   {sessao.transcricao}
                                 </div>
                               </div>
