@@ -100,7 +100,6 @@ import {
   supabase,
   getSupabase,
   obterUsuarioAutenticadoSupabase,
-  obterSessaoAssinanteAtiva,
   fazerLogoutSupabase,
   consultarLicencaAssinante,
   solicitarRecuperacaoSenhaOficial,
@@ -870,25 +869,29 @@ export default function App() {
     })();
 
     // 2. Escuta alterações em tempo real no estado de autenticação do Supabase
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+    let revisaoAuth = 0;
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      const revisao = ++revisaoAuth;
       if (event === 'PASSWORD_RECOVERY') {
         setEmFluxoRecuperacao(true);
       } else if (event === 'SIGNED_IN' && session?.user) {
-        const usuarioServer = await obterUsuarioAutenticadoSupabase();
-        if (usuarioServer && usuarioServer.id) {
+        // Não aguardar chamadas Supabase dentro do callback: o Auth mantém um lock.
+        setTimeout(async () => {
+          const usuarioServer = await obterUsuarioAutenticadoSupabase();
+          if (revisao !== revisaoAuth) return;
           setContaUsuario(usuarioServer);
-          setUsuarioAutenticado(true);
-        }
+          setUsuarioAutenticado(Boolean(usuarioServer));
+        }, 0);
       } else if (event === 'SIGNED_OUT') {
-        const sessaoLocal = obterSessaoAssinanteAtiva();
-        if (!sessaoLocal) {
-          setUsuarioAutenticado(false);
-          setContaUsuario(null);
-        }
+        setUsuarioAutenticado(false);
+        setContaUsuario(null);
+        setChaveiroCofre(null);
+        setCofreDesbloqueado(false);
       }
     });
 
     return () => {
+      revisaoAuth++;
       authListener?.subscription?.unsubscribe();
     };
   }, []);

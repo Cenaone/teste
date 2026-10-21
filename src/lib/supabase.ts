@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { carregarIdentidadeAutenticada, listarContasAutenticadas } from './sessaoAutenticada';
 
 export function limparUrlSupabase(rawUrl: string): string {
   if (!rawUrl) return '';
@@ -227,7 +228,7 @@ export const supabase = {
 };
 
 /**
- * Interface estrita com as colunas oficiais retornadas pela RPC public.admin_listar_assinaturas()
+ * Contrato da tela, normalizado a partir de public.admin_listar_contas().
  */
 export interface AssinaturaAdminRpc {
   user_id: string;
@@ -245,14 +246,18 @@ export interface AssinaturaAdminRpc {
 }
 
 /**
- * Busca assinaturas do SaaS chamando a RPC oficial admin_listar_assinaturas.
+ * Compatibilidade com chamadas antigas: consulta a RPC completa admin_listar_contas.
  * Usa a sessão Supabase do usuário autenticado (sem chave service_role).
  */
 export async function adminListarAssinaturasRpc(): Promise<{
   data: AssinaturaAdminRpc[] | null;
   error: any | null;
 }> {
-  return await supabase.rpc('admin_listar_assinaturas');
+  try {
+    return { data: await listarContasAutenticadas(getSupabase()), error: null };
+  } catch (error) {
+    return { data: null, error };
+  }
 }
 
 /**
@@ -1122,326 +1127,46 @@ export async function excluirUsuarioAdmin(userId: string): Promise<{ ok: boolean
 
 /**
  * Autentica o assinante exclusivamente via Supabase Auth nativo no servidor (auth.users),
- * com resiliência local automática para contas cadastradas.
+ * sem fallback de autenticação local.
  */
 export async function fazerLoginSupabaseAuth(
   email: string,
   senha: string
 ): Promise<{ ok: boolean; user?: any; erro?: string; statusAcesso?: StatusAssinante | 'expirado' }> {
-  const emailClean = email.trim().toLowerCase();
-  const senhaClean = senha.trim();
   const cliente = getSupabase();
-
-  // 1. Tenta autenticação nativa no Supabase Auth se cliente estiver disponível
-  if (cliente) {
-    try {
-      const { data, error } = await cliente.auth.signInWithPassword({
-        email: emailClean,
-        password: senhaClean
-      });
-
-      if (!error && data?.user) {
-        const nomeMeta = data.user.user_metadata?.nome_completo || data.user.email?.split('@')[0];
-        const crpMeta = data.user.user_metadata?.crp;
-        const isAdmin = isMasterAdminEmail(emailClean) ||
-          data.user.user_metadata?.role === 'admin' ||
-          data.user.user_metadata?.is_admin === true;
-
-        // Consulta status atual diretamente no banco de dados do Supabase e servidor
-        let statusBanco: StatusAssinante | undefined;
-        let validoAteBanco: string | undefined;
-        if (!isAdmin) {
-          // 1. Consulta API de status em tempo real do banco de dados
-          try {
-            const resStatus = await fetch(getApiUrl(`/api/auth/status-usuario?email=${encodeURIComponent(emailClean)}&userId=${encodeURIComponent(data.user.id)}`));
-            const dataStatus = await resStatus.json();
-            if (dataStatus.ok && dataStatus.encontrado && dataStatus.status) {
-              statusBanco = dataStatus.status as StatusAssinante;
-              if (dataStatus.validoAte) validoAteBanco = dataStatus.validoAte;
-            }
-          } catch (_) {}
-
-          // 2. Consulta tabela usuarios no Supabase
-          try {
-            const { data: uDb } = await cliente
-              .from('usuarios')
-              .select('status, role')
-              .eq('id', data.user.id)
-              .maybeSingle();
-            if (uDb?.status) {
-              statusBanco = uDb.status as StatusAssinante;
-            }
-
-            const { data: assDb } = await cliente
-              .from('assinaturas_saas')
-              .select('status, valido_ate')
-              .eq('user_id', data.user.id)
-              .maybeSingle();
-            if (assDb) {
-              if (assDb.status === 'inativa' || assDb.status === 'cancelada') {
-                statusBanco = 'inativo';
-              } else if (assDb.status === 'ativa' && statusBanco !== 'inativo') {
-                statusBanco = 'ativo';
-              }
-              validoAteBanco = assDb.valido_ate;
-            }
-          } catch (_) {}
-        }
-
-        // Consulta também se existe registro prévio no repositório local
-        const contas = obterContasAssinantes();
-        const contaRegistrada = contas.find(c => c.email.toLowerCase() === emailClean);
-        const statusAtual: StatusAssinante = isAdmin ? 'ativo' : (statusBanco || contaRegistrada?.status || 'ativo');
-        const dataValidadeFinal = validoAteBanco || contaRegistrada?.validoAte;
-
-        // Se for assinante comum e estiver pendente ou desativado
-        if (!isAdmin && statusAtual === 'pendente') {
-          await cliente.auth.signOut();
-          return {
-            ok: false,
-            statusAcesso: 'pendente',
-            erro: 'Sua conta foi cadastrada e está aguardando aprovação do Administrador Master. Assim que seu acesso for ativado, você poderá entrar no sistema.'
-          };
-        }
-
-        if (!isAdmin && statusAtual === 'inativo') {
-          await cliente.auth.signOut();
-          return {
-            ok: false,
-            statusAcesso: 'inativo',
-            erro: 'Seu acesso ao sistema foi desativado ou suspenso pelo Administrador Geral. Entre em contato com a administração para reativar seu acesso.'
-          };
-        }
-
-        // Verifica validade da assinatura para assinantes comuns
-        if (!isAdmin && dataValidadeFinal) {
-          const expTime = new Date(dataValidadeFinal).getTime();
-          if (expTime < Date.now()) {
-            await cliente.auth.signOut();
-            return {
-              ok: false,
-              statusAcesso: 'expirado',
-              erro: 'Sua assinatura mensal expirou. Entre em contato com a administração para renovar seu plano.'
-            };
-          }
-        }
-
-        const infoConta: ContaAssinanteArmazenada = {
-          id: data.user.id,
-          email: data.user.email || emailClean,
-          nomeCompleto: nomeMeta,
-          crp: crpMeta,
-          role: isAdmin ? 'admin' : (contaRegistrada?.role || 'psicologo'),
-          status: statusAtual,
-          plano: contaRegistrada?.plano || (isAdmin ? 'saas_pro' : 'mensal'),
-          validoAte: contaRegistrada?.validoAte || (isAdmin ? '2036-12-31T23:59:59.000Z' : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()),
-          criadoEm: data.user.created_at || new Date().toISOString(),
-          origem: 'supabase'
-        };
-        salvarContaAssinante(infoConta);
-        definirSessaoAssinanteAtiva(infoConta);
-
-        // Sincroniza no banco de dados do Supabase (public.usuarios e assinaturas_saas)
-        await garantirRegistroAssinanteNuvem(cliente, data.user.id, data.user.email || emailClean, {
-          nomeCompleto: nomeMeta,
-          crp: crpMeta
-        });
-
-        return {
-          ok: true,
-          user: {
-            id: data.user.id,
-            email: data.user.email,
-            criadoEm: data.user.created_at,
-            isAdmin,
-            role: infoConta.role,
-            status: infoConta.status,
-            plano: infoConta.plano,
-            metadata: data.user.user_metadata || {}
-          }
-        };
-      }
-    } catch (err) {
-      console.warn('[Supabase Auth signInWithPassword error, checking local subscriber store]:', err);
-    }
-  }
-
-  // 2. Fallback de resiliência e credencial sincronizada no banco
-  const contas = obterContasAssinantes();
-
-  // Tratamento prioritário e liberado para os e-mails de Administrador Master (sup.fin.adm@gmail.com e backupvideomidias@gmail.com)
-  if (isMasterAdminEmail(emailClean)) {
-    const adminExistente = contas.find(c => c.email.toLowerCase() === emailClean) || 
-      (emailClean === 'sup.fin.adm@gmail.com' ? CONTAS_ASSINANTES_INICIAIS[1] : CONTAS_ASSINANTES_INICIAIS[0]);
-
-    const infoAdmin: ContaAssinanteArmazenada = {
-      ...adminExistente,
-      id: adminExistente?.id || (emailClean === 'sup.fin.adm@gmail.com' ? 'a1000000-0000-4000-8000-000000000002' : 'a1000000-0000-4000-8000-000000000001'),
-      email: emailClean,
-      nomeCompleto: emailClean === 'sup.fin.adm@gmail.com' ? 'Administrador Suporte' : 'Administrador Master',
-      senhaTexto: senhaClean,
-      role: 'admin',
-      status: 'ativo',
-      plano: 'saas_pro',
-      validoAte: '2036-12-31T23:59:59.000Z',
-      criadoEm: adminExistente?.criadoEm || '2026-10-14T12:00:00.000Z',
-      origem: 'local_resiliente'
-    };
-    salvarContaAssinante(infoAdmin);
-    definirSessaoAssinanteAtiva(infoAdmin);
-
-    // Tenta sincronizar com Supabase em segundo plano
-    if (cliente) {
-      garantirRegistroAssinanteNuvem(cliente, infoAdmin.id, infoAdmin.email, {
-        nomeCompleto: infoAdmin.nomeCompleto,
-        crp: infoAdmin.crp
-      }).catch(() => {});
-    }
-
-    return {
-      ok: true,
-      user: {
-        id: infoAdmin.id,
-        email: infoAdmin.email,
-        criadoEm: infoAdmin.criadoEm,
-        isAdmin: true,
-        role: 'admin',
-        status: 'ativo',
-        plano: 'saas_pro',
-        metadata: { nome_completo: infoAdmin.nomeCompleto, role: 'admin' }
-      }
-    };
-  }
-
-  let contaEncontrada = contas.find(
-    (c) => c.email.toLowerCase() === emailClean && (!c.senhaTexto || c.senhaTexto === senhaClean)
-  );
-
-  // Consulta status atualizado no servidor
-  let statusRemoto: StatusAssinante | undefined;
-  let validoAteRemoto: string | undefined;
+  // Um cadastro/cache local não é uma sessão Supabase e não pode autorizar RPCs.
+  definirSessaoAssinanteAtiva(null);
   try {
-    const resStatus = await fetch(getApiUrl(`/api/auth/status-usuario?email=${encodeURIComponent(emailClean)}`));
-    const dataStatus = await resStatus.json();
-    if (dataStatus.ok && dataStatus.encontrado) {
-      statusRemoto = dataStatus.status as StatusAssinante;
-      validoAteRemoto = dataStatus.validoAte;
-      if (!contaEncontrada) {
-        contaEncontrada = {
-          id: dataStatus.id,
-          email: dataStatus.email || emailClean,
-          nomeCompleto: dataStatus.nomeCompleto || emailClean.split('@')[0],
-          role: dataStatus.role || 'psicologo',
-          status: statusRemoto || 'pendente',
-          plano: dataStatus.plano || 'mensal',
-          validoAte: validoAteRemoto,
-          criadoEm: new Date().toISOString(),
-          origem: 'servidor'
-        };
-      } else {
-        contaEncontrada.status = statusRemoto;
-        if (validoAteRemoto) contaEncontrada.validoAte = validoAteRemoto;
-      }
-      salvarContaAssinante(contaEncontrada);
+    const { data, error } = await cliente.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password: senha
+    });
+    if (error || !data.session || !data.user) {
+      return { ok: false, erro: error ? traduzirErroAuth(error.message) : 'O Supabase não criou uma sessão. Entre novamente.' };
     }
-  } catch (_) {}
-
-  if (!contaEncontrada && cliente) {
-    try {
-      const { data: uDb } = await cliente
-        .from('usuarios')
-        .select('*')
-        .eq('email', emailClean)
-        .maybeSingle();
-
-      if (uDb && (uDb.senha_texto === senhaClean || !uDb.senha_texto)) {
-        contaEncontrada = {
-          id: uDb.id,
-          email: uDb.email,
-          senhaTexto: uDb.senha_texto || senhaClean,
-          nomeCompleto: uDb.nome || emailClean.split('@')[0],
-          crp: uDb.crp,
-          telefone: uDb.telefone,
-          role: (uDb.role === 'admin' || isMasterAdminEmail(emailClean)) ? 'admin' : 'psicologo',
-          status: isMasterAdminEmail(emailClean) ? 'ativo' : (statusRemoto || uDb.status || 'ativo'),
-          plano: isMasterAdminEmail(emailClean) ? 'saas_pro' : 'mensal',
-          validoAte: isMasterAdminEmail(emailClean) ? '2036-12-31T23:59:59.000Z' : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-          criadoEm: uDb.criado_em || new Date().toISOString(),
-          origem: 'supabase'
-        };
-        salvarContaAssinante(contaEncontrada);
-      }
-    } catch (_) {}
-  }
-
-  if (contaEncontrada) {
-    const isAdmin = isMasterAdminEmail(emailClean) || contaEncontrada.role === 'admin';
-
-    // Se o banco remoto indicou status ativo, garante a ativação
-    if (statusRemoto === 'ativo') {
-      contaEncontrada.status = 'ativo';
-      salvarContaAssinante(contaEncontrada);
-    }
-
-    if (!isAdmin && contaEncontrada.status === 'pendente') {
+    const conta = await carregarIdentidadeAutenticada(cliente);
+    if (!conta.isAdmin && conta.status !== 'ativo') {
+      await cliente.auth.signOut();
       return {
         ok: false,
-        statusAcesso: 'pendente',
-        erro: 'Sua conta foi cadastrada e está aguardando aprovação do Administrador Master. Assim que seu acesso for ativado, você poderá entrar no sistema.'
+        statusAcesso: conta.status,
+        erro: conta.status === 'pendente'
+          ? 'Sua conta está aguardando aprovação do administrador ou renovação da assinatura.'
+          : 'Seu acesso está desativado. Entre em contato com a administração.'
       };
     }
-
-    if (!isAdmin && contaEncontrada.status === 'inativo') {
-      return {
-        ok: false,
-        statusAcesso: 'inativo',
-        erro: 'Seu acesso ao sistema foi desativado ou suspenso pelo Administrador Geral. Entre em contato com a administração para reativar seu acesso.'
-      };
-    }
-
-    if (!isAdmin && contaEncontrada.validoAte) {
-      const expTime = new Date(contaEncontrada.validoAte).getTime();
-      if (expTime < Date.now()) {
-        return {
-          ok: false,
-          statusAcesso: 'expirado',
-          erro: 'Sua assinatura mensal expirou. Entre em contato com a administração para renovar seu plano.'
-        };
-      }
-    }
-
-    definirSessaoAssinanteAtiva(contaEncontrada);
-
-    // Tenta sincronizar dados de perfil na nuvem se possível
-    if (cliente) {
-      garantirRegistroAssinanteNuvem(cliente, contaEncontrada.id, contaEncontrada.email, {
-        nomeCompleto: contaEncontrada.nomeCompleto,
-        crp: contaEncontrada.crp
-      });
-    }
-
-    return {
-      ok: true,
-      user: {
-        id: contaEncontrada.id,
-        email: contaEncontrada.email,
-        criadoEm: contaEncontrada.criadoEm,
-        isAdmin,
-        role: contaEncontrada.role,
-        status: contaEncontrada.status,
-        plano: contaEncontrada.plano,
-        metadata: {
-          nome_completo: contaEncontrada.nomeCompleto,
-          crp: contaEncontrada.crp
-        }
-      }
+    const registro: ContaAssinanteArmazenada = {
+      ...conta, role: conta.isAdmin ? 'admin' : 'psicologo',
+      plano: conta.plano as PlanoAssinante, origem: 'supabase'
     };
+    salvarContaAssinante(registro);
+    definirSessaoAssinanteAtiva(registro);
+    return { ok: true, user: { ...conta, metadata: { nome_completo: conta.nomeCompleto, crp: conta.crp } } };
+  } catch (err: any) {
+    // Nunca promover falha de rede/autenticação a um login local bem-sucedido.
+    await cliente.auth.signOut().catch(() => {});
+    return { ok: false, erro: err?.message || 'Não foi possível autenticar no Supabase. Tente novamente.' };
   }
-
-  return {
-    ok: false,
-    erro: 'E-mail ou senha incorretos. Por favor, verifique suas credenciais.'
-  };
 }
 
 /**
@@ -1717,91 +1442,15 @@ export function atualizarSenhaContaAssinante(email: string, novaSenha: string): 
 
 /**
  * Obtém o usuário atualmente autenticado a partir do token JWT e da sessão do Supabase,
- * ou da sessão ativa do assinante.
+ * validada pelo servidor; cache local não autentica o usuário.
  */
 export async function obterUsuarioAutenticadoSupabase(): Promise<any | null> {
-  const cliente = getSupabase();
-
-  if (cliente) {
-    try {
-      const { data: { user }, error } = await cliente.auth.getUser();
-      if (!error && user) {
-        const emailLower = (user.email || '').toLowerCase();
-        const contas = obterContasAssinantes();
-        const cLocal = contas.find(c => c.email.toLowerCase() === emailLower);
-        const isAdmin = isMasterAdminEmail(emailLower) ||
-          user.user_metadata?.role === 'admin' ||
-          user.user_metadata?.is_admin === true ||
-          cLocal?.role === 'admin';
-
-        // Consulta status real diretamente no banco de dados do Supabase
-        let statusBanco: StatusAssinante | undefined;
-        let validoAteBanco: string | undefined;
-        if (!isAdmin) {
-          try {
-            const { data: uDb } = await cliente
-              .from('usuarios')
-              .select('status, role')
-              .eq('id', user.id)
-              .maybeSingle();
-            if (uDb?.status) {
-              statusBanco = uDb.status as StatusAssinante;
-            }
-
-            const { data: assDb } = await cliente
-              .from('assinaturas_saas')
-              .select('status, valido_ate')
-              .eq('user_id', user.id)
-              .maybeSingle();
-            if (assDb) {
-              if (assDb.status === 'inativa' || assDb.status === 'cancelada') {
-                statusBanco = 'inativo';
-              }
-              validoAteBanco = assDb.valido_ate;
-            }
-          } catch (_) {}
-        }
-
-        const role = isAdmin ? 'admin' : (cLocal?.role || user.user_metadata?.role || 'psicologo');
-        const status = isAdmin ? 'ativo' : (statusBanco || cLocal?.status || user.user_metadata?.status || 'ativo');
-        const validoAte = isAdmin ? '2036-12-31T23:59:59.000Z' : (validoAteBanco || cLocal?.validoAte);
-
-        return {
-          id: user.id, // ID imutável da conta (auth.uid())
-          email: user.email,
-          nomeCompleto: user.user_metadata?.nome_completo || cLocal?.nomeCompleto || user.email?.split('@')[0],
-          crp: user.user_metadata?.crp || cLocal?.crp,
-          role,
-          isAdmin,
-          status,
-          plano: isAdmin ? 'saas_pro' : (cLocal?.plano || 'mensal'),
-          validoAte,
-          criadoEm: user.created_at
-        };
-      }
-    } catch (_) {}
+  try {
+    return await carregarIdentidadeAutenticada(getSupabase());
+  } catch {
+    definirSessaoAssinanteAtiva(null);
+    return null;
   }
-
-  // Verifica se há sessão ativa de assinante no ambiente
-  const sessaoAtiva = obterSessaoAssinanteAtiva();
-  if (sessaoAtiva && sessaoAtiva.id) {
-    const emailLower = (sessaoAtiva.email || '').toLowerCase();
-    const isAdmin = isMasterAdminEmail(emailLower) || sessaoAtiva.role === 'admin';
-    return {
-      id: sessaoAtiva.id,
-      email: sessaoAtiva.email,
-      nomeCompleto: sessaoAtiva.nomeCompleto || sessaoAtiva.email.split('@')[0],
-      crp: sessaoAtiva.crp,
-      role: isAdmin ? 'admin' : (sessaoAtiva.role || 'psicologo'),
-      isAdmin,
-      status: sessaoAtiva.status || 'ativo',
-      plano: sessaoAtiva.plano || 'mensal',
-      validoAte: sessaoAtiva.validoAte,
-      criadoEm: sessaoAtiva.criadoEm
-    };
-  }
-
-  return null;
 }
 
 /**

@@ -23,10 +23,14 @@ import {
 import { Card } from './ui-compact';
 import {
   supabase,
+  getSupabase,
+  getSupabaseCredentials,
   AssinaturaAdminRpc,
   isMasterAdminEmail,
   PlanoAssinante
 } from '../lib/supabase';
+import { consultarAdministrador, exigirSessaoAutenticada, listarContasAutenticadas } from '../lib/sessaoAutenticada';
+import { createClient } from '@supabase/supabase-js';
 
 interface SecaoAdminSaasProps {
   contaUsuario: { id: string; email: string; nomeCompleto: string; crp?: string; isAdmin?: boolean; role?: string } | null;
@@ -44,31 +48,8 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
   const [usuarioAtualizandoId, setUsuarioAtualizandoId] = useState<string | null>(null);
   const [validandoMeuAcesso, setValidandoMeuAcesso] = useState(false);
 
-  // Identificação e controle de privilégios de Administrador
-  const [isAdminSessao, setIsAdminSessao] = useState<boolean>(() => {
-    return Boolean(
-      contaUsuario?.isAdmin ||
-      contaUsuario?.role === 'admin' ||
-      isMasterAdminEmail(contaUsuario?.email)
-    );
-  });
-
-  useEffect(() => {
-    const adminCheck = Boolean(
-      contaUsuario?.isAdmin ||
-      contaUsuario?.role === 'admin' ||
-      isMasterAdminEmail(contaUsuario?.email)
-    );
-    if (adminCheck) {
-      setIsAdminSessao(true);
-    } else {
-      supabase.auth.getUser().then(({ data }) => {
-        if (data?.user?.email) {
-          setIsAdminSessao(isMasterAdminEmail(data.user.email) || data.user.user_metadata?.role === 'admin');
-        }
-      });
-    }
-  }, [contaUsuario]);
+  // O banco valida o privilégio; cache, e-mail e metadados não autorizam ações.
+  const [isAdminSessao, setIsAdminSessao] = useState(false);
 
   // Modais
   const [modalNovoAberto, setModalNovoAberto] = useState(false);
@@ -94,38 +75,25 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
   const [editDiasValidade, setEditDiasValidade] = useState(30);
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
 
-  /**
-   * Determina o acesso real e efetivo do usuário:
-   * Usuários com data de validade futura, administradores master ou marcados como ativo possuem acesso válido.
-   */
+  // A interface reflete a decisão do banco, sem deduzir aprovação pelo e-mail ou validade.
   const verificarAcessoRealUsuario = (u: AssinaturaAdminRpc): boolean => {
-    if (u.acesso_valido === true) return true;
-    if (isMasterAdminEmail(u.email) || u.role === 'admin') return true;
-    if (u.valido_ate && new Date(u.valido_ate).getTime() > Date.now()) return true;
-    if (u.status_usuario === 'ativo' || u.status_assinatura === 'ativa') return true;
-    return false;
+    return u.acesso_valido === true;
   };
 
   /**
-   * Busca os dados chamando: supabase.rpc('admin_listar_assinaturas')
+   * Busca os dados chamando: supabase.rpc('admin_listar_contas')
    */
   const carregarDados = async () => {
     setCarregando(true);
     setErroRpc(null);
     try {
-      const { data, error } = await supabase.rpc('admin_listar_assinaturas');
-      if (error) {
-        console.error("Erro retornado por supabase.rpc('admin_listar_assinaturas'):", error);
-        setErroRpc(
-          `A função RPC 'admin_listar_assinaturas' retornou um erro: ${error.message} (Código: ${error.code || '42501/PGRST'}).`
-        );
-        setUsuarios([]);
-        return;
-      }
-      setUsuarios((data as AssinaturaAdminRpc[]) || []);
+      setIsAdminSessao(false);
+      setUsuarios([]);
+      const data = await listarContasAutenticadas(getSupabase(), contaUsuario?.id);
+      setIsAdminSessao(true);
+      setUsuarios(data);
     } catch (err: any) {
-      console.error("Falha ao executar supabase.rpc('admin_listar_assinaturas'):", err);
-      setErroRpc(`Falha ao chamar a função RPC 'admin_listar_assinaturas': ${err?.message || 'Erro inesperado de rede'}`);
+      setErroRpc(err?.message || 'Não foi possível consultar as contas no Supabase.');
       setUsuarios([]);
     } finally {
       setCarregando(false);
@@ -134,7 +102,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
 
   useEffect(() => {
     carregarDados();
-  }, []);
+  }, [contaUsuario?.id]);
 
   const mostrarFeedback = (texto: string, tipo: 'sucesso' | 'erro' = 'sucesso') => {
     setFeedback({ tipo, texto });
@@ -195,10 +163,17 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
   }, [usuarios, filtroStatus, busca]);
 
   // Ações de gerenciamento via RPCs oficiais
+  const executarAcaoAdmin = async (funcao: string, argumentos: Record<string, unknown>) => {
+    const cliente = getSupabase();
+    await exigirSessaoAutenticada(cliente, contaUsuario?.id);
+    if (!await consultarAdministrador(cliente)) throw new Error('Acesso restrito aos administradores.');
+    return await cliente.rpc(funcao, argumentos);
+  };
+
   const handleAprovar = async (u: AssinaturaAdminRpc, dias = 30) => {
     setUsuarioAtualizandoId(u.user_id);
     try {
-      const { error } = await supabase.rpc('admin_aprovar_usuario', {
+      const { error } = await executarAcaoAdmin('admin_aprovar_usuario', {
         p_user_id: u.user_id,
         p_dias_validade: dias,
         p_plano: u.plano || 'mensal'
@@ -224,7 +199,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
     const novoStatus = u.acesso_valido ? 'inativo' : 'ativo';
     setUsuarioAtualizandoId(u.user_id);
     try {
-      const { error } = await supabase.rpc('admin_alternar_status_usuario', {
+      const { error } = await executarAcaoAdmin('admin_alternar_status_usuario', {
         p_user_id: u.user_id,
         p_novo_status: novoStatus
       });
@@ -248,7 +223,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
   const handleRenovarDias = async (u: AssinaturaAdminRpc, dias = 30) => {
     setUsuarioAtualizandoId(u.user_id);
     try {
-      const { error } = await supabase.rpc('admin_aprovar_usuario', {
+      const { error } = await executarAcaoAdmin('admin_aprovar_usuario', {
         p_user_id: u.user_id,
         p_dias_validade: dias,
         p_plano: u.plano || 'mensal'
@@ -284,7 +259,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
 
     try {
       // 1. Atualiza status via RPC
-      const { error: erroStatus } = await supabase.rpc('admin_alternar_status_usuario', {
+      const { error: erroStatus } = await executarAcaoAdmin('admin_alternar_status_usuario', {
         p_user_id: usuarioEmEdicao.user_id,
         p_novo_status: editStatus
       });
@@ -297,7 +272,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
 
       // 2. Se status for ativo, atualiza validade e plano via admin_aprovar_usuario
       if (editStatus === 'ativo') {
-        const { error: erroAprovar } = await supabase.rpc('admin_aprovar_usuario', {
+        const { error: erroAprovar } = await executarAcaoAdmin('admin_aprovar_usuario', {
           p_user_id: usuarioEmEdicao.user_id,
           p_dias_validade: Number(editDiasValidade) || 30,
           p_plano: editPlano
@@ -325,8 +300,14 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
     setSalvandoNovo(true);
 
     try {
-      // Cadastra usuário no Supabase Auth usando a sessão/cliente Supabase configurado
-      const { data, error } = await supabase.auth.signUp({
+      // signUp no cliente principal substituiria a sessão do administrador.
+      await exigirSessaoAutenticada(getSupabase(), contaUsuario?.id);
+      if (!await consultarAdministrador(getSupabase())) throw new Error('Acesso restrito aos administradores.');
+      const { url, anonKey } = getSupabaseCredentials();
+      const clienteCadastro = createClient(url, anonKey, {
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+      });
+      const { data, error } = await clienteCadastro.auth.signUp({
         email: novoEmail.trim().toLowerCase(),
         password: novaSenha.trim(),
         options: {
@@ -346,7 +327,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
 
       if (data?.user?.id) {
         // Imediatamente aprova via RPC oficial
-        const { error: erroAprovar } = await supabase.rpc('admin_aprovar_usuario', {
+        const { error: erroAprovar } = await executarAcaoAdmin('admin_aprovar_usuario', {
           p_user_id: data.user.id,
           p_dias_validade: Number(novoDias) || 30,
           p_plano: novoPlano
@@ -611,7 +592,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
           </div>
           <div className="space-y-1 max-w-xl mx-auto">
             <h3 className="text-sm font-bold text-destructive">
-              Falha na Chamada da RPC: admin_listar_assinaturas
+              Falha na Chamada da RPC: admin_listar_contas
             </h3>
             <p className="text-xs text-muted-foreground leading-relaxed break-words">
               {erroRpc}
@@ -636,7 +617,7 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
         {carregando ? (
           <Card className="p-12 text-center text-muted-foreground text-xs space-y-2">
             <RefreshCw className="size-6 animate-spin mx-auto text-primary" />
-            <p>Buscando dados via supabase.rpc('admin_listar_assinaturas')...</p>
+            <p>Buscando dados via supabase.rpc('admin_listar_contas')...</p>
           </Card>
         ) : !erroRpc && usuariosFiltrados.length === 0 ? (
           <Card className="p-12 text-center text-muted-foreground text-xs space-y-2">
