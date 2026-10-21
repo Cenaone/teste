@@ -463,3 +463,73 @@ TO anon, authenticated
 USING (true)
 WITH CHECK (true);
 `;
+
+/**
+ * Script de correção rápida específico para erro 42501 (permission denied for function admin_listar_assinaturas)
+ * Este comando concede as permissões de execução (GRANT EXECUTE) necessárias para os papéis do Supabase (anon, authenticated, service_role).
+ */
+export const SQL_CORRECAO_RPC_42501 = `-- ==============================================================================
+-- CORREÇÃO DE PERMISSÃO (ERRO 42501: permission denied for function admin_listar_assinaturas)
+-- Execute no Supabase Dashboard: SQL Editor > New query > Cole este código > Clique em RUN
+-- ==============================================================================
+
+-- 1. Garante permissão de uso no schema public
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+
+-- 2. Concede permissão de acesso às tabelas
+GRANT ALL ON TABLE public.usuarios TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.assinaturas_saas TO anon, authenticated, service_role;
+
+-- 3. Concede permissão explícita de execução na RPC admin_listar_assinaturas
+GRANT EXECUTE ON FUNCTION public.admin_listar_assinaturas() TO anon, authenticated, service_role;
+
+-- 4. Concede permissão nas demais funções RPC administrativas
+GRANT EXECUTE ON FUNCTION public.usuario_tem_acesso() TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.admin_aprovar_usuario(UUID, INTEGER, TEXT) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.admin_alternar_status_usuario(UUID, TEXT) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.is_admin() TO anon, authenticated, service_role;
+
+-- 5. Recria a função com SECURITY DEFINER explícito para garantir execução sem falhas
+CREATE OR REPLACE FUNCTION public.admin_listar_assinaturas()
+RETURNS TABLE (
+    user_id UUID,
+    nome TEXT,
+    email TEXT,
+    crp TEXT,
+    role TEXT,
+    status_usuario TEXT,
+    plano TEXT,
+    status_assinatura TEXT,
+    valido_ate TIMESTAMPTZ,
+    aprovado_por TEXT,
+    aprovado_em TIMESTAMPTZ,
+    acesso_valido BOOLEAN
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        u.id AS user_id,
+        coalesce(u.nome, split_part(u.email, '@', 1)) AS nome,
+        u.email AS email,
+        u.crp AS crp,
+        coalesce(u.role, 'psicologo') AS role,
+        coalesce(u.status, 'pendente') AS status_usuario,
+        coalesce(a.plano, 'mensal') AS plano,
+        coalesce(a.status, 'pendente') AS status_assinatura,
+        a.valido_ate AS valido_ate,
+        a.aprovado_por AS aprovado_por,
+        a.aprovado_em AS aprovado_em,
+        CASE
+            WHEN lower(u.email) IN ('backupvideomidias@gmail.com', 'sup.fin.adm@gmail.com') OR u.role = 'admin' THEN TRUE
+            WHEN coalesce(u.status, '') = 'ativo' 
+                 AND coalesce(a.status, '') = 'ativa' 
+                 AND (a.valido_ate IS NULL OR a.valido_ate > timezone('utc'::text, now())) THEN TRUE
+            ELSE FALSE
+        END AS acesso_valido
+    FROM public.usuarios u
+    LEFT JOIN public.assinaturas_saas a ON a.user_id = u.id
+    ORDER BY u.criado_em DESC;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+`;
+
