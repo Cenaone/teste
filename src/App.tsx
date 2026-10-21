@@ -94,7 +94,9 @@ import {
   Menu,
   X,
   Bot,
-  TrendingUp
+  TrendingUp,
+  BookOpen,
+  HelpCircle
 } from 'lucide-react';
 import {
   supabase,
@@ -136,6 +138,8 @@ import { validarStatusLicenca } from './lib/licenca';
 import CofreDesbloqueioModal from './components/CofreDesbloqueioModal';
 import SecaoAdminSaas from './components/SecaoAdminSaas';
 import SecaoBia from './components/SecaoBia';
+import TourDoSistema from './components/TourDoSistema';
+import ManualDoSistemaModal from './components/ManualDoSistemaModal';
 
 const PREFIXO_LOCAL = 'psi40_';
 const PALETAS_COR = [
@@ -299,6 +303,10 @@ export default function App() {
   // Menu Celular
   const [menuCelularAberto, setMenuCelularAberto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Tour Guiado Interativo & Manual do Sistema em PDF
+  const [mostrarTour, setMostrarTour] = useState(false);
+  const [mostrarManual, setMostrarManual] = useState(false);
 
   // Inatividade para bloqueio automático do cofre (15 minutos)
   const timerInatividadeRef = useRef<any>(null);
@@ -1031,19 +1039,40 @@ export default function App() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
+          {/* Quick Tour button */}
+          <button
+            onClick={() => setMostrarTour(true)}
+            className="size-8 border border-border hover:bg-muted text-primary hover:text-foreground rounded-lg transition-all flex items-center justify-center shrink-0 cursor-pointer"
+            title="Tour Guiado do Sistema"
+            aria-label="Tour Guiado"
+          >
+            <Compass className="size-4" />
+          </button>
+
+          {/* Quick Manual button */}
+          <button
+            onClick={() => setMostrarManual(true)}
+            className="size-8 border border-border hover:bg-muted text-primary hover:text-foreground rounded-lg transition-all flex items-center justify-center shrink-0 cursor-pointer"
+            title="Manual do Sistema (PDF)"
+            aria-label="Manual em PDF"
+          >
+            <BookOpen className="size-4" />
+          </button>
+
           {/* Quick backup button */}
           <button
             onClick={handleExportarJSON}
-            className="size-8 border border-border hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-all flex items-center justify-center shrink-0"
+            className="size-8 border border-border hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-all flex items-center justify-center shrink-0 cursor-pointer"
             title="Fazer Backup"
+            aria-label="Fazer Backup"
           >
             <Download className="size-4" />
           </button>
 
           <button
             onClick={() => setMenuCelularAberto(!menuCelularAberto)}
-            className="size-8 rounded-lg border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-all flex items-center justify-center shrink-0"
+            className="size-8 rounded-lg border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-all flex items-center justify-center shrink-0 cursor-pointer"
             aria-label="Abrir Menu"
           >
             {menuCelularAberto ? <X className="size-4" /> : <Menu className="size-4" />}
@@ -1092,6 +1121,32 @@ export default function App() {
                 );
               })}
             </nav>
+
+            {/* ATALHOS DE AJUDA & MANUAL NO MENU CELULAR */}
+            <div className="grid grid-cols-2 gap-2 pt-3 border-t border-border">
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuCelularAberto(false);
+                  setMostrarTour(true);
+                }}
+                className="py-2.5 px-3 rounded-xl bg-primary/10 text-primary border border-primary/20 text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+              >
+                <Compass className="size-4" />
+                <span>Tour Guiado</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuCelularAberto(false);
+                  setMostrarManual(true);
+                }}
+                className="py-2.5 px-3 rounded-xl bg-card border border-border text-foreground text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+              >
+                <BookOpen className="size-4 text-primary" />
+                <span>Manual em PDF</span>
+              </button>
+            </div>
           </div>
 
           <div className="border-t border-border pt-5 mt-5 flex items-center justify-between">
@@ -1184,6 +1239,33 @@ export default function App() {
           </nav>
         </div>
 
+        {/* AJUDA & MANUAL SIDEBAR */}
+        <div className="px-4 py-3 border-t border-border bg-muted/10 space-y-1.5">
+          <div className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground/60 px-1 font-mono">
+            Ajuda & Documentação
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              onClick={() => setMostrarTour(true)}
+              className="py-2 px-2 rounded-xl border border-border hover:border-primary/40 bg-card hover:bg-muted text-xs font-semibold text-foreground flex items-center justify-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+              title="Iniciar Tour Guiado do Sistema"
+            >
+              <Compass className="size-3.5 text-primary" />
+              <span className="truncate">Tour Guiado</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMostrarManual(true)}
+              className="py-2 px-2 rounded-xl border border-border hover:border-primary/40 bg-card hover:bg-muted text-xs font-semibold text-foreground flex items-center justify-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+              title="Abrir Manual Oficial em PDF"
+            >
+              <BookOpen className="size-3.5 text-primary" />
+              <span className="truncate">Manual PDF</span>
+            </button>
+          </div>
+        </div>
+
         {/* PROFILE AT BOTTOM */}
         <div className="p-4 border-t border-border flex items-center justify-between bg-muted/20">
           <div className="flex items-center gap-2.5">
@@ -1251,10 +1333,32 @@ export default function App() {
               <span>Cofre Local Ativo</span>
             </div>
 
+            {/* Tour Guiado */}
+            <button
+              type="button"
+              onClick={() => setMostrarTour(true)}
+              className="text-xs px-3 py-1.5 border border-border hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-all flex items-center gap-1.5 font-medium cursor-pointer"
+              title="Iniciar Tour Guiado do Sistema"
+            >
+              <Compass className="size-3.5 text-primary" />
+              <span>Tour Guiado</span>
+            </button>
+
+            {/* Manual em PDF */}
+            <button
+              type="button"
+              onClick={() => setMostrarManual(true)}
+              className="text-xs px-3 py-1.5 border border-border hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-all flex items-center gap-1.5 font-medium cursor-pointer"
+              title="Visualizar e Imprimir Manual do Sistema em PDF"
+            >
+              <BookOpen className="size-3.5 text-primary" />
+              <span>Manual em PDF</span>
+            </button>
+
             {/* Quick backup button */}
             <button
               onClick={handleExportarJSON}
-              className="text-xs px-3 py-1.5 border border-border hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-all flex items-center gap-1.5 font-medium"
+              className="text-xs px-3 py-1.5 border border-border hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-all flex items-center gap-1.5 font-medium cursor-pointer"
             >
               <Download className="size-3.5" />
               <span>Backup Criptografado</span>
@@ -1277,7 +1381,25 @@ export default function App() {
                     Gerencie seu consultório, prontuários de escuta psicanalítica e Setting terapêutico.
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMostrarTour(true)}
+                    className="text-xs px-3 py-1.5 border border-primary/30 bg-primary/10 hover:bg-primary/20 text-primary font-semibold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <Compass className="size-3.5" />
+                    <span>Iniciar Tour Guiado</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setMostrarManual(true)}
+                    className="text-xs px-3 py-1.5 border border-border hover:bg-muted text-foreground font-medium rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <BookOpen className="size-3.5 text-primary" />
+                    <span>Manual em PDF</span>
+                  </button>
+
                   <span className="text-xs font-medium text-muted-foreground bg-muted/40 px-3 py-1.5 rounded-xl border border-border">
                     Conta: <strong>{contaUsuario.email}</strong>
                   </span>
@@ -1287,7 +1409,7 @@ export default function App() {
                       setCofreDesbloqueado(false);
                       setSolicitandoDesbloqueio(true);
                     }}
-                    className="text-xs px-3 py-1.5 border border-border hover:bg-muted rounded-xl text-foreground font-semibold flex items-center gap-1.5"
+                    className="text-xs px-3 py-1.5 border border-border hover:bg-muted rounded-xl text-foreground font-semibold flex items-center gap-1.5 cursor-pointer"
                     title="Bloquear cofre imediatamente"
                   >
                     <Lock className="size-3.5 text-amber-500" />
@@ -4022,6 +4144,25 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* TOUR GUIADO INTERATIVO DO SISTEMA */}
+      <TourDoSistema
+        aberto={mostrarTour}
+        onFechar={() => setMostrarTour(false)}
+        onNavegarSecao={(secaoId) => setSecaoAtiva(secaoId)}
+        onAbrirManual={() => {
+          setMostrarTour(false);
+          setMostrarManual(true);
+        }}
+      />
+
+      {/* MANUAL DO SISTEMA EM PDF */}
+      <ManualDoSistemaModal
+        aberto={mostrarManual}
+        onFechar={() => setMostrarManual(false)}
+        nomeAnalista={perfil.nome || contaUsuario?.nomeCompleto || 'Terapeuta'}
+        crpAnalista={perfil.registroProfissional || 'CRP / Registro'}
+      />
     </div>
   );
 }
