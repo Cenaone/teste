@@ -20,6 +20,7 @@ import {
   FileAudio
 } from 'lucide-react';
 import { Card } from './ui-compact';
+import { getSupabase } from '../lib/supabase';
 
 interface GravadorSessaoProps {
   nomePaciente?: string;
@@ -256,19 +257,26 @@ export default function GravadorSessao({
     setErroMensagem(null);
 
     try {
+      if (blob.size > 3 * 1024 * 1024) throw new Error('O áudio excede 3 MB para transcrição nesta rota. Utilize um trecho menor. A gravação permanece disponível para download.');
+      const { data: sessao, error: erroSessao } = await getSupabase().auth.getSession();
+      if (erroSessao || !sessao.session?.access_token) throw new Error('Entre novamente para transcrever o áudio.');
       const base64 = await blobToBase64(blob);
       const mime = blob.type || 'audio/webm';
 
       const response = await fetch('/api/transcrever-audio', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessao.session.access_token}` },
         body: JSON.stringify({
           audioBase64: base64,
           mimeType: mime
         })
       });
 
+      if (!response.headers.get('content-type')?.includes('application/json')) {
+        throw new Error(response.status === 413 ? 'O áudio excede o limite do servidor.' : 'A rota de transcrição não está disponível. Verifique a publicação na Vercel.');
+      }
       const data = await response.json();
+      if (!response.ok) throw new Error(data.erro || 'Falha no serviço de transcrição.');
 
       if (data.ok && data.transcricao) {
         setTranscricaoTexto(data.transcricao);
@@ -311,7 +319,7 @@ export default function GravadorSessao({
       } else {
         setEstado('falha');
         estadoRef.current = 'falha';
-        setErroMensagem('Falha na comunicação com o serviço de transcrição. O áudio foi mantido intacto no prontuário.');
+        setErroMensagem(err?.message || 'Falha na comunicação com o serviço de transcrição. O áudio permanece disponível para download e nova tentativa.');
       }
     }
   };
