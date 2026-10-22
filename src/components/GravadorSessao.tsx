@@ -28,7 +28,7 @@ interface GravadorSessaoProps {
   onAudioGravado?: (blob: Blob, url: string, transcricao: string) => void;
 }
 
-type EstadoGravador = 'ocioso' | 'gravando' | 'pausado' | 'processando' | 'concluido' | 'falha';
+type EstadoGravador = 'ocioso' | 'solicitando' | 'gravando' | 'pausado' | 'processando' | 'concluido' | 'falha';
 
 export default function GravadorSessao({
   nomePaciente = 'Paciente',
@@ -55,6 +55,7 @@ export default function GravadorSessao({
   const estadoRef = useRef<EstadoGravador>('ocioso');
   const transcricaoTextoRef = useRef('');
   const textoFinalAcumuladoRef = useRef('');
+  const tentativaMicRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Sincroniza ref com estado
@@ -91,6 +92,8 @@ export default function GravadorSessao({
     }
 
     return () => {
+      tentativaMicRef.current += 1;
+      estadoRef.current = 'ocioso';
       pararHardware();
       if (audioUrl) {
         URL.revokeObjectURL(audioUrl);
@@ -327,7 +330,8 @@ export default function GravadorSessao({
             autoGainControl: true
           }
         });
-      } catch (errRestricao) {
+      } catch (errRestricao: any) {
+        if (['NotAllowedError', 'PermissionDeniedError', 'NotFoundError', 'NotReadableError'].includes(errRestricao?.name)) throw errRestricao;
         console.warn('[Microfone ideal falhou, tentando fallback simples]:', errRestricao);
         // Fallback para áudio sem restrições
         return await nav.mediaDevices.getUserMedia({ audio: true });
@@ -347,7 +351,13 @@ export default function GravadorSessao({
 
   // 1. Iniciar Gravação
   const iniciarGravacao = async () => {
+    if (['solicitando', 'gravando', 'pausado', 'processando'].includes(estadoRef.current)) return;
+    const tentativa = ++tentativaMicRef.current;
+    estadoRef.current = 'solicitando';
+    setEstado('solicitando');
     setErroMensagem(null);
+    setTranscricaoTexto('');
+    transcricaoTextoRef.current = '';
     setTempoSegundos(0);
     audioChunksRef.current = [];
     textoFinalAcumuladoRef.current = '';
@@ -358,9 +368,29 @@ export default function GravadorSessao({
     }
     setAudioBlob(null);
 
+    let limitePermissao: ReturnType<typeof setTimeout> | undefined;
     try {
-      const stream = await obterMediaStream();
+      if (!window.isSecureContext) throw new Error('Abra o sistema pelo endereço HTTPS para usar o microfone.');
+      if (typeof MediaRecorder === 'undefined') throw new Error('Este navegador não suporta gravação de áudio. Abra o sistema em um navegador atualizado.');
+      const pedido = obterMediaStream().then(stream => {
+        if (tentativa !== tentativaMicRef.current) {
+          stream.getTracks().forEach(track => track.stop());
+          throw new Error('Solicitação de microfone encerrada. Clique para tentar novamente.');
+        }
+        return stream;
+      });
+      const stream = await Promise.race([
+        pedido,
+        new Promise<MediaStream>((_, reject) => {
+          limitePermissao = setTimeout(() => {
+            if (tentativa === tentativaMicRef.current) tentativaMicRef.current += 1;
+            reject(new Error('A autorização do microfone não foi concluída. Confira o pedido de permissão no navegador e tente novamente.'));
+          }, 30000);
+        })
+      ]);
+      clearTimeout(limitePermissao);
       streamRef.current = stream;
+      setStatusPermissaoMic('concedida');
 
       // Seleção de melhor formato compatível para MediaRecorder
       let options: MediaRecorderOptions | undefined = undefined;
@@ -459,23 +489,14 @@ export default function GravadorSessao({
         msg = `Acesso ao microfone indisponível (${err?.message || 'Permissão restrita'}). Use a opção "Importar Áudio Externo" para transcrever qualquer gravação de sessão.`;
       }
 
-      // Mesmo se o MediaRecorder falhar, tenta iniciar SpeechRecognition se disponível
-      if (suportaFalaAoVivo && err?.name !== 'NotAllowedError') {
-        try {
-          iniciarFalaAoVivo();
-          setEstado('gravando');
-          estadoRef.current = 'gravando';
-          timerRef.current = setInterval(() => {
-            setTempoSegundos(prev => prev + 1);
-          }, 1000);
-          setErroMensagem('Acesso direto ao arquivo de áudio restrito no dispositivo, mas o reconhecimento de voz contínuo está ativo e transcrevendo em tempo real.');
-          return;
-        } catch (_) {}
-      }
+      estadoRef.current = 'falha';
+      pararHardware();
 
       setEstado('falha');
       estadoRef.current = 'falha';
       setErroMensagem(msg);
+    } finally {
+      clearTimeout(limitePermissao);
     }
   };
 
@@ -660,6 +681,7 @@ export default function GravadorSessao({
             {estado === 'concluido' && <Check className="size-3.5" />}
             
             {estado === 'ocioso' && 'Pronto para Gravar'}
+            {estado === 'solicitando' && 'Aguardando microfone...'}
             {estado === 'gravando' && `Gravando (${formatarTempo(tempoSegundos)})`}
             {estado === 'pausado' && `Pausado (${formatarTempo(tempoSegundos)})`}
             {estado === 'processando' && 'Processando Transcrição...'}
@@ -725,6 +747,12 @@ export default function GravadorSessao({
 
       {/* Barra de Controles de Gravação */}
       <div className="flex flex-wrap items-center gap-2.5 pt-1">
+        {estado === 'solicitando' && (
+          <div role="status" aria-live="polite" className="flex items-center gap-2 text-xs text-primary">
+            <Loader2 className="size-4 animate-spin" />
+            Aguardando acesso ao microfone. Se o navegador solicitar, clique em Permitir.
+          </div>
+        )}
         {estado === 'ocioso' && (
           <>
             <button
