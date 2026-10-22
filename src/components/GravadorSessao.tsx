@@ -40,6 +40,9 @@ export default function GravadorSessao({
   const [estado, setEstado] = useState<EstadoGravador>('ocioso');
   const [tempoSegundos, setTempoSegundos] = useState(0);
   const [transcricaoTexto, setTranscricaoTexto] = useState('');
+  const [rascunhoVozNavegador, setRascunhoVozNavegador] = useState('');
+  const [origemTranscricao, setOrigemTranscricao] = useState<'ia_gemini' | 'rascunho_navegador' | null>(null);
+  const [progressoTrechos, setProgressoTrechos] = useState<{ atual: number; total: number } | null>(null);
   const [erroMensagem, setErroMensagem] = useState<string | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
@@ -55,7 +58,10 @@ export default function GravadorSessao({
   const speechRecognitionRef = useRef<any>(null);
   const estadoRef = useRef<EstadoGravador>('ocioso');
   const transcricaoTextoRef = useRef('');
+  const rascunhoVozNavegadorRef = useRef('');
   const textoFinalAcumuladoRef = useRef('');
+  const trechosArmazenadosRef = useRef<Blob[]>([]);
+  const trechosResultadosRef = useRef<Record<number, string>>({});
   const tentativaMicRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -185,9 +191,8 @@ export default function GravadorSessao({
         ).trim();
 
         if (completo) {
-          transcricaoTextoRef.current = completo;
-          setTranscricaoTexto(completo);
-          onInserirTexto(completo);
+          rascunhoVozNavegadorRef.current = completo;
+          setRascunhoVozNavegador(completo);
         }
       };
 
@@ -232,96 +237,247 @@ export default function GravadorSessao({
     });
   };
 
-  // Processa áudio no servidor (Gemini 3.5 Transcribe / 3.8 Flash)
-  const processarTranscricaoServidor = async (blob: Blob, urlFornecida?: string) => {
+  /**
+   * Extrai um segmento do AudioBuffer e serializa em um Blob de formato WAV padrão 16-bit PCM mono (16kHz).
+   * Garante que cada trecho seja um arquivo de áudio autônomo, válido e decodificável pelo Gemini e reprodutores.
+   */
+  const extrairTrechoWav = (audioBuffer: AudioBuffer, startSec: number, endSec: number): Blob => {
+    const targetSampleRate = 16000; // Taxa de amostragem padrão para IA e fala clínica
+    const startSample = Math.floor(startSec * audioBuffer.sampleRate);
+    const endSample = Math.min(Math.floor(endSec * audioBuffer.sampleRate), audioBuffer.length);
+    const lengthInOriginal = Math.max(0, endSample - startSample);
+
+    // Mixagem para Mono para economia de banda sem perda de fidelidade vocal
+    const numChannels = audioBuffer.numberOfChannels;
+    const originalMono = new Float32Array(lengthInOriginal);
+    for (let c = 0; c < numChannels; c++) {
+      const channelData = audioBuffer.getChannelData(c).subarray(startSample, endSample);
+      for (let i = 0; i < lengthInOriginal; i++) {
+        originalMono[i] += channelData[i] / numChannels;
+      }
+    }
+
+    // Reamostragem para 16kHz via interpolação linear
+    let finalSamples: Float32Array;
+    if (audioBuffer.sampleRate === targetSampleRate) {
+      finalSamples = originalMono;
+    } else {
+      const ratio = targetSampleRate / audioBuffer.sampleRate;
+      const newLength = Math.max(1, Math.round(lengthInOriginal * ratio));
+      finalSamples = new Float32Array(newLength);
+      for (let i = 0; i < newLength; i++) {
+        const origIndex = i / ratio;
+        const indexFloor = Math.floor(origIndex);
+        const indexCeil = Math.min(indexFloor + 1, lengthInOriginal - 1);
+        const frac = origIndex - indexFloor;
+        finalSamples[i] = originalMono[indexFloor] * (1 - frac) + originalMono[indexCeil] * frac;
+      }
+    }
+
+    const numSamples = finalSamples.length;
+    const dataByteLength = numSamples * 2; // 16-bit PCM = 2 bytes por amostra
+    const buffer = new ArrayBuffer(44 + dataByteLength);
+    const view = new DataView(buffer);
+
+    // Cabeçalho RIFF canônico (44 bytes)
+    view.setUint32(0, 0x52494646, false); // "RIFF"
+    view.setUint32(4, 36 + dataByteLength, true); // chunkSize
+    view.setUint32(8, 0x57415645, false); // "WAVE"
+    // Subchunk fmt
+    view.setUint32(12, 0x666d7420, false); // "fmt "
+    view.setUint32(16, 16, true); // subchunk1Size (16 para PCM)
+    view.setUint16(20, 1, true); // áudio format PCM = 1
+    view.setUint16(22, 1, true); // mono = 1
+    view.setUint32(24, targetSampleRate, true); // sampleRate (16000)
+    view.setUint32(28, targetSampleRate * 2, true); // byteRate (16000 * 1 * 2)
+    view.setUint16(32, 2, true); // blockAlign (1 * 2)
+    view.setUint16(34, 16, true); // bitsPerSample = 16
+    // Subchunk data
+    view.setUint32(36, 0x64617461, false); // "data"
+    view.setUint32(40, dataByteLength, true); // data size
+
+    let offset = 44;
+    for (let i = 0; i < numSamples; i++) {
+      const s = Math.max(-1, Math.min(1, finalSamples[i]));
+      const intSample = s < 0 ? s * 0x8000 : s * 0x7FFF;
+      view.setInt16(offset, intSample, true);
+      offset += 2;
+    }
+
+    return new Blob([buffer], { type: 'audio/wav' });
+  };
+
+  /**
+   * Segmenta áudios longos (de até 45 minutos) em trechos válidos de 90 segundos (~2.75 MB por trecho).
+   * Não corta bytes brutos de WebM/MP4: decodifica e sintetiza arquivos WAV decodificáveis individualmente.
+   */
+  const segmentarAudioEmTrechos = async (blob: Blob, segundosPorTrecho: number = 90): Promise<Blob[]> => {
+    // Se o áudio é pequeno (<= 2.5 MB), envia diretamente como trecho único
+    if (blob.size <= 2.5 * 1024 * 1024) {
+      return [blob];
+    }
+
+    const AudioCtxClass = typeof window !== 'undefined' ? (window.AudioContext || (window as any).webkitAudioContext) : null;
+    if (!AudioCtxClass) {
+      return [blob];
+    }
+
+    const audioCtx = new AudioCtxClass();
+    try {
+      const arrayBuffer = await blob.arrayBuffer();
+      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+      const totalSegundos = audioBuffer.duration;
+
+      if (totalSegundos <= segundosPorTrecho && blob.size <= 3 * 1024 * 1024) {
+        return [blob];
+      }
+
+      const trechos: Blob[] = [];
+      let inicioSec = 0;
+      while (inicioSec < totalSegundos) {
+        const fimSec = Math.min(inicioSec + segundosPorTrecho, totalSegundos);
+        const trechoWav = extrairTrechoWav(audioBuffer, inicioSec, fimSec);
+        trechos.push(trechoWav);
+        inicioSec = fimSec;
+      }
+
+      return trechos.length > 0 ? trechos : [blob];
+    } catch (err) {
+      console.warn('[Segmentação Web Audio falhou, fallback para blob original]:', err);
+      return [blob];
+    } finally {
+      audioCtx.close().catch(() => {});
+    }
+  };
+
+  // Processa áudio no servidor em trechos sequenciais com recuperação incremental
+  const processarTranscricaoServidor = async (blob: Blob, urlFornecida?: string, retomar: boolean = false) => {
     const finalUrl = urlFornecida || audioUrl || URL.createObjectURL(blob);
     if (!audioUrl && finalUrl) {
       setAudioUrl(finalUrl);
     }
-
-    // Se já capturamos o diálogo completo via fala contínua, consolida diretamente
-    if (transcricaoTextoRef.current.trim()) {
-      const textoFinal = transcricaoTextoRef.current.trim();
-      setEstado('concluido');
-      estadoRef.current = 'concluido';
-      setErroMensagem(null);
-      if (onAudioGravado) {
-        onAudioGravado(blob, finalUrl, textoFinal);
-      }
-      onInserirTexto(textoFinal);
-      return;
-    }
+    setAudioBlob(blob);
 
     setEstado('processando');
     estadoRef.current = 'processando';
     setErroMensagem(null);
 
     try {
-      if (blob.size > 3 * 1024 * 1024) throw new Error('O áudio excede 3 MB para transcrição nesta rota. Utilize um trecho menor. A gravação permanece disponível para download.');
-      const { data: sessao, error: erroSessao } = await getSupabase().auth.getSession();
-      if (erroSessao || !sessao.session?.access_token) throw new Error('Entre novamente para transcrever o áudio.');
-      const base64 = await blobToBase64(blob);
-      const mime = blob.type || 'audio/webm';
-
-      const response = await fetch('/api/transcrever-audio', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessao.session.access_token}` },
-        body: JSON.stringify({
-          audioBase64: base64,
-          mimeType: mime
-        })
-      });
-
-      if (!response.headers.get('content-type')?.includes('application/json')) {
-        throw new Error(response.status === 413 ? 'O áudio excede o limite do servidor.' : 'A rota de transcrição não está disponível. Verifique a publicação na Vercel.');
+      // 1. Obtém sessão Supabase válida
+      const supabase = getSupabase();
+      const { data: sessao, error: erroSessao } = await supabase.auth.getSession();
+      if (erroSessao || !sessao.session?.access_token) {
+        throw new Error('Sessão expirada ou não autenticada. Entre novamente para transcrever o áudio.');
       }
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.erro || 'Falha no serviço de transcrição.');
+      const token = sessao.session.access_token;
 
-      if (data.ok && data.transcricao) {
-        setTranscricaoTexto(data.transcricao);
-        transcricaoTextoRef.current = data.transcricao;
-        setEstado('concluido');
-        estadoRef.current = 'concluido';
-        setErroMensagem(null);
-        if (onAudioGravado) {
-          onAudioGravado(blob, finalUrl, data.transcricao);
-        }
-        onInserirTexto(data.transcricao);
-      } else {
-        // Se a fala local já tiver algum texto, preserva
-        if (transcricaoTextoRef.current.trim()) {
-          const texto = transcricaoTextoRef.current.trim();
-          setEstado('concluido');
-          estadoRef.current = 'concluido';
-          setErroMensagem(null);
-          if (onAudioGravado) {
-            onAudioGravado(blob, finalUrl, texto);
-          }
-          onInserirTexto(texto);
-        } else {
-          setEstado('falha');
-          estadoRef.current = 'falha';
-          setErroMensagem(data.erro || 'Não foi possível transcrever automaticamente. Você pode digitar as anotações livremente.');
-        }
+      // 2. Prepara os trechos caso não esteja retomando
+      if (!retomar || trechosArmazenadosRef.current.length === 0) {
+        setProgressoTrechos({ atual: 1, total: 1 });
+        const trechos = await segmentarAudioEmTrechos(blob, 90);
+        trechosArmazenadosRef.current = trechos;
+        trechosResultadosRef.current = {};
       }
+
+      const trechos = trechosArmazenadosRef.current;
+      const totalTrechos = trechos.length;
+
+      // 3. Processa cada trecho sequencialmente
+      for (let i = 0; i < totalTrechos; i++) {
+        // Pula trechos já transcritos anteriormente com sucesso
+        if (trechosResultadosRef.current[i]) continue;
+
+        setProgressoTrechos({ atual: i + 1, total: totalTrechos });
+
+        const trechoAtual = trechos[i];
+        if (trechoAtual.size > 3 * 1024 * 1024) {
+          throw new Error(`O trecho ${i + 1} de ${totalTrechos} excede o limite de 3 MB permitido.`);
+        }
+
+        const base64 = await blobToBase64(trechoAtual);
+        const mime = trechoAtual.type || 'audio/wav';
+
+        const response = await fetch('/api/transcrever-audio', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            audioBase64: base64,
+            mimeType: mime
+          })
+        });
+
+        if (!response.headers.get('content-type')?.includes('application/json')) {
+          throw new Error(
+            response.status === 413
+              ? `O trecho ${i + 1} excede o limite de upload do servidor.`
+              : `A rota de transcrição retornou erro HTTP ${response.status}. Verifique a conexão ou tente novamente.`
+          );
+        }
+
+        const data = await response.json();
+        if (!response.ok || !data.ok) {
+          const motivo = data?.erro || `Erro HTTP ${response.status}`;
+          throw new Error(`Falha no trecho ${i + 1} de ${totalTrechos}: ${motivo}`);
+        }
+
+        const textoTrecho = (data.transcricao || '').trim();
+        trechosResultadosRef.current[i] = textoTrecho;
+      }
+
+      // 4. Consolida todos os trechos em ordem cronológica estrita
+      const textoConsolidado = trechos
+        .map((_, idx) => trechosResultadosRef.current[idx] || '')
+        .filter(Boolean)
+        .join('\n\n')
+        .trim();
+
+      if (!textoConsolidado) {
+        throw new Error('Não foi obtida transcrição com falas compreensíveis.');
+      }
+
+      setTranscricaoTexto(textoConsolidado);
+      transcricaoTextoRef.current = textoConsolidado;
+      textoFinalAcumuladoRef.current = textoConsolidado;
+      setOrigemTranscricao('ia_gemini');
+      setProgressoTrechos(null);
+      setEstado('concluido');
+      estadoRef.current = 'concluido';
+      setErroMensagem(null);
+
+      if (onAudioGravado) {
+        onAudioGravado(blob, finalUrl, textoConsolidado);
+      }
+      onInserirTexto(textoConsolidado);
+
     } catch (err: any) {
       console.warn('[Erro transcrição servidor]:', err);
-      if (transcricaoTextoRef.current.trim()) {
-        const texto = transcricaoTextoRef.current.trim();
-        setEstado('concluido');
-        estadoRef.current = 'concluido';
-        setErroMensagem(null);
-        if (onAudioGravado) {
-          onAudioGravado(blob, finalUrl, texto);
-        }
-        onInserirTexto(texto);
-      } else {
-        setEstado('falha');
-        estadoRef.current = 'falha';
-        setErroMensagem(err?.message || 'Falha na comunicação com o serviço de transcrição. O áudio permanece disponível para download e nova tentativa.');
-      }
+      setEstado('falha');
+      estadoRef.current = 'falha';
+      setProgressoTrechos(null);
+      setErroMensagem(
+        err?.message || 'Falha na comunicação com o serviço de transcrição. O áudio completo permanece disponível para download e nova tentativa.'
+      );
     }
+  };
+
+  // Permite adotar o rascunho de voz local do navegador caso o usuário prefira
+  const handleUsarRascunhoNavegador = () => {
+    if (!rascunhoVozNavegador.trim()) return;
+    const rascunho = rascunhoVozNavegador.trim();
+    setTranscricaoTexto(rascunho);
+    transcricaoTextoRef.current = rascunho;
+    textoFinalAcumuladoRef.current = rascunho;
+    setOrigemTranscricao('rascunho_navegador');
+    setEstado('concluido');
+    estadoRef.current = 'concluido';
+    setErroMensagem(null);
+    if (audioBlob && audioUrl && onAudioGravado) {
+      onAudioGravado(audioBlob, audioUrl, rascunho);
+    }
+    onInserirTexto(rascunho);
   };
 
   // Obter stream de microfone com tolerância máxima a dispositivos e navegadores
@@ -446,25 +602,12 @@ export default function GravadorSessao({
           setAudioBlob(blob);
           setAudioUrl(url);
 
-          const textoCapturado = transcricaoTextoRef.current.trim();
-
-          if (textoCapturado) {
-            setEstado('concluido');
-            estadoRef.current = 'concluido';
-            setErroMensagem(null);
-            if (onAudioGravado) {
-              onAudioGravado(blob, url, textoCapturado);
-            }
-            onInserirTexto(textoCapturado);
-          } else {
-            await processarTranscricaoServidor(blob, url);
-          }
+          // Dispara a transcrição clínica oficial por IA do arquivo gravado
+          await processarTranscricaoServidor(blob, url, false);
         } else {
-          // Se não gerou chunks de áudio, mas temos transcrição de fala contínua
-          if (transcricaoTextoRef.current.trim()) {
-            setEstado('concluido');
-            estadoRef.current = 'concluido';
-          }
+          setEstado('falha');
+          estadoRef.current = 'falha';
+          setErroMensagem('Nenhum dado de áudio foi capturado pelo gravador.');
         }
       };
 
@@ -565,14 +708,8 @@ export default function GravadorSessao({
       streamRef.current = null;
     }
 
-    if (transcricaoTextoRef.current.trim()) {
-      setEstado('concluido');
-      estadoRef.current = 'concluido';
-      setErroMensagem(null);
-    } else {
-      setEstado('processando');
-      estadoRef.current = 'processando';
-    }
+    setEstado('processando');
+    estadoRef.current = 'processando';
   };
 
   // 4. Descartar gravação atual para recomeçar
@@ -584,11 +721,17 @@ export default function GravadorSessao({
     }
     setAudioBlob(null);
     audioChunksRef.current = [];
+    trechosArmazenadosRef.current = [];
+    trechosResultadosRef.current = {};
     setTranscricaoTexto('');
     transcricaoTextoRef.current = '';
+    setRascunhoVozNavegador('');
+    rascunhoVozNavegadorRef.current = '';
     textoFinalAcumuladoRef.current = '';
     setTempoSegundos(0);
     setErroMensagem(null);
+    setProgressoTrechos(null);
+    setOrigemTranscricao(null);
     setEstado('ocioso');
     estadoRef.current = 'ocioso';
   };
@@ -692,9 +835,9 @@ export default function GravadorSessao({
             {estado === 'solicitando' && 'Aguardando microfone...'}
             {estado === 'gravando' && `Gravando (${formatarTempo(tempoSegundos)})`}
             {estado === 'pausado' && `Pausado (${formatarTempo(tempoSegundos)})`}
-            {estado === 'processando' && 'Processando Transcrição...'}
-            {estado === 'concluido' && 'Gravação & Transcrição Concluídas'}
-            {estado === 'falha' && 'Ajuste Necessário'}
+            {estado === 'processando' && (progressoTrechos && progressoTrechos.total > 1 ? `Transcrevendo (${progressoTrechos.atual}/${progressoTrechos.total})` : 'Transcrevendo com IA...')}
+            {estado === 'concluido' && (origemTranscricao === 'ia_gemini' ? 'Transcrição IA Concluída' : origemTranscricao === 'rascunho_navegador' ? 'Rascunho Local' : 'Gravação & Transcrição Concluídas')}
+            {estado === 'falha' && 'Transcrição Pendente'}
           </span>
         </div>
       </div>
@@ -715,6 +858,22 @@ export default function GravadorSessao({
         </div>
       </div>
 
+      {/* Rascunho de voz ao vivo do navegador durante a gravação */}
+      {estado === 'gravando' && rascunhoVozNavegador.trim() && (
+        <div className="p-3 rounded-xl bg-muted/40 border border-border/60 space-y-1.5">
+          <div className="flex items-center gap-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+            <Radio className="size-3 text-emerald-500 animate-pulse" />
+            <span>Rascunho de voz em tempo real (Navegador)</span>
+            <span className="text-[10px] lowercase text-muted-foreground/80 font-normal">
+              (ao finalizar, a IA Gemini processará a transcrição clínica oficial do áudio)
+            </span>
+          </div>
+          <p className="text-xs text-foreground/90 font-mono italic line-clamp-3 bg-background/60 p-2 rounded-lg border border-border/40">
+            {rascunhoVozNavegador}
+          </p>
+        </div>
+      )}
+
       {/* Alerta Preventivo de Permissão de Microfone Negada */}
       {statusPermissaoMic === 'negada' && !erroMensagem && (
         <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/30 text-destructive text-xs flex flex-wrap items-center justify-between gap-2">
@@ -734,22 +893,54 @@ export default function GravadorSessao({
         </div>
       )}
 
-      {/* Alerta de Erro ou Notificação */}
+      {/* Alerta de Erro ou Notificação com Recuperação Segura */}
       {erroMensagem && (
-        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="size-4 shrink-0 text-amber-600" />
-            <span>{erroMensagem}</span>
+        <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs space-y-2.5">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="size-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+            <div className="space-y-0.5">
+              <span className="font-semibold block">{erroMensagem}</span>
+              <p className="text-[11px] text-muted-foreground">
+                O áudio gravado está 100% preservado no player abaixo e pode ser reproduzido ou baixado a qualquer momento.
+              </p>
+            </div>
           </div>
-          {audioBlob && (
-            <button
-              type="button"
-              onClick={() => processarTranscricaoServidor(audioBlob)}
-              className="text-xs underline font-bold shrink-0 cursor-pointer text-primary hover:opacity-80"
-            >
-              Tentar Transcrever Novamente
-            </button>
-          )}
+
+          <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-amber-500/20">
+            {audioBlob && trechosArmazenadosRef.current.length > 1 && Object.keys(trechosResultadosRef.current).length > 0 && Object.keys(trechosResultadosRef.current).length < trechosArmazenadosRef.current.length && (
+              <button
+                type="button"
+                onClick={() => processarTranscricaoServidor(audioBlob, undefined, true)}
+                className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold shadow-sm hover:opacity-90 flex items-center gap-1.5 cursor-pointer"
+              >
+                <Sparkles className="size-3.5" />
+                <span>Continuar do Trecho {Object.keys(trechosResultadosRef.current).length + 1} de {trechosArmazenadosRef.current.length}</span>
+              </button>
+            )}
+
+            {audioBlob && (
+              <button
+                type="button"
+                onClick={() => processarTranscricaoServidor(audioBlob, undefined, false)}
+                className="px-3 py-1.5 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 text-xs font-bold text-primary flex items-center gap-1.5 cursor-pointer"
+              >
+                <Sparkles className="size-3.5" />
+                <span>Tentar Transcrever Novamente</span>
+              </button>
+            )}
+
+            {rascunhoVozNavegador.trim() && (
+              <button
+                type="button"
+                onClick={handleUsarRascunhoNavegador}
+                className="px-3 py-1.5 rounded-lg border border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/25 text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5 cursor-pointer"
+                title="Aplica o texto captado localmente pelo navegador como transcrição provisória"
+              >
+                <Radio className="size-3.5 text-amber-600" />
+                <span>Usar Rascunho de Voz do Navegador (Local)</span>
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -811,9 +1002,28 @@ export default function GravadorSessao({
         )}
 
         {estado === 'processando' && (
-          <div className="flex items-center gap-2.5 text-xs font-bold text-primary py-2 px-3 rounded-xl bg-primary/10 border border-primary/20">
-            <Loader2 className="size-4 animate-spin text-primary" />
-            <span>Processando áudio e gerando transcrição fiel com IA...</span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-bold text-primary py-2.5 px-3.5 rounded-xl bg-primary/10 border border-primary/20 w-full">
+            <div className="flex items-center gap-2">
+              <Loader2 className="size-4 animate-spin text-primary shrink-0" />
+              <span>
+                {progressoTrechos && progressoTrechos.total > 1
+                  ? `Transcrevendo trecho ${progressoTrechos.atual} de ${progressoTrechos.total} com IA Gemini...`
+                  : 'Processando áudio e gerando transcrição fiel com IA...'}
+              </span>
+            </div>
+            {progressoTrechos && progressoTrechos.total > 1 && (
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-[11px] text-muted-foreground font-normal">
+                  {Math.round(((progressoTrechos.atual - 1) / progressoTrechos.total) * 100)}% concluído
+                </span>
+                <div className="w-24 h-2 bg-primary/20 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-primary transition-all duration-300"
+                    style={{ width: `${Math.round(((progressoTrechos.atual - 1) / progressoTrechos.total) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -840,11 +1050,11 @@ export default function GravadorSessao({
             {audioBlob && (
               <button
                 type="button"
-                onClick={() => processarTranscricaoServidor(audioBlob)}
+                onClick={() => processarTranscricaoServidor(audioBlob, undefined, false)}
                 className="px-4 py-2 rounded-xl border border-primary/30 bg-primary/5 hover:bg-primary/10 text-xs font-bold text-primary transition-colors flex items-center gap-1.5 cursor-pointer"
               >
                 <Sparkles className="size-3.5" />
-                <span>Refinar com IA Gemini</span>
+                <span>{origemTranscricao === 'ia_gemini' ? 'Retranscrever com IA Gemini' : 'Refinar com IA Gemini'}</span>
               </button>
             )}
           </div>
@@ -875,19 +1085,41 @@ export default function GravadorSessao({
 
       {/* Caixa de Exibição da Transcrição Real */}
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <label className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center gap-1.5">
-            <Sparkles className="size-3.5 text-primary" />
-            Transcrição Textual da Sessão
-            {transcricaoTexto.trim() && (
-              <span className="text-[11px] font-normal text-muted-foreground lowercase">
-                ({transcricaoTexto.length} caracteres)
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <Sparkles className="size-3.5 text-primary" />
+              Transcrição Textual da Sessão
+              {transcricaoTexto.trim() && (
+                <span className="text-[11px] font-normal text-muted-foreground lowercase">
+                  ({transcricaoTexto.length} caracteres)
+                </span>
+              )}
+            </label>
+            {origemTranscricao === 'ia_gemini' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                <Sparkles className="size-3" /> Transcrição Clínica por IA (Gemini)
               </span>
             )}
-          </label>
+            {origemTranscricao === 'rascunho_navegador' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                <Radio className="size-3" /> Rascunho Local do Navegador
+              </span>
+            )}
+          </div>
 
-          {transcricaoTexto.trim() && (
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
+            {origemTranscricao === 'rascunho_navegador' && audioBlob && estado !== 'processando' && (
+              <button
+                type="button"
+                onClick={() => processarTranscricaoServidor(audioBlob, undefined, false)}
+                className="text-xs font-semibold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <Sparkles className="size-3.5" />
+                <span>Processar com IA Gemini</span>
+              </button>
+            )}
+            {transcricaoTexto.trim() && (
               <button
                 type="button"
                 onClick={handleInserirNasNotas}
@@ -896,8 +1128,8 @@ export default function GravadorSessao({
                 {copiado ? <Check className="size-3.5 text-emerald-600" /> : <Plus className="size-3.5" />}
                 <span>{copiado ? 'Inserido no Prontuário!' : 'Inserir nas Anotações da Sessão'}</span>
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         <div className="relative">
@@ -914,7 +1146,7 @@ export default function GravadorSessao({
             }}
             placeholder={
               estado === 'gravando'
-                ? 'Gravando... As falas da sessão estão sendo captadas e transcritas automaticamente em tempo real...'
+                ? 'Gravando... As falas da sessão estão sendo captadas e o áudio preservado com máxima fidelidade...'
                 : 'A transcrição automática da gravação de áudio aparecerá aqui. Você poderá editar o texto livremente antes de salvá-lo no prontuário do paciente.'
             }
             className={`w-full rounded-xl border border-border p-3.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring leading-relaxed resize-y font-mono transition-colors ${

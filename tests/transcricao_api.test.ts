@@ -35,3 +35,36 @@ test('não apresenta falhas do provedor como transcrição bem-sucedida', async 
   }
 });
 test('resposta vazia não vira uma transcrição fictícia', async () => { assert.equal((await executar({texto:''})).status,422); });
+
+test('identifica timeout do provedor e retorna 504 claro', async () => {
+  const erroTimeout = new Error('This operation was aborted');
+  erroTimeout.name = 'AbortError';
+  (erroTimeout as any).code = 20;
+  const r = await executar({ falha: erroTimeout });
+  assert.equal(r.status, 504);
+  assert.equal(r.resposta.ok, false);
+  assert.match(r.resposta.erro, /timeout/i);
+});
+
+test('permite tanto usuário comum quanto master sem distinção de cargo', async () => {
+  const tokenComum = 'Bearer token-psicologo-comum';
+  const tokenMaster = 'Bearer token-admin-master';
+  const rComum = await executar({ token: tokenComum });
+  assert.equal(rComum.status, 200);
+  assert.equal(rComum.resposta.ok, true);
+
+  const rMaster = await executar({ token: tokenMaster });
+  assert.equal(rMaster.status, 200);
+  assert.equal(rMaster.resposta.ok, true);
+});
+
+test('processa múltiplos trechos sequenciais e permite recuperar trecho com falha', async () => {
+  const trechos = ['Trecho um transcrito.', 'Trecho dois transcrito.'];
+  const resultados: string[] = [];
+  for (let i = 0; i < trechos.length; i++) {
+    const r = await executar({ texto: trechos[i] });
+    assert.equal(r.status, 200);
+    resultados.push(r.resposta.transcricao);
+  }
+  assert.equal(resultados.join('\n\n'), 'Trecho um transcrito.\n\nTrecho dois transcrito.');
+});
