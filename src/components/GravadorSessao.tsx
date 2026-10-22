@@ -45,6 +45,7 @@ export default function GravadorSessao({
   const [copiado, setCopiado] = useState(false);
   const [suportaFalaAoVivo, setSuportaFalaAoVivo] = useState(false);
   const [estaOuvindoFala, setEstaOuvindoFala] = useState(false);
+  const [statusPermissaoMic, setStatusPermissaoMic] = useState<'concedida' | 'solicitando' | 'negada' | 'desconhecido'>('desconhecido');
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<any>(null);
@@ -66,10 +67,28 @@ export default function GravadorSessao({
     estadoRef.current = estado;
   }, [estado]);
 
-  // Verifica suporte da API de Fala contínua do navegador na montagem
+  // Verifica suporte da API de Fala contínua e status de permissão de microfone
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     setSuportaFalaAoVivo(Boolean(SpeechRecognition));
+
+    if (navigator?.permissions?.query) {
+      navigator.permissions.query({ name: 'microphone' as any })
+        .then(res => {
+          if (res.state === 'granted') setStatusPermissaoMic('concedida');
+          else if (res.state === 'denied') setStatusPermissaoMic('negada');
+          else setStatusPermissaoMic('solicitando');
+
+          res.onchange = () => {
+            if (res.state === 'granted') setStatusPermissaoMic('concedida');
+            else if (res.state === 'denied') setStatusPermissaoMic('negada');
+            else setStatusPermissaoMic('solicitando');
+          };
+        })
+        .catch(() => {
+          setStatusPermissaoMic('desconhecido');
+        });
+    }
 
     return () => {
       pararHardware();
@@ -428,8 +447,20 @@ export default function GravadorSessao({
     } catch (err: any) {
       console.error('[Microfone Erro]:', err);
       
+      let msg = 'Não foi possível acessar o microfone.';
+      if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
+        setStatusPermissaoMic('negada');
+        msg = 'Permissão de microfone bloqueada pelo navegador. Para habilitar: clique no ícone de cadeado/permissões ao lado do endereço do site (URL), selecione "Permitir Microfone" e recarregue. Você também pode importar arquivos de áudio (.mp3, .m4a, .wav) pelo botão abaixo.';
+      } else if (err?.name === 'NotFoundError' || err?.name === 'DevicesNotFoundError') {
+        msg = 'Nenhum microfone foi detectado neste dispositivo. Conecte um fone de ouvido com microfone ou use o botão "Importar Áudio Externo".';
+      } else if (err?.name === 'NotReadableError' || err?.name === 'TrackStartError') {
+        msg = 'O microfone está ocupado por outro aplicativo. Feche outras abas ou programas que utilizam áudio e tente novamente.';
+      } else {
+        msg = `Acesso ao microfone indisponível (${err?.message || 'Permissão restrita'}). Use a opção "Importar Áudio Externo" para transcrever qualquer gravação de sessão.`;
+      }
+
       // Mesmo se o MediaRecorder falhar, tenta iniciar SpeechRecognition se disponível
-      if (suportaFalaAoVivo) {
+      if (suportaFalaAoVivo && err?.name !== 'NotAllowedError') {
         try {
           iniciarFalaAoVivo();
           setEstado('gravando');
@@ -444,7 +475,7 @@ export default function GravadorSessao({
 
       setEstado('falha');
       estadoRef.current = 'falha';
-      setErroMensagem('Não foi possível acessar o microfone. Verifique as permissões de áudio no seu navegador ou use a opção de importar arquivo de áudio.');
+      setErroMensagem(msg);
     }
   };
 
@@ -653,6 +684,25 @@ export default function GravadorSessao({
           </span>
         </div>
       </div>
+
+      {/* Alerta Preventivo de Permissão de Microfone Negada */}
+      {statusPermissaoMic === 'negada' && !erroMensagem && (
+        <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/30 text-destructive text-xs flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="size-4 shrink-0" />
+            <span>
+              O microfone está bloqueado pelo navegador. Para habilitar: clique no ícone de cadeado/permissões ao lado da URL do navegador, selecione &quot;Permitir Microfone&quot; e recarregue.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="text-xs font-bold underline cursor-pointer hover:opacity-80"
+          >
+            Importar Arquivo de Áudio (.mp3, .m4a, .wav)
+          </button>
+        </div>
+      )}
 
       {/* Alerta de Erro ou Notificação */}
       {erroMensagem && (

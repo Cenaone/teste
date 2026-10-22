@@ -403,6 +403,20 @@ export default function SecaoNovaSessao({
                   </button>
                 )}
               </label>
+              {analisandos.length === 0 && (
+                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs flex flex-wrap items-center justify-between gap-2">
+                  <span>Nenhum paciente cadastrado ainda. Cadastre um paciente para vincular o prontuário.</span>
+                  {onCadastrarPaciente && (
+                    <button
+                      type="button"
+                      onClick={onCadastrarPaciente}
+                      className="px-2.5 py-1 rounded-lg bg-primary text-primary-foreground font-bold text-[11px] shrink-0 hover:opacity-90"
+                    >
+                      + Cadastrar Paciente
+                    </button>
+                  )}
+                </div>
+              )}
               <select
                 required
                 value={analisandoId}

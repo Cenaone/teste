@@ -19,9 +19,31 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
 async function startServer() {
   const app = express();
 
+  // Permite acesso de microfone e multimídia dentro de iframes e previews do navegador
+  app.use((_req, res, next) => {
+    res.setHeader('Permissions-Policy', 'microphone=*');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    next();
+  });
+
   // Permite payload de áudio e dados de até 100MB
   app.use(express.json({ limit: '100mb' }));
   app.use(express.urlencoded({ extended: true, limit: '100mb' }));
+
+  // Normaliza o MIME type para garantir compatibilidade com a API Gemini
+  function normalizarAudioMime(mime?: string): string {
+    if (!mime) return 'audio/webm';
+    const m = mime.toLowerCase();
+    if (m.includes('m4a') || m.includes('mp4')) return 'audio/mp4';
+    if (m.includes('mp3') || m.includes('mpeg')) return 'audio/mp3';
+    if (m.includes('wav')) return 'audio/wav';
+    if (m.includes('ogg')) return 'audio/ogg';
+    if (m.includes('aac')) return 'audio/aac';
+    if (m.includes('flac')) return 'audio/flac';
+    if (m.includes('webm')) return 'audio/webm';
+    return 'audio/webm';
+  }
 
   // Endpoint 1: Transcrição de áudio gravado sob demanda
   app.post('/api/transcrever-audio', async (req, res) => {
@@ -45,7 +67,7 @@ async function startServer() {
         }
       });
 
-      const audioMime = mimeType || 'audio/webm';
+      const audioMime = normalizarAudioMime(mimeType);
       const promptTexto = 'Você é um assistente de transcrição clínica em psicologia e psicanálise. Transcreva de forma fidedigna, completa e clara todo o diálogo deste áudio de sessão terapêutica em português do Brasil. Preserve as falas dos participantes com pontuação adequada e parágrafos estruturados. Retorne apenas o texto transcrito, sem introduções nem conclusões.';
 
       let transcricao = '';
@@ -209,7 +231,7 @@ function salvarUsuariosServidor(lista: any[]): void {
         telefone: telefone || null,
         senhaTexto: senha || null,
         role: isMaster ? 'admin' : 'psicologo',
-        status: isMaster ? 'ativo' : 'pendente',
+        status: 'ativo', // Novos usuários iniciam ativos (período trial/degustação de 30 dias) para gravar sessões e transcrever imediatamente
         plano: isMaster ? 'saas_pro' : 'mensal',
         validoAte: isMaster
           ? '2036-12-31T23:59:59.000Z'
@@ -238,14 +260,14 @@ function salvarUsuariosServidor(lista: any[]): void {
           crp: novoUsuario.crp,
           telefone: novoUsuario.telefone,
           role: novoUsuario.role,
-          status: novoUsuario.status,
+          status: 'ativo',
           senha_texto: novoUsuario.senhaTexto,
           atualizado_em: agora
         }, { onConflict: 'id' });
 
         await supabaseAdmin.from('assinaturas_saas').upsert({
           user_id: userId,
-          status: isMaster ? 'ativa' : 'pendente',
+          status: 'ativa',
           plano: novoUsuario.plano,
           valido_ate: novoUsuario.validoAte,
           atualizado_em: agora
@@ -261,7 +283,7 @@ function salvarUsuariosServidor(lista: any[]): void {
         usuario: novoUsuario,
         mensagem: isMaster
           ? 'Administrador Master ativo.'
-          : 'Cadastro realizado com sucesso! Sua conta está aguardando ativação pelo Administrador Master.'
+          : 'Cadastro realizado com sucesso! Sua conta está ativa com período de teste de 30 dias com gravação e transcrição liberadas.'
       });
     } catch (err: any) {
       console.error('[POST /api/auth/registrar-usuario erro]:', err);

@@ -337,6 +337,31 @@ export default function SecaoAdminSaas({ contaUsuario, licencaSaas, onVoltarPara
         } else {
           mostrarFeedback(`Assinante ${novoNome} cadastrado e liberado com sucesso!`);
         }
+
+        // Sincroniza também no servidor para persistência e contingência
+        try {
+          await fetch('/api/auth/registrar-usuario', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: data.user.id,
+              email: novoEmail.trim().toLowerCase(),
+              nomeCompleto: novoNome.trim(),
+              crp: novoCrp.trim() || undefined,
+              senha: novaSenha.trim()
+            })
+          });
+          await fetch('/api/admin/aprovar-usuario', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: data.user.id,
+              email: novoEmail.trim().toLowerCase(),
+              diasValidade: Number(novoDias) || 30,
+              plano: novoPlano
+            })
+          });
+        } catch (_) {}
       } else {
         mostrarFeedback(`Conta criada com sucesso!`);
       }

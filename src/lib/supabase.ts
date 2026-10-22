@@ -1146,6 +1146,19 @@ export async function fazerLoginSupabaseAuth(
     }
     const conta = await carregarIdentidadeAutenticada(cliente);
     if (!conta.isAdmin && conta.status !== 'ativo') {
+      // Consulta de contingência com o servidor para contas em período de avaliação/degustação
+      try {
+        const resStatus = await fetch(getApiUrl(`/api/auth/status-usuario?email=${encodeURIComponent(conta.email)}&userId=${encodeURIComponent(conta.id)}`));
+        const dataStatus = await resStatus.json();
+        if (dataStatus.ok && dataStatus.status === 'ativo') {
+          conta.status = 'ativo';
+          if (dataStatus.plano) conta.plano = dataStatus.plano;
+          if (dataStatus.validoAte) conta.validoAte = dataStatus.validoAte;
+        }
+      } catch (_) {}
+    }
+
+    if (!conta.isAdmin && conta.status !== 'ativo') {
       await cliente.auth.signOut();
       return {
         ok: false,
@@ -1191,7 +1204,8 @@ export async function cadastrarContaSupabaseAuth(
 }> {
   const emailClean = email.trim().toLowerCase();
   const isAdmin = isMasterAdminEmail(emailClean);
-  const statusInicial: StatusAssinante = isAdmin ? 'ativo' : 'pendente';
+  // Novos psicólogos recebem status 'ativo' imediato (período de teste/degustação de 30 dias) para que a gravação e transcrição fiquem habilitadas
+  const statusInicial: StatusAssinante = 'ativo';
   const roleInicial: 'admin' | 'psicologo' = isAdmin ? 'admin' : 'psicologo';
   const agora = new Date().toISOString();
   let generatedId = `u_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -1226,7 +1240,7 @@ export async function cadastrarContaSupabaseAuth(
     nomeCompleto: metadados.nomeCompleto,
     crp: metadados.crp,
     role: roleInicial,
-    status: statusInicial,
+    status: 'ativo',
     plano: 'mensal',
     validoAte: userRegistradoServidor?.validoAte || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     criadoEm: userRegistradoServidor?.criadoEm || agora,

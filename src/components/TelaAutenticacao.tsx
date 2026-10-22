@@ -411,33 +411,27 @@ export const TelaAutenticacao: React.FC<TelaAutenticacaoProps> = ({
 
       if (res.ok) {
         const isAdmin = isMasterAdminEmail(emailClean);
-        if (isAdmin && res.user && !res.precisaConfirmarEmail) {
-          setSucessoCadastro('Conta de Administrador criada com sucesso! Entrando no sistema...');
-          setTimeout(() => {
-            onLoginSucesso(
-              {
-                id: res.user.id,
-                email: res.user.email,
-                nomeCompleto: res.user.user_metadata?.nome_completo || nomeClean,
-                crp: res.user.user_metadata?.crp || crpCadastro,
-                isAdmin: true,
-                role: 'admin',
-                status: 'ativo'
-              },
-              senhaCadastro
-            );
-          }, 900);
-        } else {
-          setSucessoCadastro(
-            'Cadastro realizado com sucesso! Sua conta foi enviada para validação e aprovação do Administrador Master. Assim que seu acesso for ativado pelo administrador, você poderá entrar no sistema.'
+        setSucessoCadastro(
+          isAdmin
+            ? 'Conta de Administrador criada com sucesso! Entrando no sistema...'
+            : 'Cadastro realizado com sucesso! Bem-vindo(a) ao PSi4.0. Sua conta está liberada para gravação de sessões e transcrição automática.'
+        );
+        setTimeout(() => {
+          onLoginSucesso(
+            {
+              id: res.id || res.user?.id || `u_${Date.now()}`,
+              email: emailClean,
+              nomeCompleto: res.user?.user_metadata?.nome_completo || nomeClean,
+              crp: res.user?.user_metadata?.crp || crpCadastro || undefined,
+              isAdmin,
+              role: isAdmin ? 'admin' : 'psicologo',
+              status: 'ativo',
+              plano: 'mensal',
+              validoAte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+            },
+            senhaCadastro
           );
-          setTimeout(() => {
-            setAba('login');
-            setEmailLogin(emailClean);
-            setSenhaLogin(senhaCadastro);
-            setSucessoCadastro('');
-          }, 3500);
-        }
+        }, 1100);
       } else {
         setErroCadastro(res.erro || 'Erro ao criar conta no servidor.');
       }
