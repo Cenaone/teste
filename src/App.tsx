@@ -610,8 +610,10 @@ export default function App() {
     const inativos = analisandos.filter(a => a.status === 'inativo').length;
 
     // Métricas financeiras unificadas sem duplicidade de faturamento
-    const metricasFin = calcularMetricasFinanceiras(sessoes, honorarios);
-    const totalFaturamento = metricasFin.receitaRecebida;
+    const metricasFin = calcularMetricasFinanceiras(sessoes, honorarios, modalidades);
+    // O Faturamento Total reflete a totalidade dos atendimentos clínicos produzidos no consultório
+    const totalFaturamento = metricasFin.totalCobrado;
+    const receitaRecebida = metricasFin.receitaRecebida;
     const saldoPendente = metricasFin.saldoPendente;
     const saldoVencido = metricasFin.saldoVencido;
 
@@ -629,7 +631,20 @@ export default function App() {
       return dias <= 3;
     }).length;
 
-    const volumeSessoesMes = sessoes.filter(s => s.data.slice(5, 7) === String(new Date().getMonth() + 1).padStart(2, '0')).length;
+    const anoAtual = new Date().getFullYear();
+    const mesAtual = String(new Date().getMonth() + 1).padStart(2, '0');
+    const chaveMesAtual = `${anoAtual}-${mesAtual}`;
+
+    const volumeSessoesMes = sessoes.filter(s => {
+      if (!s.data) return false;
+      const str = String(s.data).trim();
+      if (/^\d{4}-\d{2}/.test(str)) return str.slice(0, 7) === chaveMesAtual;
+      const partes = str.split('/');
+      if (partes.length === 3 && partes[2].length === 4) {
+        return `${partes[2]}-${partes[1].padStart(2, '0')}` === chaveMesAtual;
+      }
+      return false;
+    }).length;
 
     return {
       ativos,
@@ -637,6 +652,7 @@ export default function App() {
       recorrentes,
       inativos,
       totalFaturamento,
+      receitaRecebida,
       saldoPendente,
       saldoVencido,
       ticketMedio,
@@ -645,7 +661,70 @@ export default function App() {
       acompanhamentosCriticos,
       volumeSessoesMes
     };
-  }, [analisandos, sessoes, honorarios]);
+  }, [analisandos, sessoes, honorarios, modalidades]);
+
+  // Gráfico dinâmico de Sessões Clínicas Mês a Mês computado estritamente a partir das sessões
+  const dadosGraficoMensal = useMemo(() => {
+    const nomesMeses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const hoje = new Date();
+    const meses = [];
+
+    // Últimos 6 meses em ordem cronológica (5 meses atrás até o mês corrente)
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1);
+      const ano = d.getFullYear();
+      const mesNum = d.getMonth(); // 0 a 11
+      const mesChave = `${ano}-${String(mesNum + 1).padStart(2, '0')}`;
+      const rotulo = nomesMeses[mesNum];
+      const rotuloCompleto = `${rotulo}/${String(ano).slice(2)}`;
+
+      const sessoesMes = sessoes.filter(s => {
+        if (!s.data) return false;
+        const str = String(s.data).trim();
+        if (/^\d{4}-\d{2}/.test(str)) {
+          return str.slice(0, 7) === mesChave;
+        }
+        const partes = str.split('/');
+        if (partes.length === 3 && partes[2].length === 4) {
+          return `${partes[2]}-${partes[1].padStart(2, '0')}` === mesChave;
+        }
+        return false;
+      });
+
+      const totalSessoes = sessoesMes.length;
+      const faturamentoMes = sessoesMes.reduce((acc, s) => {
+        const val = Number(s.valorCobrado);
+        if (!isNaN(val) && val > 0) return acc + val;
+        const modPreco = modalidades.find(m => m.id === s.modalidadeId)?.preco || 0;
+        return acc + modPreco;
+      }, 0);
+
+      const faturamentoRecebidoMes = sessoesMes
+        .filter(s => s.pagamentoStatus === 'pago')
+        .reduce((acc, s) => acc + (Number(s.valorPago || s.valorCobrado) || 0), 0);
+
+      meses.push({
+        chave: mesChave,
+        rotulo,
+        rotuloCompleto,
+        ano,
+        mes: mesNum + 1,
+        totalSessoes,
+        faturamentoMes,
+        faturamentoRecebidoMes,
+        isMesAtual: i === 0
+      });
+    }
+
+    const maxVolume = Math.max(...meses.map(m => m.totalSessoes), 5);
+
+    return {
+      meses,
+      maxVolume,
+      totalGeralPeriodo: meses.reduce((acc, m) => acc + m.totalSessoes, 0),
+      faturamentoTotalPeriodo: meses.reduce((acc, m) => acc + m.faturamentoMes, 0)
+    };
+  }, [sessoes, modalidades]);
 
   // Kanban Filtered Analisandos
   const analisandosFiltrados = useMemo(() => {
@@ -1441,9 +1520,16 @@ export default function App() {
                       Faturamento Total
                     </span>
                     <span className="text-2xl font-bold block mt-1">{formatarMoeda(dashboardStats.totalFaturamento)}</span>
-                    <span className="text-[11px] text-muted-foreground mt-0.5 block">
-                      Sessões registradas no setting
-                    </span>
+                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mt-0.5">
+                      {dashboardStats.totalFaturamento > 0 ? (
+                        <>
+                          <span className="text-emerald-600 dark:text-emerald-400 font-medium">{formatarMoeda(dashboardStats.receitaRecebida)} recebidos</span>
+                          {dashboardStats.saldoPendente > 0 && <span>• {formatarMoeda(dashboardStats.saldoPendente)} pendentes</span>}
+                        </>
+                      ) : (
+                        <span>Sessões registradas no setting</span>
+                      )}
+                    </div>
                   </div>
                   <div className="p-2 bg-primary/10 text-primary rounded-xl">
                     <DollarSign className="size-5" />
@@ -1486,25 +1572,52 @@ export default function App() {
               {/* Caseload breakdown */}
               <div className="grid lg:grid-cols-3 gap-6">
                 <Card className="p-5 lg:col-span-2 space-y-4">
-                  <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">
-                    Sessões Clínicas Realizadas por Mês
-                  </h3>
-                  {/* Custom beautifully designed SVG Chart */}
-                  <div className="h-48 flex items-end justify-between gap-4 pt-4 border-b border-border">
-                    {/* Dummy chart values */}
-                    {[12, 18, 15, 24, 28, dashboardStats.volumeSessoesMes || 32].map((val, idx) => {
-                      const labels = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun/Jul'];
-                      const heightPercent = Math.min(100, (val / 35) * 100);
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">
+                        Sessões Clínicas Realizadas por Mês
+                      </h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Últimos 6 meses • {dadosGraficoMensal.totalGeralPeriodo} {dadosGraficoMensal.totalGeralPeriodo === 1 ? 'sessão realizada' : 'sessões realizadas'} ({formatarMoeda(dadosGraficoMensal.faturamentoTotalPeriodo)})
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 w-fit">
+                      Atualização contínua
+                    </span>
+                  </div>
+
+                  {/* Dynamic SVG / HTML Bar Chart based on real sessions */}
+                  <div className="h-48 flex items-end justify-between gap-3 sm:gap-4 pt-6 border-b border-border">
+                    {dadosGraficoMensal.meses.map((item, idx) => {
+                      const heightPercent = Math.max(6, (item.totalSessoes / dadosGraficoMensal.maxVolume) * 100);
                       return (
-                        <div key={idx} className="flex-1 flex flex-col items-center gap-2 group cursor-pointer">
-                          <span className="text-[10px] font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-                            {val}
+                        <div key={idx} className="flex-1 flex flex-col items-center gap-1.5 group cursor-pointer relative">
+                          {/* Floating tooltip on hover */}
+                          <div className="absolute -top-10 opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none z-20 flex flex-col items-center bg-popover text-popover-foreground border border-border shadow-md rounded-md px-2 py-1 text-center whitespace-nowrap">
+                            <span className="text-[11px] font-bold text-primary">
+                              {item.totalSessoes} {item.totalSessoes === 1 ? 'sessão' : 'sessões'}
+                            </span>
+                            <span className="text-[9px] text-muted-foreground">
+                              {formatarMoeda(item.faturamentoMes)}
+                            </span>
+                          </div>
+
+                          <span className={`text-[10px] font-bold transition-opacity ${item.totalSessoes > 0 ? 'text-foreground' : 'text-muted-foreground/50'}`}>
+                            {item.totalSessoes}
                           </span>
                           <div
-                            className="w-full bg-gradient-to-t from-primary/80 to-primary rounded-t-lg transition-all"
-                            style={{ height: `${heightPercent}px`, minHeight: '8px' }}
+                            className={`w-full rounded-t-lg transition-all duration-300 ${
+                              item.isMesAtual
+                                ? 'bg-gradient-to-t from-primary/90 to-primary ring-1 ring-primary/40 shadow-sm'
+                                : item.totalSessoes > 0
+                                ? 'bg-gradient-to-t from-primary/60 to-primary/80 group-hover:from-primary/80 group-hover:to-primary'
+                                : 'bg-muted/60'
+                            }`}
+                            style={{ height: `${heightPercent}%`, minHeight: '8px' }}
                           />
-                          <span className="text-[11px] text-muted-foreground mt-1">{labels[idx]}</span>
+                          <span className={`text-[11px] mt-1 transition-colors ${item.isMesAtual ? 'font-bold text-primary' : 'text-muted-foreground'}`}>
+                            {item.rotulo}
+                          </span>
                         </div>
                       );
                     })}

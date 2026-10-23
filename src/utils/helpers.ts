@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { AgendamentoClinico, SessaoClinica, Honorario } from '../types';
+import { AgendamentoClinico, SessaoClinica, Honorario, ModalidadeAtendimento } from '../types';
 
 /**
  * Formata valor numérico para Moeda Brasileira (R$)
@@ -242,9 +242,18 @@ export function verificarConflitoHorario(
  */
 export function calcularMetricasFinanceiras(
   sessoes: SessaoClinica[],
-  honorarios: Honorario[]
+  honorarios: Honorario[],
+  modalidades?: ModalidadeAtendimento[]
 ) {
   const hojeStr = new Date().toISOString().slice(0, 10);
+
+  // Mapeia preços de modalidades para recuperação caso valorCobrado não tenha sido salvo
+  const modalidadesPrecoMap = new Map<string, number>();
+  if (modalidades && Array.isArray(modalidades)) {
+    for (const m of modalidades) {
+      if (m.id && m.preco) modalidadesPrecoMap.set(m.id, m.preco);
+    }
+  }
 
   // Mapeia IDs de sessões que já possuem registro em honorários para não duplicar
   const sessoesVinculadas = new Set<string>();
@@ -262,14 +271,18 @@ export function calcularMetricasFinanceiras(
 
   // 1. Processa Sessões Clínicas
   for (const s of sessoes) {
-    const valorCobrado = arredondarMoeda(s.valorCobrado || 0);
+    const valorOriginal = Number(s.valorCobrado);
+    const precoModalidade = s.modalidadeId ? modalidadesPrecoMap.get(s.modalidadeId) || 0 : 0;
+    const valorCobrado = arredondarMoeda(
+      !isNaN(valorOriginal) && valorOriginal > 0 ? valorOriginal : precoModalidade
+    );
     totalCobrado += valorCobrado;
 
     if (s.pagamentoStatus === 'pago') {
       receitaRecebida += valorCobrado;
     } else if (s.pagamentoStatus === 'parcial') {
-      const pago = arredondarMoeda(s.valorPago || 0);
-      const saldo = arredondarMoeda(s.saldoDevedor !== undefined ? s.saldoDevedor : Math.max(0, valorCobrado - pago));
+      const pago = arredondarMoeda(Number(s.valorPago) || 0);
+      const saldo = arredondarMoeda(s.saldoDevedor !== undefined ? Number(s.saldoDevedor) : Math.max(0, valorCobrado - pago));
       receitaRecebida += pago;
       saldoPendente += saldo;
       if (s.data < hojeStr && saldo > 0) {
