@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import {
   Compass,
   ChevronRight,
@@ -23,13 +23,46 @@ import {
   FileText,
   Settings,
   Shield,
+  ShieldCheck,
   Lightbulb,
   GripHorizontal,
   Minimize2,
   Maximize2,
   Move,
-  ArrowUpRight
+  ArrowUpRight,
+  Sparkles,
+  ClipboardList,
+  Video,
+  Layers,
+  Filter
 } from 'lucide-react';
+
+/**
+ * VERSÃO ATUAL DO TOUR E REGISTRO DE IMPLEMENTOS
+ * IMPORTANTE: Toda vez que um novo recurso ou implemento for criado no PSi4.0:
+ * 1. Adicione ou atualize o passo correspondente em ALL_TOUR_STEPS com isNew: true e novoBadge: 'Novo Implemento'
+ * 2. Incremente CURRENT_TOUR_VERSION (ex: '2026.10-v4.1.0' -> '2026.10-v4.2.0')
+ * Isso garante que todos os usuários recebam automaticamente o aviso e o tour atualizado!
+ */
+export const CURRENT_TOUR_VERSION = '2026.10-v4.1.0';
+
+export function checarNovosImplementosTour(): boolean {
+  try {
+    const versaoSalva = localStorage.getItem('psi40_tour_version');
+    return versaoSalva !== CURRENT_TOUR_VERSION;
+  } catch {
+    return false;
+  }
+}
+
+export function marcarTourConcluidoVersaoAtual(): void {
+  try {
+    localStorage.setItem('psi40_tour_version', CURRENT_TOUR_VERSION);
+    localStorage.setItem('psi40_tour_concluido', 'true');
+  } catch {
+    // ignorar falha no localStorage
+  }
+}
 
 export interface TourStep {
   id: string;
@@ -40,88 +73,118 @@ export interface TourStep {
   description: string;
   details: string[];
   tip?: string;
+  isNew?: boolean;
+  novoBadge?: string;
+  requerAdmin?: boolean;
 }
 
-const TOUR_STEPS: TourStep[] = [
+const ALL_TOUR_STEPS: TourStep[] = [
   {
     id: 'bem_vindo',
     title: 'Boas-vindas ao PSi4.0',
     category: 'Geral',
     icon: Compass,
-    description: 'Conheça o sistema de gestão clínica desenvolvido para psicólogos e psicanalistas.',
+    description: 'Conheça o sistema de gestão clínica e setting analítico desenvolvido para psicólogos e psicanalistas.',
     details: [
       'Segurança total com Cofre Criptográfico local (AES-GCM 256 bits).',
-      'Gravação de escuta analítica com transcrição automática por IA.',
-      'Setting terapêutico, agenda, prontuários sigilosos e honorários em um só lugar.'
+      'Gravação de escuta com transcrição automática por IA para atendimentos presenciais e teleconsultas.',
+      '18 Modelos & Instrumentos clínicos oficiais, agenda inteligente e controle de honorários.',
+      'Sempre atualizado com novas implementações contínuas para sua prática clínica.'
     ],
-    tip: 'Você pode arrastar este card ou alterar sua posição para não atrapalhar sua visualização da tela.'
+    tip: 'Você pode alternar entre "Todos os Passos" e "✨ Apenas Novos Implementos" nos botões acima para ver o que há de novo!'
   },
   {
     id: 'dashboard',
     sectionId: 'dashboard',
-    title: 'Painel Geral (Dashboard)',
+    title: 'Painel Geral (Dashboard Clínico)',
     category: 'Clínica',
     icon: BarChart,
-    description: 'Visão panorâmica em tempo real de toda a sua rotina clínica e saúde do consultório.',
+    isNew: true,
+    novoBadge: 'Métricas em Tempo Real',
+    description: 'Visão panorâmica em tempo real de toda a sua rotina clínica, pacientes ativos e saúde do consultório.',
     details: [
       'Indicadores rápidos de casos ativos, sessões agendadas para o dia e faturamento do mês.',
+      'Gráfico de evolução financeira e sessões mês a mês com faturamento total atualizado em tempo real.',
       'Avisos de pacientes com retorno pendente ou sessões a confirmar.',
-      'Acesso direto aos atalhos de nova sessão e novos cadastros.'
+      'Atalhos velozes para iniciar Nova Sessão, emitir recibo ou cadastrar novo analisando.'
     ],
-    tip: 'Observe a tela de fundo: ela exibe seus cards de métricas e indicadores em tempo real.'
+    tip: 'Observe a tela de fundo: o gráfico reflete automaticamente as sessões clínicas realizadas e honorários pagos.'
   },
   {
     id: 'nova_sessao',
     sectionId: 'nova_sessao',
-    title: 'Nova Sessão & Transcrição Automática',
+    title: 'Nova Sessão & Gravador Dual Teleconsulta',
     category: 'Clínica',
     icon: PlusCircle,
-    description: 'Registre o atendimento com apoio do Gravador Clínico e transcrição de fala contínua.',
+    isNew: true,
+    novoBadge: 'Dual-Áudio Google Meet / Zoom',
+    description: 'Registre o atendimento com apoio do Gravador Clínico capaz de captar simultaneamente microfone e chamadas online!',
     details: [
-      'Grave a escuta da sessão pelo microfone com 1 clique.',
+      '✨ Modo Teleconsulta Online: mixa o seu microfone E o áudio do paciente vindo do Google Meet, Zoom, WhatsApp Web ou Teams, funcionando perfeitamente com fones de ouvido!',
+      'Modo Presencial para gravação de escuta direta pelo microfone do consultório.',
       'Transcrição contínua em Português gerada automaticamente em tempo real.',
       'Campos dedicados para hipóteses diagnósticas, associações livres e temas da sessão.',
-      'Salva com criptografia militar diretamente no seu cofre local.'
+      'Salva com criptografia militar AES-GCM diretamente no seu cofre local.'
     ],
-    tip: 'Ao salvar a sessão, você pode agendar imediatamente o próximo retorno do paciente.'
+    tip: 'Ao realizar teleconsultas no Google Meet, ative o modo Teleconsulta no gravador e selecione a aba da reunião para captar o diálogo de ambos.'
+  },
+  {
+    id: 'modelos_clinicos',
+    sectionId: 'modelos_clinicos',
+    title: 'Modelos & Instrumentos Clínicos',
+    category: 'Clínica',
+    icon: ClipboardList,
+    isNew: true,
+    novoBadge: '18 Modelos & Escalas Oficiais',
+    description: 'Biblioteca completa de formulários, anamneses, inventários diagnósticos e documentos oficiais para atendimento.',
+    details: [
+      '✨ Anamneses Clínicas: PBE (Prática Baseada em Evidências), TCC, Breve, Detalhada, Rotina e Modelo Breno Altieres.',
+      '✨ Escalas & Inventários: Inventário de Depressão de Beck (BDI), Inventário de Ansiedade (BAI), Questionário de Saúde Geral (QSG-12), Autoestima de Rosenberg e Registro Diário de Humor.',
+      '✨ Saúde Mental no Trabalho NR-1: Formulário de Triagem Inicial de Colaboradores e Formulário Gerencial por Área para conformidade legal.',
+      '✨ Documentos Oficiais: Atestado Psicológico, Declaração, Contrato de Prestação de Serviços, Termo de Consentimento, Encaminhamento Psiquiátrico e Notas SOAP.',
+      'Preenchimento dinâmico vinculado ao prontuário, com cálculo automático de scores e exportação imediata em PDF profissional.'
+    ],
+    tip: 'Acesse esta seção para preencher escalas com pacientes ou emitir laudos e atestados pré-formatados com seus dados de CRP.'
   },
   {
     id: 'analisandos',
     sectionId: 'analisandos',
-    title: 'Meus Pacientes (Prontuários)',
+    title: 'Meus Pacientes (Prontuários Sigilosos)',
     category: 'Clínica',
     icon: Users,
-    description: 'Gestão completa dos analisandos, fichas de identificação e prontuários sigilosos.',
+    description: 'Gestão completa dos analisandos, fichas de identificação e prontuários protegidos por criptografia militar.',
     details: [
-      'Histórico clínico, anamnese, dados de contato e responsáveis de emergência.',
-      'Tags de acompanhamento clínico e sinalizadores de casos prioritários.',
-      'Prontuário Eletrônico protegido por cofre com evolução temporal das sessões.',
-      'Botão de contato rápido via WhatsApp oficial integrado.'
+      'Visualização organizada por status de atendimento (Ativo, Em Pausa, Alta Terapêutica).',
+      'Prontuário com linha do tempo de evolução, sessões gravadas, documentos emitidos e notas SOAP.',
+      'Ficha cadastral com contatos de emergência e anotações prioritárias.',
+      'Atalho rápido para contato direto pelo WhatsApp oficial com 1 clique.'
     ],
-    tip: 'Use a barra de busca no topo da tela de fundo para localizar pacientes por nome, CPF ou telefone.'
+    tip: 'Clique sobre qualquer paciente para abrir seu prontuário clínico individual.'
   },
   {
     id: 'agenda',
     sectionId: 'agenda',
-    title: 'Agenda Clínica Integrada',
+    title: 'Agenda Clínica & Google Meet',
     category: 'Clínica',
     icon: Calendar,
-    description: 'Controle de horários com visualização semanal ou em lista para evitar conflitos.',
+    isNew: true,
+    novoBadge: 'Vídeo Chamadas Google Meet',
+    description: 'Controle inteligente de horários com geração automática de reuniões de vídeo e avisos no WhatsApp.',
     details: [
+      '✨ Botão de criação instantânea de videochamada Google Meet vinculada ao agendamento.',
       'Exibição em grade semanal ou lista cronológica de atendimentos.',
-      'Detecção inteligente de conflitos de horário para impedir agendamentos sobrepostos.',
-      'Confirmação de sessão com 1 clique e lembretes por WhatsApp.',
-      'Conversão direta de agendamento em "Nova Sessão" com pré-carregamento dos dados.'
+      'Detecção inteligente de conflitos para impedir marcações sobrepostas de horários.',
+      'Confirmação com 1 clique por WhatsApp e conversão direta para "Nova Sessão".'
     ],
-    tip: 'Alterne entre visualização "Semana" e "Lista" conforme seu fluxo de trabalho.'
+    tip: 'Ao agendar uma sessão remota, o link do Google Meet pode ser enviado automaticamente na mensagem de confirmação.'
   },
   {
     id: 'sessoes',
     sectionId: 'sessoes',
-    title: 'Sessões Realizadas',
+    title: 'Sessões Realizadas & Acervo',
     category: 'Clínica',
     icon: Clock,
-    description: 'Acervo temporal de todas as escutas, evoluções terapêuticas e transcrições salvas.',
+    description: 'Acervo temporal de todas as escutas, evoluções terapêuticas, áudios e transcrições salvas.',
     details: [
       'Busca e filtragem por paciente, intervalo de datas ou modalidade.',
       'Acesso seguro às anotações da escuta, impressões e termos clínicos.',
@@ -145,23 +208,27 @@ const TOUR_STEPS: TourStep[] = [
   {
     id: 'relatorios',
     sectionId: 'relatorios',
-    title: 'Relatórios & Métricas',
+    title: 'Relatórios, Métricas & Faturamento',
     category: 'Clínica',
     icon: TrendingUp,
-    description: 'Análise estatística da prática clínica, faturamento e retenção de pacientes.',
+    isNew: true,
+    novoBadge: 'Mês a Mês Atualizado',
+    description: 'Análise estatística da prática clínica, retenção de pacientes e conciliação de faturamento mensal.',
     details: [
-      'Gráficos de faturamento mensal acumulado e ticket médio por sessão.',
+      '✨ Gráficos mensais de faturamento acumulado atualizados em tempo real com as sessões registradas.',
       'Taxa de comparecimento, faltas justificadas e cancelamentos.',
-      'Exportação para demonstrativos contábeis e declaração anual.'
-    ]
+      'Ticket médio por sessão e projeção de receita do consultório.',
+      'Exportação para demonstrativos contábeis e declaração anual (Carnê-Leão).'
+    ],
+    tip: 'Todos os valores de faturamento refletem com precisão o status de quitação das sessões no cofre.'
   },
   {
     id: 'previstos',
     sectionId: 'previstos',
-    title: 'Retornos Previstos',
+    title: 'Retornos Previstos (Setting)',
     category: 'Setting',
     icon: Activity,
-    description: 'Monitore a regularidade do Setting terapêutico e garanta continuidade da análise.',
+    description: 'Monitore a regularidade do Setting terapêutico e garanta a continuidade da análise.',
     details: [
       'Relação de pacientes com datas de retorno calculadas pelo intervalo de atendimento.',
       'Alertas visuais de retornos vencidos ou pacientes sem data marcada.',
@@ -171,7 +238,7 @@ const TOUR_STEPS: TourStep[] = [
   {
     id: 'acompanhamento',
     sectionId: 'acompanhamento',
-    title: 'Acompanhamento Crítico',
+    title: 'Acompanhamento Crítico & Emergências',
     category: 'Setting',
     icon: Heart,
     description: 'Acolhimento prioritário para casos que exigem vigilância intensificada ou apoio emergencial.',
@@ -249,7 +316,7 @@ const TOUR_STEPS: TourStep[] = [
   {
     id: 'modelos',
     sectionId: 'modelos',
-    title: 'Modelos de Mensagem',
+    title: 'Modelos de Mensagem WhatsApp',
     category: 'Comunicação',
     icon: MessageSquare,
     description: 'Templates padronizados com variáveis dinâmicas para agilizar seu dia a dia.',
@@ -257,6 +324,34 @@ const TOUR_STEPS: TourStep[] = [
       'Modelos prontos para Confirmação de Sessão, Cobrança, Aniversário e Retorno.',
       'Substituição automática de {nome}, {data}, {horario} e {valor}.',
       'Personalização livre de textos e mensagens.'
+    ]
+  },
+  {
+    id: 'analista',
+    sectionId: 'analista',
+    title: 'Meu Perfil & Registro Profissional',
+    category: 'Configurações',
+    icon: FileText,
+    description: 'Configure seus dados profissionais, registros do conselho (CRP/CRM) e consultório.',
+    details: [
+      'Informações automáticas nos recibos e documentos emitidos.',
+      'Nome completo, número de registro profissional e mini-bio.',
+      'Chave PIX padrão para pagamentos e preferências visuais de cores.'
+    ]
+  },
+  {
+    id: 'consultorio',
+    sectionId: 'consultorio',
+    title: 'Dados do Consultório & Cabeçalho',
+    category: 'Configurações',
+    icon: Settings,
+    isNew: true,
+    novoBadge: 'Novo Implemento',
+    description: 'Configure a identidade do seu espaço físico ou clínica virtual nos documentos oficiais.',
+    details: [
+      '✨ Endereço completo do consultório, telefone e logomarca.',
+      'Padronização automática no cabeçalho dos 18 Modelos Clínicos, Atestados e Recibos.',
+      'Garante apresentação profissional e conformidade nas emissões.'
     ]
   },
   {
@@ -274,38 +369,51 @@ const TOUR_STEPS: TourStep[] = [
     ]
   },
   {
-    id: 'analista',
-    sectionId: 'analista',
-    title: 'Meu Perfil & Consultório',
+    id: 'admin_users',
+    sectionId: 'admin_users',
+    title: 'Validação de Acessos & Assinaturas SaaS',
     category: 'Configurações',
-    icon: FileText,
-    description: 'Configure seus dados profissionais, registros do conselho (CRP/CRM) e consultório.',
+    icon: ShieldCheck,
+    isNew: true,
+    novoBadge: 'Painel Administrativo',
+    requerAdmin: true,
+    description: 'Painel de governança para gerenciamento de planos, assinaturas e status de usuários.',
     details: [
-      'Informações automáticas nos recibos e documentos emitidos.',
-      'Endereço do consultório, chave PIX e telefone profissional.',
-      'Preferências visuais de cores e temas.'
-    ]
+      '✨ Visualização de todos os assinantes, planos contratados e vigência de assinaturas.',
+      'Liberação manual de acessos e sincronização com banco Supabase.',
+      'Diagnóstico de permissões RPC e segurança de administradores da plataforma.'
+    ],
+    tip: 'Este passo é exibido apenas para contas com perfil de Administrador.'
   }
 ];
 
 type DockPreset = 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
 
-interface TourDoSistemaProps {
+export interface TourDoSistemaProps {
   aberto: boolean;
   onFechar: () => void;
   onNavegarSecao: (secaoId: string) => void;
   onAbrirManual: () => void;
+  podeGerenciarAcessos?: boolean;
+  passoInicialId?: string;
+  iniciarApenasNovos?: boolean;
 }
 
 export default function TourDoSistema({
   aberto,
   onFechar,
   onNavegarSecao,
-  onAbrirManual
+  onAbrirManual,
+  podeGerenciarAcessos = false,
+  passoInicialId,
+  iniciarApenasNovos = false
 }: TourDoSistemaProps) {
-  const [passoAtual, setPassoAtual] = useState(0);
+  // Filtro de passos: 'todos' ou 'novos'
+  const [filtroModo, setFiltroModo] = useState<'todos' | 'novos'>(iniciarApenasNovos ? 'novos' : 'todos');
+  const [passoIndex, setPassoIndex] = useState(0);
   const [minimizado, setMinimizado] = useState(false);
   const [dock, setDock] = useState<DockPreset>('bottom-right');
+  const [menuPassosAberto, setMenuPassosAberto] = useState(false);
 
   // Dragging state
   const [customPosition, setCustomPosition] = useState<{ x: number; y: number } | null>(null);
@@ -318,12 +426,50 @@ export default function TourDoSistema({
   });
   const cardRef = useRef<HTMLDivElement>(null);
 
+  // Filtra passos disponíveis respeitando perfil admin e filtro de novidades
+  const passosDisponiveis = useMemo(() => {
+    let lista = ALL_TOUR_STEPS.filter(step => {
+      if (step.requerAdmin && !podeGerenciarAcessos) return false;
+      return true;
+    });
+
+    if (filtroModo === 'novos') {
+      const novos = lista.filter(s => s.isNew);
+      return novos.length > 0 ? novos : lista;
+    }
+
+    return lista;
+  }, [podeGerenciarAcessos, filtroModo]);
+
+  const totalPassos = passosDisponiveis.length;
+  const totalNovosImplementos = useMemo(() => {
+    return ALL_TOUR_STEPS.filter(s => s.isNew && (!s.requerAdmin || podeGerenciarAcessos)).length;
+  }, [podeGerenciarAcessos]);
+
+  // Se passoInicialId for fornecido, posicione nele
+  useEffect(() => {
+    if (aberto && passoInicialId) {
+      const idx = passosDisponiveis.findIndex(s => s.id === passoInicialId || s.sectionId === passoInicialId);
+      if (idx !== -1) {
+        setPassoIndex(idx);
+      }
+    }
+  }, [aberto, passoInicialId, passosDisponiveis]);
+
+  // Garante índice válido caso mude o filtro
+  useEffect(() => {
+    if (passoIndex >= totalPassos) {
+      setPassoIndex(0);
+    }
+  }, [totalPassos, passoIndex]);
+
+  // Teclado
   useEffect(() => {
     if (!aberto) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onFechar();
+        concluirTour();
       } else if (e.key === 'ArrowRight') {
         proximoPasso();
       } else if (e.key === 'ArrowLeft') {
@@ -333,16 +479,16 @@ export default function TourDoSistema({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [aberto, passoAtual]);
+  }, [aberto, passoIndex, totalPassos]);
 
-  // Navigate to matching section as user progresses
+  // Navegar na aplicação ao avançar o passo
   useEffect(() => {
-    if (aberto && TOUR_STEPS[passoAtual]?.sectionId) {
-      onNavegarSecao(TOUR_STEPS[passoAtual].sectionId!);
+    if (aberto && passosDisponiveis[passoIndex]?.sectionId) {
+      onNavegarSecao(passosDisponiveis[passoIndex].sectionId!);
     }
-  }, [passoAtual, aberto]);
+  }, [passoIndex, aberto, passosDisponiveis]);
 
-  // Handle Dragging
+  // Handle Dragging Mouse
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!cardRef.current) return;
     isDraggingRef.current = true;
@@ -408,31 +554,26 @@ export default function TourDoSistema({
 
   if (!aberto) return null;
 
-  const step = TOUR_STEPS[passoAtual];
+  const step = passosDisponiveis[passoIndex] || passosDisponiveis[0];
   const StepIcon = step.icon;
-  const totalPassos = TOUR_STEPS.length;
-  const percentual = Math.round(((passoAtual + 1) / totalPassos) * 100);
+  const percentual = Math.round(((passoIndex + 1) / totalPassos) * 100);
 
   const proximoPasso = () => {
-    if (passoAtual < totalPassos - 1) {
-      setPassoAtual(prev => prev + 1);
+    if (passoIndex < totalPassos - 1) {
+      setPassoIndex(prev => prev + 1);
     } else {
       concluirTour();
     }
   };
 
   const passoAnterior = () => {
-    if (passoAtual > 0) {
-      setPassoAtual(prev => prev - 1);
+    if (passoIndex > 0) {
+      setPassoIndex(prev => prev - 1);
     }
   };
 
   const concluirTour = () => {
-    try {
-      localStorage.setItem('psi40_tour_concluido', 'true');
-    } catch {
-      // ignore
-    }
+    marcarTourConcluidoVersaoAtual();
     onFechar();
   };
 
@@ -462,8 +603,8 @@ export default function TourDoSistema({
   };
 
   return (
-    // CONTAINER COMPLETELY NON-BLOCKING: NO DARK BACKDROP, ZERO BLUR!
-    // The background remains 100% visible and interactive.
+    // CONTAINER COMPLETELY NON-BLOCKING: NO DARK BACKDROP, ZERO BLUR
+    // A tela de fundo permanece 100% visível e interativa
     <div
       role="region"
       aria-label="Tour Guiado do Sistema"
@@ -487,14 +628,15 @@ export default function TourDoSistema({
 
           <div className="flex items-center gap-2 pr-1">
             <div className="size-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
-              <Compass className="size-4" />
+              <StepIcon className="size-4" />
             </div>
             <div className="text-xs leading-tight">
-              <div className="font-bold text-foreground truncate max-w-[150px]">
-                {step.title}
+              <div className="font-bold text-foreground truncate max-w-[150px] flex items-center gap-1">
+                <span>{step.title}</span>
+                {step.isNew && <Sparkles className="size-3 text-amber-500 shrink-0" />}
               </div>
               <div className="text-[10px] text-muted-foreground">
-                Passo {passoAtual + 1} de {totalPassos}
+                Passo {passoIndex + 1} de {totalPassos} {filtroModo === 'novos' && '(Novidades)'}
               </div>
             </div>
           </div>
@@ -503,7 +645,7 @@ export default function TourDoSistema({
             <button
               type="button"
               onClick={passoAnterior}
-              disabled={passoAtual === 0}
+              disabled={passoIndex === 0}
               className="p-1 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground disabled:opacity-30 cursor-pointer"
               title="Passo Anterior"
             >
@@ -540,7 +682,7 @@ export default function TourDoSistema({
         <div
           ref={cardRef}
           style={customPosition ? { left: `${customPosition.x}px`, top: `${customPosition.y}px`, position: 'fixed' } : undefined}
-          className={`pointer-events-auto fixed ${getDockClasses()} z-50 w-[94vw] sm:w-[440px] max-w-lg bg-card/98 border border-primary/30 rounded-2xl shadow-2xl flex flex-col max-h-[82vh] overflow-hidden animate-in zoom-in-95 transition-shadow duration-150 ring-1 ring-black/5`}
+          className={`pointer-events-auto fixed ${getDockClasses()} z-50 w-[95vw] sm:w-[460px] max-w-lg bg-card/98 border border-primary/30 rounded-2xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden animate-in zoom-in-95 transition-shadow duration-150 ring-1 ring-black/5`}
         >
           {/* DRAGGABLE HEADER HANDLE */}
           <div
@@ -553,11 +695,11 @@ export default function TourDoSistema({
               <GripHorizontal className="size-4 text-muted-foreground shrink-0" />
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground truncate">
                 <span className="font-bold text-foreground uppercase tracking-wider text-[10px]">
-                  Tour Guiado
+                  Tour do Sistema
                 </span>
                 <span>·</span>
                 <span className="font-mono text-[11px] font-semibold text-primary">
-                  {passoAtual + 1}/{totalPassos}
+                  {passoIndex + 1}/{totalPassos}
                 </span>
                 <span>·</span>
                 <span className="text-[10px] truncate">{step.category}</span>
@@ -610,6 +752,92 @@ export default function TourDoSistema({
             </div>
           </div>
 
+          {/* FILTER MODES & QUICK STEP PICKER */}
+          <div className="px-4 py-2 bg-background/50 border-b border-border/70 flex items-center justify-between gap-2 text-xs">
+            {/* Toggle: Todos vs Apenas Novos Implementos */}
+            <div className="flex items-center gap-1 bg-muted/60 p-0.5 rounded-lg border border-border/60">
+              <button
+                type="button"
+                onClick={() => {
+                  setFiltroModo('todos');
+                  setPassoIndex(0);
+                }}
+                className={`px-2 py-1 rounded-md text-[11px] font-medium transition-all cursor-pointer ${
+                  filtroModo === 'todos'
+                    ? 'bg-card text-foreground font-bold shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Todos ({ALL_TOUR_STEPS.filter(s => !s.requerAdmin || podeGerenciarAcessos).length})
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFiltroModo('novos');
+                  setPassoIndex(0);
+                }}
+                className={`px-2 py-1 rounded-md text-[11px] font-medium transition-all flex items-center gap-1 cursor-pointer ${
+                  filtroModo === 'novos'
+                    ? 'bg-amber-500/15 text-amber-800 dark:text-amber-200 font-bold border border-amber-500/30 shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                title="Ver somente os passos com implementações recentes"
+              >
+                <Sparkles className="size-3 text-amber-500 shrink-0" />
+                <span>Novos ({totalNovosImplementos})</span>
+              </button>
+            </div>
+
+            {/* Quick step menu dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setMenuPassosAberto(prev => !prev)}
+                className="px-2 py-1 rounded-lg border border-border hover:bg-muted text-muted-foreground hover:text-foreground text-[11px] font-medium flex items-center gap-1 cursor-pointer"
+                title="Pular direto para outro menu"
+              >
+                <Layers className="size-3 text-primary" />
+                <span className="hidden sm:inline">Pular para...</span>
+              </button>
+
+              {menuPassosAberto && (
+                <div className="absolute right-0 top-8 z-50 w-64 max-h-60 overflow-y-auto bg-card border border-border rounded-xl shadow-xl p-1.5 space-y-0.5 animate-in fade-in-50 zoom-in-95">
+                  <div className="px-2 py-1 text-[10px] uppercase font-bold tracking-wider text-muted-foreground border-b border-border mb-1">
+                    Passos do Tour
+                  </div>
+                  {passosDisponiveis.map((p, idx) => {
+                    const PIcon = p.icon;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          setPassoIndex(idx);
+                          setMenuPassosAberto(false);
+                        }}
+                        className={`w-full text-left px-2 py-1.5 rounded-lg text-xs flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                          idx === passoIndex
+                            ? 'bg-primary text-primary-foreground font-semibold'
+                            : 'hover:bg-muted text-foreground'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <PIcon className="size-3.5 shrink-0" />
+                          <span className="truncate">{p.title}</span>
+                        </div>
+                        {p.isNew && (
+                          <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold shrink-0">
+                            Novo
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* PROGRESS BAR */}
           <div className="w-full bg-muted/60 h-1 overflow-hidden">
             <div
@@ -625,10 +853,18 @@ export default function TourDoSistema({
                 <StepIcon className="size-5 text-primary" />
               </div>
               <div className="min-w-0 flex-1">
-                <h3 className="text-base sm:text-lg font-bold tracking-tight text-foreground">
-                  {step.title}
-                </h3>
-                <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
+                <div className="flex items-center gap-2 flex-wrap mb-1">
+                  <h3 className="text-base sm:text-lg font-bold tracking-tight text-foreground">
+                    {step.title}
+                  </h3>
+                  {step.isNew && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 border border-amber-500/30 text-amber-800 dark:text-amber-200 flex items-center gap-1 shadow-2xs">
+                      <Sparkles className="size-3 text-amber-500" />
+                      <span>{step.novoBadge || 'Novo Implemento'}</span>
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
                   {step.description}
                 </p>
               </div>
@@ -636,8 +872,18 @@ export default function TourDoSistema({
 
             {/* Highlights List */}
             <div className="rounded-xl border border-border/70 bg-muted/20 p-3 space-y-2">
-              <div className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
-                Recursos deste menu
+              <div className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground flex items-center justify-between">
+                <span>Destaques & Recursos</span>
+                {step.sectionId && (
+                  <button
+                    type="button"
+                    onClick={() => onNavegarSecao(step.sectionId!)}
+                    className="text-[10px] text-primary hover:underline flex items-center gap-0.5 font-medium cursor-pointer"
+                  >
+                    <span>Abrir seção na tela</span>
+                    <ArrowUpRight className="size-3" />
+                  </button>
+                )}
               </div>
               <ul className="space-y-1.5">
                 {step.details.map((detail, idx) => (
@@ -684,7 +930,7 @@ export default function TourDoSistema({
             </div>
 
             <div className="flex items-center gap-1.5">
-              {passoAtual > 0 && (
+              {passoIndex > 0 && (
                 <button
                   type="button"
                   onClick={passoAnterior}
@@ -700,8 +946,8 @@ export default function TourDoSistema({
                 onClick={proximoPasso}
                 className="text-xs px-3.5 py-1.5 gradient-emerald text-primary-foreground font-semibold rounded-xl shadow-sm hover:opacity-95 transition-all flex items-center gap-1 cursor-pointer"
               >
-                <span>{passoAtual === totalPassos - 1 ? 'Concluir' : 'Próximo'}</span>
-                {passoAtual === totalPassos - 1 ? (
+                <span>{passoIndex === totalPassos - 1 ? 'Concluir Tour' : 'Próximo'}</span>
+                {passoIndex === totalPassos - 1 ? (
                   <CheckCircle2 className="size-3.5" />
                 ) : (
                   <ChevronRight className="size-3.5" />

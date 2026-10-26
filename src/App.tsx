@@ -139,7 +139,11 @@ import { validarStatusLicenca } from './lib/licenca';
 import CofreDesbloqueioModal from './components/CofreDesbloqueioModal';
 import SecaoAdminSaas from './components/SecaoAdminSaas';
 import SecaoBia from './components/SecaoBia';
-import TourDoSistema from './components/TourDoSistema';
+import TourDoSistema, {
+  CURRENT_TOUR_VERSION,
+  checarNovosImplementosTour,
+  marcarTourConcluidoVersaoAtual
+} from './components/TourDoSistema';
 import ManualDoSistemaModal from './components/ManualDoSistemaModal';
 import SecaoModelosClinicos from './components/SecaoModelosClinicos';
 
@@ -309,7 +313,20 @@ export default function App() {
 
   // Tour Guiado Interativo & Manual do Sistema em PDF
   const [mostrarTour, setMostrarTour] = useState(false);
+  const [tourApenasNovos, setTourApenasNovos] = useState(false);
+  const [temNovidadesTour, setTemNovidadesTour] = useState(() => checarNovosImplementosTour());
+  const [bannerNovidadesVisivel, setBannerNovidadesVisivel] = useState(() => checarNovosImplementosTour());
   const [mostrarManual, setMostrarManual] = useState(false);
+
+  const iniciarTourNovidades = () => {
+    setTourApenasNovos(true);
+    setMostrarTour(true);
+  };
+
+  const iniciarTourCompleto = () => {
+    setTourApenasNovos(false);
+    setMostrarTour(true);
+  };
 
   // Inatividade para bloqueio automático do cofre (15 minutos)
   const timerInatividadeRef = useRef<any>(null);
@@ -1124,12 +1141,15 @@ export default function App() {
         <div className="flex items-center gap-1.5">
           {/* Quick Tour button */}
           <button
-            onClick={() => setMostrarTour(true)}
-            className="size-8 border border-border hover:bg-muted text-primary hover:text-foreground rounded-lg transition-all flex items-center justify-center shrink-0 cursor-pointer"
+            onClick={() => iniciarTourCompleto()}
+            className="relative size-8 border border-border hover:bg-muted text-primary hover:text-foreground rounded-lg transition-all flex items-center justify-center shrink-0 cursor-pointer"
             title="Tour Guiado do Sistema"
             aria-label="Tour Guiado"
           >
             <Compass className="size-4" />
+            {temNovidadesTour && (
+              <span className="absolute -top-1 -right-1 size-2.5 bg-amber-500 rounded-full ring-2 ring-card animate-pulse" />
+            )}
           </button>
 
           {/* Quick Manual button */}
@@ -1210,12 +1230,17 @@ export default function App() {
                 type="button"
                 onClick={() => {
                   setMenuCelularAberto(false);
-                  setMostrarTour(true);
+                  iniciarTourCompleto();
                 }}
-                className="py-2.5 px-3 rounded-xl bg-primary/10 text-primary border border-primary/20 text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+                className="py-2.5 px-3 rounded-xl bg-primary/10 text-primary border border-primary/20 text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition-all relative"
               >
                 <Compass className="size-4" />
                 <span>Tour Guiado</span>
+                {temNovidadesTour && (
+                  <span className="text-[9px] px-1 py-0.2 rounded-full bg-amber-500 text-white font-bold animate-pulse">
+                    Novo
+                  </span>
+                )}
               </button>
               <button
                 type="button"
@@ -1329,12 +1354,17 @@ export default function App() {
           <div className="grid grid-cols-2 gap-1.5">
             <button
               type="button"
-              onClick={() => setMostrarTour(true)}
-              className="py-2 px-2 rounded-xl border border-border hover:border-primary/40 bg-card hover:bg-muted text-xs font-semibold text-foreground flex items-center justify-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+              onClick={() => iniciarTourCompleto()}
+              className="py-2 px-2 rounded-xl border border-border hover:border-primary/40 bg-card hover:bg-muted text-xs font-semibold text-foreground flex items-center justify-center gap-1.5 transition-all shadow-2xs cursor-pointer relative"
               title="Iniciar Tour Guiado do Sistema"
             >
-              <Compass className="size-3.5 text-primary" />
+              <Compass className="size-3.5 text-primary shrink-0" />
               <span className="truncate">Tour Guiado</span>
+              {temNovidadesTour && (
+                <span className="text-[9px] px-1 py-0.2 rounded-full bg-amber-500 text-white font-bold animate-pulse shrink-0">
+                  Novo
+                </span>
+              )}
             </button>
             <button
               type="button"
@@ -1418,12 +1448,18 @@ export default function App() {
             {/* Tour Guiado */}
             <button
               type="button"
-              onClick={() => setMostrarTour(true)}
-              className="text-xs px-3 py-1.5 border border-border hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-all flex items-center gap-1.5 font-medium cursor-pointer"
+              onClick={() => iniciarTourCompleto()}
+              className="text-xs px-3 py-1.5 border border-border hover:bg-muted text-muted-foreground hover:text-foreground rounded-lg transition-all flex items-center gap-1.5 font-medium cursor-pointer relative"
               title="Iniciar Tour Guiado do Sistema"
             >
               <Compass className="size-3.5 text-primary" />
               <span>Tour Guiado</span>
+              {temNovidadesTour && (
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/30 flex items-center gap-0.5 animate-pulse">
+                  <Sparkles className="size-2.5" />
+                  <span>Novo</span>
+                </span>
+              )}
             </button>
 
             {/* Manual em PDF */}
@@ -1455,6 +1491,48 @@ export default function App() {
           {/* ======================================================== */}
           {secaoAtiva === 'dashboard' && (
             <div className="space-y-6">
+              {/* NOVIDADES & NOVOS IMPLEMENTOS BANNER */}
+              {bannerNovidadesVisivel && temNovidadesTour && (
+                <div className="bg-gradient-to-r from-amber-500/10 via-primary/10 to-emerald-500/10 border border-amber-500/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm animate-in fade-in slide-in-from-top-2">
+                  <div className="flex items-start gap-3">
+                    <div className="size-10 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0 mt-0.5">
+                      <Sparkles className="size-5 text-amber-500" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-sm text-foreground">Novos Implementos Disponíveis no PSi4.0!</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500 text-white font-bold">Atualização do Sistema</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                        Conheça os 18 Modelos & Instrumentos Clínicos, o Gravador Dual para Teleconsultas (Google Meet/Zoom) e o Faturamento Mês a Mês.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => iniciarTourNovidades()}
+                      className="flex-1 sm:flex-initial text-xs px-3.5 py-2 gradient-emerald text-primary-foreground font-semibold rounded-xl shadow-xs hover:opacity-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Sparkles className="size-3.5" />
+                      <span>Ver Tour dos Novos Recursos</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBannerNovidadesVisivel(false);
+                        marcarTourConcluidoVersaoAtual();
+                        setTemNovidadesTour(false);
+                      }}
+                      className="text-xs p-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted/60 transition-colors cursor-pointer"
+                      title="Dispensar aviso"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Profile welcome */}
               <div className="flex flex-col md:flex-row md:items-center justify-between bg-card border border-border p-6 rounded-2xl shadow-sm gap-4">
                 <div>
@@ -1466,11 +1544,16 @@ export default function App() {
                 <div className="flex items-center flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => setMostrarTour(true)}
-                    className="text-xs px-3 py-1.5 border border-primary/30 bg-primary/10 hover:bg-primary/20 text-primary font-semibold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+                    onClick={() => iniciarTourCompleto()}
+                    className="text-xs px-3 py-1.5 border border-primary/30 bg-primary/10 hover:bg-primary/20 text-primary font-semibold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer relative"
                   >
                     <Compass className="size-3.5" />
                     <span>Iniciar Tour Guiado</span>
+                    {temNovidadesTour && (
+                      <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-500 text-white font-bold animate-pulse">
+                        Novo
+                      </span>
+                    )}
                   </button>
 
                   <button
@@ -4301,12 +4384,19 @@ export default function App() {
       {/* TOUR GUIADO INTERATIVO DO SISTEMA */}
       <TourDoSistema
         aberto={mostrarTour}
-        onFechar={() => setMostrarTour(false)}
+        onFechar={() => {
+          setMostrarTour(false);
+          marcarTourConcluidoVersaoAtual();
+          setTemNovidadesTour(false);
+          setBannerNovidadesVisivel(false);
+        }}
         onNavegarSecao={(secaoId) => setSecaoAtiva(secaoId)}
         onAbrirManual={() => {
           setMostrarTour(false);
           setMostrarManual(true);
         }}
+        podeGerenciarAcessos={podeGerenciarAcessos}
+        iniciarApenasNovos={tourApenasNovos}
       />
 
       {/* MANUAL DO SISTEMA EM PDF */}
