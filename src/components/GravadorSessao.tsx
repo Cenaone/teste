@@ -17,7 +17,10 @@ import {
   Plus,
   Upload,
   Radio,
-  FileAudio
+  FileAudio,
+  Video,
+  HelpCircle,
+  Headphones
 } from 'lucide-react';
 import { Card } from './ui-compact';
 import { getSupabase } from '../lib/supabase';
@@ -30,6 +33,7 @@ interface GravadorSessaoProps {
 }
 
 type EstadoGravador = 'ocioso' | 'solicitando' | 'gravando' | 'pausado' | 'processando' | 'concluido' | 'falha';
+export type ModoCapturaAudio = 'presencial' | 'google_meet';
 
 export default function GravadorSessao({
   nomePaciente = 'Paciente',
@@ -50,10 +54,15 @@ export default function GravadorSessao({
   const [suportaFalaAoVivo, setSuportaFalaAoVivo] = useState(false);
   const [estaOuvindoFala, setEstaOuvindoFala] = useState(false);
   const [statusPermissaoMic, setStatusPermissaoMic] = useState<'concedida' | 'solicitando' | 'negada' | 'desconhecido'>('desconhecido');
+  const [modoCaptura, setModoCaptura] = useState<ModoCapturaAudio>('google_meet');
+  const [modalAjudaMeet, setModalAjudaMeet] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const displayStreamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const speechRecognitionRef = useRef<any>(null);
   const estadoRef = useRef<EstadoGravador>('ocioso');
@@ -144,6 +153,27 @@ export default function GravadorSessao({
         streamRef.current.getTracks().forEach(track => track.stop());
       } catch (_) {}
       streamRef.current = null;
+    }
+
+    if (micStreamRef.current) {
+      try {
+        micStreamRef.current.getTracks().forEach(track => track.stop());
+      } catch (_) {}
+      micStreamRef.current = null;
+    }
+
+    if (displayStreamRef.current) {
+      try {
+        displayStreamRef.current.getTracks().forEach(track => track.stop());
+      } catch (_) {}
+      displayStreamRef.current = null;
+    }
+
+    if (audioContextRef.current) {
+      try {
+        audioContextRef.current.close().catch(() => {});
+      } catch (_) {}
+      audioContextRef.current = null;
     }
   };
 
@@ -543,7 +573,7 @@ export default function GravadorSessao({
         }
         return stream;
       });
-      const stream = await Promise.race([
+      const micStream = await Promise.race([
         pedido,
         new Promise<MediaStream>((_, reject) => {
           limitePermissao = setTimeout(() => {
@@ -553,8 +583,68 @@ export default function GravadorSessao({
         })
       ]);
       clearTimeout(limitePermissao);
-      streamRef.current = stream;
+      micStreamRef.current = micStream;
       setStatusPermissaoMic('concedida');
+
+      let stream: MediaStream = micStream;
+
+      // Se o modo selecionado for Google Meet / Teleconsulta, captura a guia do navegador com áudio da chamada
+      if (modoCaptura === 'google_meet') {
+        const nav = navigator as any;
+        if (!nav.mediaDevices || typeof nav.mediaDevices.getDisplayMedia !== 'function') {
+          throw new Error('A captura de áudio da chamada online requer um computador com Google Chrome, Microsoft Edge, Brave ou Firefox.');
+        }
+
+        let displayStream: MediaStream;
+        try {
+          displayStream = await nav.mediaDevices.getDisplayMedia({
+            video: true,
+            audio: {
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false
+            }
+          });
+        } catch (errDisplay: any) {
+          micStream.getTracks().forEach(t => t.stop());
+          if (errDisplay?.name === 'NotAllowedError' || errDisplay?.name === 'AbortError') {
+            throw new Error('Seleção da guia do Google Meet cancelada. Para gravar a chamada, clique em Gravar com Google Meet, selecione a guia do Meet e marque a caixa "Compartilhar áudio da guia".');
+          }
+          throw new Error(`Falha ao selecionar a chamada do Google Meet: ${errDisplay?.message || 'Permissão negada'}`);
+        }
+
+        const meetAudioTracks = displayStream.getAudioTracks();
+        if (meetAudioTracks.length === 0) {
+          displayStream.getTracks().forEach(t => t.stop());
+          micStream.getTracks().forEach(t => t.stop());
+          throw new Error('A guia foi selecionada, mas a caixa "Compartilhar áudio da guia" NÃO foi marcada no diálogo do navegador. Clique em Gravar novamente, escolha a guia do Google Meet e marque a caixinha de áudio.');
+        }
+
+        displayStreamRef.current = displayStream;
+
+        // Mixa Microfone (Terapeuta) + Guia do Google Meet (Paciente) via Web Audio API
+        const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioCtxClass) {
+          const audioCtx = new AudioCtxClass();
+          audioContextRef.current = audioCtx;
+          const destination = audioCtx.createMediaStreamDestination();
+
+          const micSource = audioCtx.createMediaStreamSource(micStream);
+          micSource.connect(destination);
+
+          const meetSource = audioCtx.createMediaStreamSource(displayStream);
+          meetSource.connect(destination);
+
+          stream = destination.stream;
+        } else {
+          stream = new MediaStream([
+            ...micStream.getAudioTracks(),
+            ...meetAudioTracks
+          ]);
+        }
+      }
+
+      streamRef.current = stream;
 
       // Seleção de melhor formato compatível para MediaRecorder
       let options: MediaRecorderOptions | undefined = undefined;
@@ -708,6 +798,27 @@ export default function GravadorSessao({
       streamRef.current = null;
     }
 
+    if (micStreamRef.current) {
+      try {
+        micStreamRef.current.getTracks().forEach(track => track.stop());
+      } catch (_) {}
+      micStreamRef.current = null;
+    }
+
+    if (displayStreamRef.current) {
+      try {
+        displayStreamRef.current.getTracks().forEach(track => track.stop());
+      } catch (_) {}
+      displayStreamRef.current = null;
+    }
+
+    if (audioContextRef.current) {
+      try {
+        audioContextRef.current.close().catch(() => {});
+      } catch (_) {}
+      audioContextRef.current = null;
+    }
+
     setEstado('processando');
     estadoRef.current = 'processando';
   };
@@ -805,9 +916,16 @@ export default function GravadorSessao({
                   Voz Ativa
                 </span>
               )}
+              {estado === 'gravando' && modoCaptura === 'google_meet' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-500/15 text-sky-600 dark:text-sky-400">
+                  <Video className="size-3" />
+                  Google Meet Ativo
+                </span>
+              )}
             </div>
             <p className="text-xs text-muted-foreground">
               Atendimento com: <strong className="text-foreground">{nomePaciente}</strong>
+              {modoCaptura === 'google_meet' ? ' • Modo Teleconsulta (Google Meet + Microfone)' : ' • Modo Presencial (Microfone)'}
             </p>
           </div>
         </div>
@@ -944,12 +1062,121 @@ export default function GravadorSessao({
         </div>
       )}
 
+      {/* Seletor de Modo de Atendimento: Presencial vs Google Meet / Teleconsulta */}
+      {estado === 'ocioso' && (
+        <div className="p-3.5 rounded-xl bg-card border border-border/80 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+              <Volume2 className="size-3.5 text-primary" />
+              Modo de Atendimento & Captação de Áudio
+            </span>
+            <button
+              type="button"
+              onClick={() => setModalAjudaMeet(prev => !prev)}
+              className="text-[11px] text-primary hover:underline flex items-center gap-1 font-medium cursor-pointer"
+            >
+              <HelpCircle className="size-3" />
+              {modalAjudaMeet ? 'Ocultar instruções' : 'Como captar do Google Meet?'}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {/* Opção Teleconsulta / Google Meet */}
+            <button
+              type="button"
+              onClick={() => setModoCaptura('google_meet')}
+              className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
+                modoCaptura === 'google_meet'
+                  ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
+                  : 'border-border/60 hover:bg-muted/40'
+              }`}
+            >
+              <div className={`p-2 rounded-lg shrink-0 mt-0.5 ${
+                modoCaptura === 'google_meet' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+              }`}>
+                <Video className="size-4" />
+              </div>
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <span>Google Meet / Teleconsulta</span>
+                  <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-primary/20 text-primary">
+                    Misto
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-snug">
+                  Mixa a sua voz (microfone) <strong>e também o áudio do paciente no Google Meet</strong>, funcionando perfeitamente com fones!
+                </p>
+              </div>
+            </button>
+
+            {/* Opção Presencial */}
+            <button
+              type="button"
+              onClick={() => setModoCaptura('presencial')}
+              className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
+                modoCaptura === 'presencial'
+                  ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
+                  : 'border-border/60 hover:bg-muted/40'
+              }`}
+            >
+              <div className={`p-2 rounded-lg shrink-0 mt-0.5 ${
+                modoCaptura === 'presencial' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+              }`}>
+                <Mic className="size-4" />
+              </div>
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <span>Presencial no Consultório</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-snug">
+                  Grava apenas pelo microfone local. Indicado quando terapeuta e paciente estão presencialmente na mesma sala.
+                </p>
+              </div>
+            </button>
+          </div>
+
+          {/* Dica rápida quando modo Google Meet está ativo */}
+          {modoCaptura === 'google_meet' && (
+            <div className="p-2.5 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-950 dark:text-sky-200 text-xs flex items-start gap-2 leading-relaxed">
+              <Info className="size-3.5 text-sky-600 dark:text-sky-400 shrink-0 mt-0.5" />
+              <div className="text-[11px] space-y-0.5">
+                <span className="font-semibold block">Como autorizar a captação do Meet:</span>
+                <p>
+                  Ao clicar em <strong>&quot;Gravar com Google Meet&quot;</strong>, o navegador abrirá uma janela. Escolha a guia do <strong>Google Meet</strong> e certifique-se de manter marcada a opção <strong>&quot;Compartilhar áudio da guia&quot;</strong>.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Guia detalhado passo a passo */}
+          {modalAjudaMeet && (
+            <div className="p-3 rounded-lg bg-muted/60 border border-border text-xs space-y-2">
+              <div className="font-bold text-foreground flex items-center gap-1.5">
+                <Headphones className="size-3.5 text-primary" />
+                Passo a passo: gravação de sessões do Google Meet no PSi 4.0
+              </div>
+              <ol className="list-decimal list-inside space-y-1 text-muted-foreground text-[11px] leading-relaxed">
+                <li>Deixe a chamada do Google Meet já aberta em outra aba do navegador (Chrome, Edge, Brave ou Firefox).</li>
+                <li>Aqui no PSi 4.0, mantenha selecionado <strong>&quot;Google Meet / Teleconsulta&quot;</strong> e clique em <strong>&quot;Gravar com Google Meet&quot;</strong>.</li>
+                <li>Se for a primeira vez, autorize o microfone quando o navegador solicitar.</li>
+                <li>Em seguida, o navegador exibirá a janela <em>&quot;Escolha o que compartilhar&quot;</em>.</li>
+                <li>Clique na aba <strong>&quot;Guia do Chrome&quot;</strong> (ou Guia do Navegador) e clique na reunião do <strong>Google Meet</strong>.</li>
+                <li><strong className="text-foreground">Importante:</strong> no canto inferior da janela, deixe marcada a opção <strong>&quot;Compartilhar áudio da guia&quot;</strong>.</li>
+                <li>O PSi 4.0 fará a mixagem simultânea da sua voz e da voz do paciente em alta fidelidade digital para a IA Gemini transcrever todo o diálogo.</li>
+              </ol>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Barra de Controles de Gravação */}
       <div className="flex flex-wrap items-center gap-2.5 pt-1">
         {estado === 'solicitando' && (
-          <div role="status" aria-live="polite" className="flex items-center gap-2 text-xs text-primary">
+          <div role="status" aria-live="polite" className="flex items-center gap-2 text-xs text-primary font-medium">
             <Loader2 className="size-4 animate-spin" />
-            Aguardando acesso ao microfone. Se o navegador solicitar, clique em Permitir.
+            {modoCaptura === 'google_meet'
+              ? 'Aguardando autorização do microfone e seleção da guia do Google Meet com áudio...'
+              : 'Aguardando acesso ao microfone. Se o navegador solicitar, clique em Permitir.'}
           </div>
         )}
         {estado === 'ocioso' && (
@@ -959,8 +1186,17 @@ export default function GravadorSessao({
               onClick={iniciarGravacao}
               className="px-5 py-2.5 rounded-xl gradient-emerald text-primary-foreground text-xs font-bold shadow-md hover:opacity-95 transition-all flex items-center gap-2 cursor-pointer"
             >
-              <Mic className="size-4" />
-              <span>Gravar Sessão & Transcrever</span>
+              {modoCaptura === 'google_meet' ? (
+                <>
+                  <Video className="size-4" />
+                  <span>Gravar com Google Meet & Transcrever</span>
+                </>
+              ) : (
+                <>
+                  <Mic className="size-4" />
+                  <span>Gravar Sessão & Transcrever</span>
+                </>
+              )}
             </button>
 
             <button
