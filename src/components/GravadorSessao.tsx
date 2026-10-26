@@ -33,7 +33,7 @@ interface GravadorSessaoProps {
 }
 
 type EstadoGravador = 'ocioso' | 'solicitando' | 'gravando' | 'pausado' | 'processando' | 'concluido' | 'falha';
-export type ModoCapturaAudio = 'presencial' | 'google_meet';
+export type ModoCapturaAudio = 'presencial' | 'teleconsulta' | 'google_meet';
 
 export default function GravadorSessao({
   nomePaciente = 'Paciente',
@@ -54,8 +54,8 @@ export default function GravadorSessao({
   const [suportaFalaAoVivo, setSuportaFalaAoVivo] = useState(false);
   const [estaOuvindoFala, setEstaOuvindoFala] = useState(false);
   const [statusPermissaoMic, setStatusPermissaoMic] = useState<'concedida' | 'solicitando' | 'negada' | 'desconhecido'>('desconhecido');
-  const [modoCaptura, setModoCaptura] = useState<ModoCapturaAudio>('google_meet');
-  const [modalAjudaMeet, setModalAjudaMeet] = useState(false);
+  const [modoCaptura, setModoCaptura] = useState<ModoCapturaAudio>('teleconsulta');
+  const [modalAjudaTeleconsulta, setModalAjudaTeleconsulta] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<any>(null);
@@ -588,11 +588,11 @@ export default function GravadorSessao({
 
       let stream: MediaStream = micStream;
 
-      // Se o modo selecionado for Google Meet / Teleconsulta, captura a guia do navegador com áudio da chamada
-      if (modoCaptura === 'google_meet') {
+      // Se o modo selecionado for Teleconsulta Online (Meet, Zoom, WhatsApp Web, Teams, etc.), captura a chamada com áudio
+      if (modoCaptura === 'teleconsulta' || modoCaptura === 'google_meet') {
         const nav = navigator as any;
         if (!nav.mediaDevices || typeof nav.mediaDevices.getDisplayMedia !== 'function') {
-          throw new Error('A captura de áudio da chamada online requer um computador com Google Chrome, Microsoft Edge, Brave ou Firefox.');
+          throw new Error('A captura de áudio de teleconsulta requer um computador com Google Chrome, Microsoft Edge, Brave ou Firefox.');
         }
 
         let displayStream: MediaStream;
@@ -608,21 +608,21 @@ export default function GravadorSessao({
         } catch (errDisplay: any) {
           micStream.getTracks().forEach(t => t.stop());
           if (errDisplay?.name === 'NotAllowedError' || errDisplay?.name === 'AbortError') {
-            throw new Error('Seleção da guia do Google Meet cancelada. Para gravar a chamada, clique em Gravar com Google Meet, selecione a guia do Meet e marque a caixa "Compartilhar áudio da guia".');
+            throw new Error('Seleção da chamada cancelada. Para gravar teleconsultas (Meet, Zoom, WhatsApp Web, Teams), selecione a guia da chamada (ou Tela Inteira) e certifique-se de marcar a caixa "Compartilhar áudio".');
           }
-          throw new Error(`Falha ao selecionar a chamada do Google Meet: ${errDisplay?.message || 'Permissão negada'}`);
+          throw new Error(`Falha ao selecionar a chamada online: ${errDisplay?.message || 'Permissão negada'}`);
         }
 
-        const meetAudioTracks = displayStream.getAudioTracks();
-        if (meetAudioTracks.length === 0) {
+        const callAudioTracks = displayStream.getAudioTracks();
+        if (callAudioTracks.length === 0) {
           displayStream.getTracks().forEach(t => t.stop());
           micStream.getTracks().forEach(t => t.stop());
-          throw new Error('A guia foi selecionada, mas a caixa "Compartilhar áudio da guia" NÃO foi marcada no diálogo do navegador. Clique em Gravar novamente, escolha a guia do Google Meet e marque a caixinha de áudio.');
+          throw new Error('A guia ou tela da reunião foi selecionada, mas a caixa "Compartilhar áudio da guia" (ou áudio do sistema) NÃO foi marcada no diálogo do navegador. Clique em Gravar novamente e lembre-se de marcar a caixinha de áudio.');
         }
 
         displayStreamRef.current = displayStream;
 
-        // Mixa Microfone (Terapeuta) + Guia do Google Meet (Paciente) via Web Audio API
+        // Mixa Microfone (Terapeuta) + Chamada Online (Paciente) via Web Audio API
         const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
         if (AudioCtxClass) {
           const audioCtx = new AudioCtxClass();
@@ -632,14 +632,14 @@ export default function GravadorSessao({
           const micSource = audioCtx.createMediaStreamSource(micStream);
           micSource.connect(destination);
 
-          const meetSource = audioCtx.createMediaStreamSource(displayStream);
-          meetSource.connect(destination);
+          const callSource = audioCtx.createMediaStreamSource(displayStream);
+          callSource.connect(destination);
 
           stream = destination.stream;
         } else {
           stream = new MediaStream([
             ...micStream.getAudioTracks(),
-            ...meetAudioTracks
+            ...callAudioTracks
           ]);
         }
       }
@@ -1062,7 +1062,7 @@ export default function GravadorSessao({
         </div>
       )}
 
-      {/* Seletor de Modo de Atendimento: Presencial vs Google Meet / Teleconsulta */}
+      {/* Seletor de Modo de Atendimento: Presencial vs Teleconsulta Online (Meet, Zoom, WhatsApp, Teams, etc.) */}
       {estado === 'ocioso' && (
         <div className="p-3.5 rounded-xl bg-card border border-border/80 space-y-2.5">
           <div className="flex items-center justify-between">
@@ -1072,40 +1072,46 @@ export default function GravadorSessao({
             </span>
             <button
               type="button"
-              onClick={() => setModalAjudaMeet(prev => !prev)}
+              onClick={() => setModalAjudaTeleconsulta(prev => !prev)}
               className="text-[11px] text-primary hover:underline flex items-center gap-1 font-medium cursor-pointer"
             >
               <HelpCircle className="size-3" />
-              {modalAjudaMeet ? 'Ocultar instruções' : 'Como captar do Google Meet?'}
+              {modalAjudaTeleconsulta ? 'Ocultar orientações' : 'Como gravar no Zoom, WhatsApp, Teams ou Meet?'}
             </button>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            {/* Opção Teleconsulta / Google Meet */}
+            {/* Opção Teleconsulta Online (Google Meet, Zoom, WhatsApp Web, Teams, etc.) */}
             <button
               type="button"
-              onClick={() => setModoCaptura('google_meet')}
+              onClick={() => setModoCaptura('teleconsulta')}
               className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-3 ${
-                modoCaptura === 'google_meet'
+                modoCaptura === 'teleconsulta' || modoCaptura === 'google_meet'
                   ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
                   : 'border-border/60 hover:bg-muted/40'
               }`}
             >
               <div className={`p-2 rounded-lg shrink-0 mt-0.5 ${
-                modoCaptura === 'google_meet' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                modoCaptura === 'teleconsulta' || modoCaptura === 'google_meet' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
               }`}>
                 <Video className="size-4" />
               </div>
-              <div className="space-y-0.5">
-                <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                  <span>Google Meet / Teleconsulta</span>
+              <div className="space-y-1">
+                <div className="text-xs font-bold text-foreground flex items-center gap-1.5 flex-wrap">
+                  <span>Teleconsulta Online</span>
                   <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-primary/20 text-primary">
-                    Misto
+                    Misto (Terapeuta + Paciente)
                   </span>
                 </div>
                 <p className="text-[11px] text-muted-foreground leading-snug">
-                  Mixa a sua voz (microfone) <strong>e também o áudio do paciente no Google Meet</strong>, funcionando perfeitamente com fones!
+                  Mixa a sua voz (microfone) <strong>e o áudio do paciente vindo da chamada</strong> (Google Meet, Zoom, WhatsApp Web, Teams, etc.), funcionando perfeitamente com fones!
                 </p>
+                <div className="flex flex-wrap gap-1 pt-0.5">
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">Google Meet</span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">Zoom</span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">WhatsApp Web</span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">Teams</span>
+                </div>
               </div>
             </button>
 
@@ -1124,46 +1130,57 @@ export default function GravadorSessao({
               }`}>
                 <Mic className="size-4" />
               </div>
-              <div className="space-y-0.5">
+              <div className="space-y-1">
                 <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
                   <span>Presencial no Consultório</span>
                 </div>
                 <p className="text-[11px] text-muted-foreground leading-snug">
-                  Grava apenas pelo microfone local. Indicado quando terapeuta e paciente estão presencialmente na mesma sala.
+                  Grava exclusivamente pelo microfone local. Indicado quando psicólogo e paciente estão presencialmente na mesma sala de atendimento.
                 </p>
+                <div className="pt-0.5">
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">Microfone Ambiente</span>
+                </div>
               </div>
             </button>
           </div>
 
-          {/* Dica rápida quando modo Google Meet está ativo */}
-          {modoCaptura === 'google_meet' && (
+          {/* Dica rápida quando modo Teleconsulta está ativo */}
+          {(modoCaptura === 'teleconsulta' || modoCaptura === 'google_meet') && (
             <div className="p-2.5 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-950 dark:text-sky-200 text-xs flex items-start gap-2 leading-relaxed">
               <Info className="size-3.5 text-sky-600 dark:text-sky-400 shrink-0 mt-0.5" />
               <div className="text-[11px] space-y-0.5">
-                <span className="font-semibold block">Como autorizar a captação do Meet:</span>
+                <span className="font-semibold block">Compatível com qualquer plataforma de chamada:</span>
                 <p>
-                  Ao clicar em <strong>&quot;Gravar com Google Meet&quot;</strong>, o navegador abrirá uma janela. Escolha a guia do <strong>Google Meet</strong> e certifique-se de manter marcada a opção <strong>&quot;Compartilhar áudio da guia&quot;</strong>.
+                  Ao clicar em <strong>&quot;Gravar Chamada Online&quot;</strong>, o navegador exibirá a janela de compartilhamento. Basta selecionar a guia ou tela da sua reunião (Meet, WhatsApp Web, Zoom ou Teams) e <strong>manter marcada a caixinha &quot;Compartilhar áudio&quot;</strong>.
                 </p>
               </div>
             </div>
           )}
 
-          {/* Guia detalhado passo a passo */}
-          {modalAjudaMeet && (
-            <div className="p-3 rounded-lg bg-muted/60 border border-border text-xs space-y-2">
+          {/* Guia detalhado passo a passo de todas as plataformas */}
+          {modalAjudaTeleconsulta && (
+            <div className="p-3.5 rounded-lg bg-muted/60 border border-border text-xs space-y-3">
               <div className="font-bold text-foreground flex items-center gap-1.5">
                 <Headphones className="size-3.5 text-primary" />
-                Passo a passo: gravação de sessões do Google Meet no PSi 4.0
+                Como captar áudio nas diferentes plataformas de teleconsulta:
               </div>
-              <ol className="list-decimal list-inside space-y-1 text-muted-foreground text-[11px] leading-relaxed">
-                <li>Deixe a chamada do Google Meet já aberta em outra aba do navegador (Chrome, Edge, Brave ou Firefox).</li>
-                <li>Aqui no PSi 4.0, mantenha selecionado <strong>&quot;Google Meet / Teleconsulta&quot;</strong> e clique em <strong>&quot;Gravar com Google Meet&quot;</strong>.</li>
-                <li>Se for a primeira vez, autorize o microfone quando o navegador solicitar.</li>
-                <li>Em seguida, o navegador exibirá a janela <em>&quot;Escolha o que compartilhar&quot;</em>.</li>
-                <li>Clique na aba <strong>&quot;Guia do Chrome&quot;</strong> (ou Guia do Navegador) e clique na reunião do <strong>Google Meet</strong>.</li>
-                <li><strong className="text-foreground">Importante:</strong> no canto inferior da janela, deixe marcada a opção <strong>&quot;Compartilhar áudio da guia&quot;</strong>.</li>
-                <li>O PSi 4.0 fará a mixagem simultânea da sua voz e da voz do paciente em alta fidelidade digital para a IA Gemini transcrever todo o diálogo.</li>
-              </ol>
+
+              <div className="space-y-2 text-[11px] text-muted-foreground leading-relaxed">
+                <div className="p-2 rounded bg-card/80 border border-border/60">
+                  <strong className="text-foreground block mb-0.5">1. Google Meet, WhatsApp Web ou Zoom pelo Navegador:</strong>
+                  Ao clicar em &quot;Gravar Chamada Online&quot;, escolha a aba <strong>&quot;Guia do Chrome / Guia do Navegador&quot;</strong>, selecione a guia da reunião e marque a caixa <strong>&quot;Compartilhar áudio da guia&quot;</strong> no canto inferior.
+                </div>
+
+                <div className="p-2 rounded bg-card/80 border border-border/60">
+                  <strong className="text-foreground block mb-0.5">2. Aplicativos Instalados no Computador (Zoom Desktop, Teams Desktop, Skype):</strong>
+                  Se a chamada estiver em um programa instalado fora do navegador, no diálogo de compartilhamento clique na opção <strong>&quot;Tela Inteira&quot;</strong> e marque a caixinha <strong>&quot;Compartilhar áudio do sistema&quot;</strong>. Dessa forma, o áudio que sai no seu fone/caixa de som é mixado perfeitamente com a sua fala.
+                </div>
+
+                <div className="p-2 rounded bg-card/80 border border-border/60">
+                  <strong className="text-foreground block mb-0.5">3. Gravação Nativa da Plataforma (Importar Áudio Externo):</strong>
+                  Se você costuma gravar direto pelo Zoom, Teams ou por um gravador digital, basta usar o botão <strong>&quot;Importar Áudio Externo&quot;</strong> abaixo. A IA Gemini processa o arquivo (.mp3, .m4a, .wav) e gera a transcrição e o prontuário completo do mesmo jeito!
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -1174,8 +1191,8 @@ export default function GravadorSessao({
         {estado === 'solicitando' && (
           <div role="status" aria-live="polite" className="flex items-center gap-2 text-xs text-primary font-medium">
             <Loader2 className="size-4 animate-spin" />
-            {modoCaptura === 'google_meet'
-              ? 'Aguardando autorização do microfone e seleção da guia do Google Meet com áudio...'
+            {modoCaptura === 'teleconsulta' || modoCaptura === 'google_meet'
+              ? 'Aguardando microfone e seleção da chamada online com a opção de áudio marcada...'
               : 'Aguardando acesso ao microfone. Se o navegador solicitar, clique em Permitir.'}
           </div>
         )}
@@ -1186,15 +1203,15 @@ export default function GravadorSessao({
               onClick={iniciarGravacao}
               className="px-5 py-2.5 rounded-xl gradient-emerald text-primary-foreground text-xs font-bold shadow-md hover:opacity-95 transition-all flex items-center gap-2 cursor-pointer"
             >
-              {modoCaptura === 'google_meet' ? (
+              {modoCaptura === 'teleconsulta' || modoCaptura === 'google_meet' ? (
                 <>
                   <Video className="size-4" />
-                  <span>Gravar com Google Meet & Transcrever</span>
+                  <span>Gravar Chamada Online & Transcrever</span>
                 </>
               ) : (
                 <>
                   <Mic className="size-4" />
-                  <span>Gravar Sessão & Transcrever</span>
+                  <span>Gravar Sessão Presencial & Transcrever</span>
                 </>
               )}
             </button>

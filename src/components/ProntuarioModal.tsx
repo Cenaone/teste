@@ -41,7 +41,8 @@ import {
   Phone,
   Sparkles,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  ClipboardList
 } from 'lucide-react';
 
 interface ProntuarioModalProps {
@@ -56,6 +57,7 @@ interface ProntuarioModalProps {
   onAbrirMensagem: (analisando: Analisando) => void;
   onNovaSessaoRapida?: (analisandoId: string) => void;
   onEditarPaciente?: (analisando: Analisando) => void;
+  onAbrirModelosClinicos?: (analisandoId: string) => void;
 }
 
 export default function ProntuarioModal({
@@ -69,7 +71,8 @@ export default function ProntuarioModal({
   onAtualizarSessoes,
   onAbrirMensagem,
   onNovaSessaoRapida,
-  onEditarPaciente
+  onEditarPaciente,
+  onAbrirModelosClinicos
 }: ProntuarioModalProps) {
   // Aba padrão: 'historico' (área principal requerida pelo usuário)
   const [abaAtiva, setAbaAtiva] = useState<'historico' | 'resumo' | 'cadastro' | 'financeiro' | 'comunicacao'>('historico');
@@ -255,6 +258,18 @@ export default function ProntuarioModal({
               >
                 <Pencil className="size-3.5" />
                 <span className="hidden sm:inline">Editar Cadastro</span>
+              </button>
+            )}
+
+            {onAbrirModelosClinicos && (
+              <button
+                type="button"
+                onClick={() => onAbrirModelosClinicos(analisando.id)}
+                className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-primary-foreground transition-all shadow-sm cursor-pointer"
+                title="Usar modelos de documentos, atestados, encaminhamentos ou escalas para este paciente"
+              >
+                <ClipboardList className="size-3.5" />
+                <span className="hidden sm:inline">Modelos & Escalas</span>
               </button>
             )}
 

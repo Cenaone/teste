@@ -96,7 +96,8 @@ import {
   Bot,
   TrendingUp,
   BookOpen,
-  HelpCircle
+  HelpCircle,
+  ClipboardList
 } from 'lucide-react';
 import {
   supabase,
@@ -140,6 +141,7 @@ import SecaoAdminSaas from './components/SecaoAdminSaas';
 import SecaoBia from './components/SecaoBia';
 import TourDoSistema from './components/TourDoSistema';
 import ManualDoSistemaModal from './components/ManualDoSistemaModal';
+import SecaoModelosClinicos from './components/SecaoModelosClinicos';
 
 const PREFIXO_LOCAL = 'psi40_';
 const PALETAS_COR = [
@@ -158,6 +160,7 @@ const PALETAS_COR = [
 const SECTIONS = [
   { id: 'dashboard', label: 'Painel Geral', icon: BarChart, category: 'Clínica' },
   { id: 'nova_sessao', label: 'Nova Sessão', icon: PlusCircle, category: 'Clínica' },
+  { id: 'modelos_clinicos', label: 'Modelos & Instrumentos', icon: ClipboardList, category: 'Clínica' },
   { id: 'analisandos', label: 'Meus Pacientes', icon: Users, category: 'Clínica' },
   { id: 'agenda', label: 'Agenda Clínica', icon: Calendar, category: 'Clínica' },
   { id: 'sessoes', label: 'Sessões Realizadas', icon: Clock, category: 'Clínica' },
@@ -1715,6 +1718,38 @@ export default function App() {
                   mensagensEnviadas: []
                 });
                 setMostrarFormAnalisando(true);
+              }}
+            />
+          )}
+
+          {/* ======================================================== */}
+          {/* MODELOS CLÍNICOS, DOCUMENTOS, ANAMNESES & ESCALAS (18 MODELOS) */}
+          {/* ======================================================== */}
+          {secaoAtiva === 'modelos_clinicos' && (
+            <SecaoModelosClinicos
+              analisandos={analisandos}
+              perfil={perfil}
+              consultorio={consultorio}
+              pacientePreSelecionadoId={sessaoOrigemPacienteId}
+              onSalvarNoProntuario={(dadosDoc) => {
+                if (!dadosDoc.analisandoId) return;
+                const novaSessao: SessaoClinica = {
+                  id: `sessao_doc_${Date.now()}`,
+                  analisandoId: dadosDoc.analisandoId,
+                  modalidadeId: modalidades[0]?.id || 'm1',
+                  data: dadosDoc.data || new Date().toISOString().split('T')[0],
+                  valorCobrado: 0,
+                  pagamentoStatus: 'pago',
+                  meioPagamento: 'pix',
+                  notasSessao: dadosDoc.notasSessao || '',
+                  criadoEm: new Date().toISOString()
+                };
+                const novasSessoes = [novaSessao, ...sessoes];
+                atualizarSessoes(novasSessoes);
+              }}
+              onNavegarPaciente={(analisandoId) => {
+                const p = analisandos.find(a => a.id === analisandoId);
+                if (p) setProntuarioSelecionado(p);
               }}
             />
           )}
@@ -3559,6 +3594,11 @@ export default function App() {
             setProntuarioSelecionado(null);
             setAnalisandoForm(a);
             setMostrarFormAnalisando(true);
+          }}
+          onAbrirModelosClinicos={analisandoId => {
+            setProntuarioSelecionado(null);
+            setSessaoOrigemPacienteId(analisandoId);
+            setSecaoAtiva('modelos_clinicos');
           }}
           onNovaSessaoRapida={analisandoId => {
             setProntuarioSelecionado(null);
