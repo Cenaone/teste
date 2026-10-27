@@ -252,22 +252,24 @@ const MANUAL_SECTIONS: ManualSection[] = [
     ]
   },
   {
-    id: 'honorarios',
+    id: 'financeiro',
     number: '13',
-    title: 'Gestão de Honorários & Emissão de Recibos',
-    category: 'Setting',
-    summary: 'Controle de pagamentos, cobrança elegante e recibos padronizados com dados do analista.',
+    title: 'Financeiro, Consultas Pendentes/Pagas & Emissão de Recibos',
+    category: 'Clínica',
+    summary: 'Controle de pagamentos, conciliação de consultas clínicas e emissão de recibos oficiais para IRPF.',
     content: [
-      'Registro financeiro por sessão ou por mensalidade fechada.',
-      'Status: Pendente, Pago e Cancelado.',
-      'Envio de lembrete de honorários com chave PIX e valor diretamente no WhatsApp.',
-      'Emissão de Recibos Profissionais contendo Nome, CPF do paciente, CRP/CRM do terapeuta e descrição do serviço para dedução de IRPF.'
+      'Visão consolidada de todas as consultas clínicas com status de pagamento (Pendente, Pago e Atrasado).',
+      'Filtros velozes por período (Mês Atual, Mês Anterior, Últimos 3 Meses, Ano) e por Paciente.',
+      'Emissão de Recibos Profissionais avulsos ou consolidados (Fechamento Mensal somando múltiplas sessões).',
+      'Recibos com valor numérico e extenso automático, CPF do paciente, CRP do terapeuta e layout A4 para impressão e PDF.',
+      'Envio do recibo ou cobrança ética diretamente no WhatsApp do paciente com 1 clique.'
     ],
     steps: [
-      '1. Acesse "Gestão de Honorários".',
-      '2. Filtre por "Pendentes" para visualizar valores em aberto.',
-      '3. Clique no botão de WhatsApp para enviar o lembrete com a chave PIX do consultório.',
-      '4. Quando o pagamento for efetuado, clique em "Marcar como Pago" e gere o recibo em PDF.'
+      '1. Acesse o menu lateral "Financeiro & Recibos".',
+      '2. Veja nos cards do topo o Total Recebido (Pago), A Receber (Pendentes) e Em Atraso.',
+      '3. Clique em "Receber" em qualquer consulta para confirmar a quitação com o meio de pagamento (PIX, Dinheiro, Cartão).',
+      '4. Clique em "Recibo" para abrir o documento timbrado e imprimir em A4/PDF ou enviar no WhatsApp.',
+      '5. Na aba "Fechamento Mensal", selecione o paciente para gerar um recibo unificado de todas as sessões do mês.'
     ]
   },
   {

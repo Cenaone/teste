@@ -4,17 +4,17 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>PSi 4.0 | O Prontuário Clínico com Transcrição por IA e Cofre Blindado</title>
-  <meta name="description" content="Grave sessões de até 45 minutos, transcreva diálogos clínicos com IA Gemini e proteja os prontuários dos seus pacientes com Cofre Criptográfico Zero-Knowledge conforme as resoluções do CFP e LGPD." />
+  <meta name="description" content="Grave sessões clínicas completas, transcreva diálogos com IA Gemini e proteja os prontuários dos seus pacientes com Cofre Criptográfico Zero-Knowledge conforme as resoluções do CFP e LGPD." />
   
   <!-- Open Graph / Meta Compartilhamento -->
   <meta property="og:type" content="website" />
   <meta property="og:title" content="PSi 4.0 | Prontuário Inteligente para Psicólogos" />
   <meta property="og:description" content="Economize 10+ horas semanais com transcrição clínica por IA e cofre criptográfico que cumpre as normas do CFP." />
   
-  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <!-- Google Fonts: Plus Jakarta Sans & Playfair Display (Tipografia Clínica e Humanista) -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,400;1,600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   
   <!-- Tailwind CSS via CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -28,32 +28,30 @@
       theme: {
         extend: {
           fontFamily: {
-            sans: ['Inter', 'sans-serif'],
+            sans: ['Plus Jakarta Sans', 'Inter', 'sans-serif'],
+            serif: ['Playfair Display', 'Georgia', 'serif'],
             mono: ['JetBrains Mono', 'monospace'],
           },
           colors: {
-            brand: {
-              50: '#ecfdf5',
-              100: '#d1fae5',
-              200: '#a7f3d0',
-              300: '#6ee7b7',
-              400: '#34d399',
-              500: '#10b981',
-              600: '#059669',
-              700: '#047857',
-              800: '#065f46',
-              900: '#064e3b',
-              950: '#022c22',
-            }
-          },
-          animation: {
-            'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-            'wave-bar': 'waveBar 1.2s ease-in-out infinite alternate',
-          },
-          keyframes: {
-            waveBar: {
-              '0%': { height: '20%' },
-              '100%': { height: '100%' }
+            // Paleta extraída do Painel Geral Clínico (Dourado/Ocre, Creme e Pedra) - Sem fundos pretos
+            gold: {
+              50: '#fdfbf7',
+              100: '#f9f3e5',
+              200: '#f2e4c7',
+              300: '#e6cfa0',
+              400: '#d7b372',
+              500: '#c59b4c', // Tom das barras do gráfico no Painel Clínico
+              600: '#b4833e',
+              700: '#956733',
+              800: '#7a522d',
+              900: '#644428',
+              950: '#382312',
+            },
+            surface: {
+              50: '#fcfbf9',  // Fundo clínico suave
+              100: '#f6f5f0', // Fundo de seções secundárias
+              200: '#edebe4', // Bordas e divisores
+              300: '#dedad0',
             }
           }
         }
@@ -62,437 +60,338 @@
   </script>
 
   <style>
-    /* Estilos adicionais para efeitos modernos */
-    .glass-panel {
-      background: rgba(15, 23, 42, 0.75);
-      backdrop-filter: blur(16px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+    body {
+      background-color: #fcfbf9;
+      color: #1c1917;
     }
-    .gradient-glow {
-      background: radial-gradient(circle at 50% 0%, rgba(16, 185, 129, 0.18) 0%, rgba(15, 23, 42, 0) 70%);
+    .card-clean {
+      background-color: #ffffff;
+      border: 1px solid #edebe4;
+      box-shadow: 0 4px 20px -2px rgba(28, 25, 23, 0.04);
     }
-    .custom-scrollbar::-webkit-scrollbar {
-      width: 6px;
-    }
-    .custom-scrollbar::-webkit-scrollbar-thumb {
-      background-color: rgba(16, 185, 129, 0.3);
-      border-radius: 9999px;
+    .card-gold-highlight {
+      background-color: #ffffff;
+      border: 2px solid #c59b4c;
+      box-shadow: 0 8px 30px -4px rgba(197, 155, 76, 0.16);
     }
   </style>
 </head>
 
-<body class="bg-slate-950 text-slate-100 font-sans antialiased selection:bg-brand-500 selection:text-white relative min-h-screen">
+<body class="bg-surface-50 text-stone-900 font-sans antialiased selection:bg-gold-500 selection:text-white relative min-h-screen">
 
   <!-- ========================================================================= -->
-  <!-- BARRA DE ANÚNCIO DE CONFORMIDADE NO TOPO -->
+  <!-- BARRA DE CONFORMIDADE ÉTICA CFP (TOTALMENTE CLARA / SEM FUNDO PRETO) -->
   <!-- ========================================================================= -->
-  <aside aria-label="Aviso de Conformidade" class="bg-gradient-to-r from-brand-900/90 via-slate-900 to-brand-950 border-b border-brand-500/20 text-xs py-2 px-4 text-center flex items-center justify-center gap-2 text-brand-200">
+  <aside aria-label="Aviso de Conformidade" class="bg-gold-50/90 text-gold-900 border-b border-gold-200/80 text-xs py-2 px-4 text-center flex items-center justify-center gap-2">
     <span class="inline-flex items-center gap-1.5 font-semibold">
-      <i data-lucide="shield-check" class="size-4 text-brand-400"></i>
-      100% Conforme as Resoluções do CFP 01/2009 e 004/2020 • Criptografia Zero-Knowledge ponta a ponta
+      <i data-lucide="shield-check" class="size-4 text-emerald-600"></i>
+      100% Conforme as Resoluções do CFP 01/2009 e 004/2020 • Criptografia Zero-Knowledge no seu dispositivo
     </span>
   </aside>
 
   <!-- ========================================================================= -->
-  <!-- NAVEGAÇÃO SUPERIOR -->
+  <!-- CABEÇALHO / NAVEGAÇÃO SUPERIOR RIGOROSAMENTE EM MONOLINHA -->
   <!-- ========================================================================= -->
-  <header class="sticky top-0 z-50 glass-panel border-b border-slate-800/80">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+  <header class="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-surface-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between gap-4 flex-nowrap">
       
-      <!-- Logotipo -->
-      <a href="#" class="flex items-center gap-3 group">
-        <div class="size-11 rounded-2xl bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center shadow-lg shadow-brand-500/20 group-hover:scale-105 transition-transform">
-          <i data-lucide="brain" class="size-6 text-slate-950 stroke-[2.5]"></i>
+      <!-- Logotipo Humanista -->
+      <a href="#" class="flex items-center gap-3 group shrink-0 flex-nowrap">
+        <div class="size-11 rounded-2xl bg-gradient-to-br from-gold-500 to-gold-700 flex items-center justify-center shadow-md shadow-gold-500/20 group-hover:scale-105 transition-transform shrink-0">
+          <i data-lucide="brain" class="size-6 text-white stroke-[2.2]"></i>
         </div>
-        <div>
-          <div class="flex items-center gap-1.5">
-            <span class="text-xl font-extrabold tracking-tight text-white">PSi</span>
-            <span class="text-xs px-2 py-0.5 rounded-full font-bold bg-brand-500/20 text-brand-300 border border-brand-500/30">4.0 PRO</span>
+        <div class="shrink-0">
+          <div class="flex items-center gap-1.5 flex-nowrap">
+            <span class="text-2xl font-serif font-bold tracking-tight text-stone-900">PSi</span>
+            <span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-gold-100 text-gold-800 border border-gold-300">4.0 PRO</span>
           </div>
-          <p class="text-[10px] text-slate-400 font-medium tracking-wide">Prontuário & IA Clínica</p>
+          <p class="text-[11px] text-stone-500 font-medium whitespace-nowrap">Prontuário & IA Clínica</p>
         </div>
       </a>
 
-      <!-- Links de Navegação Desktop -->
-      <nav class="hidden md:flex items-center gap-8 text-sm font-medium text-slate-300">
-        <a href="#funcionalidades" class="hover:text-brand-400 transition-colors">Funcionalidades</a>
-        <a href="#como-funciona" class="hover:text-brand-400 transition-colors">Como Funciona</a>
-        <a href="#seguranca" class="hover:text-brand-400 transition-colors">Segurança Zero-Knowledge</a>
-        <a href="#planos" class="hover:text-brand-400 transition-colors">Planos & Preços</a>
-        <a href="#faq" class="hover:text-brand-400 transition-colors">Dúvidas Frequentes</a>
+      <!-- Menu em Monolinha Rigorosa (desktop e laptops) -->
+      <nav class="hidden lg:flex items-center gap-6 xl:gap-8 text-sm font-medium text-stone-600 whitespace-nowrap flex-nowrap">
+        <a href="#transcricao" class="hover:text-gold-700 transition-colors shrink-0">Transcrição por IA</a>
+        <a href="#como-funciona" class="hover:text-gold-700 transition-colors shrink-0">Como Funciona</a>
+        <a href="#modelos" class="hover:text-gold-700 transition-colors shrink-0">Formulários & CFP</a>
+        <a href="#seguranca" class="hover:text-gold-700 transition-colors shrink-0">Segurança do Cofre</a>
+        <a href="#planos" class="hover:text-gold-700 transition-colors shrink-0">Planos & Preços</a>
+        <a href="#faq" class="hover:text-gold-700 transition-colors shrink-0">Dúvidas</a>
       </nav>
 
-      <!-- Botões de Ação -->
-      <div class="flex items-center gap-3">
-        <a href="#planos" class="hidden sm:inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider bg-gradient-to-r from-brand-500 to-brand-600 text-slate-950 hover:brightness-110 shadow-lg shadow-brand-500/25 transition-all">
-          <i data-lucide="sparkles" class="size-4"></i>
+      <!-- Botões de Ação em Monolinha -->
+      <div class="flex items-center gap-2.5 shrink-0 flex-nowrap">
+        <a href="#planos" class="hidden sm:inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider bg-gold-600 hover:bg-gold-700 text-white shadow-sm transition-all whitespace-nowrap shrink-0">
+          <i data-lucide="sparkles" class="size-4 shrink-0"></i>
           <span>Testar 7 Dias Grátis</span>
         </a>
-        <a href="https://wa.me/5511999999999?text=Olá!%20Gostaria%20de%20saber%20mais%20sobre%20o%20PSi%204.0" target="_blank" rel="noopener noreferrer" class="p-2.5 rounded-xl border border-slate-700 bg-slate-900/60 text-slate-300 hover:text-brand-400 hover:border-brand-500/40 transition-colors" title="Falar com Especialista no WhatsApp">
-          <i data-lucide="message-circle" class="size-5"></i>
+        <a href="https://wa.me/5511999999999?text=Olá!%20Gostaria%20de%20conhecer%20o%20PSi%204.0" target="_blank" rel="noopener noreferrer" class="p-2.5 rounded-xl border border-stone-200 bg-stone-50 text-stone-700 hover:text-gold-700 hover:border-gold-300 transition-colors shrink-0 flex items-center justify-center" title="Falar no WhatsApp">
+          <i data-lucide="message-circle" class="size-5 shrink-0"></i>
         </a>
       </div>
+
     </div>
   </header>
 
   <!-- ========================================================================= -->
-  <!-- HERO SECTION -->
+  <!-- HERO SECTION: APRESENTAÇÃO COM IMAGEM CLÍNICA DA TRANSCRIÇÃO (SEM PRETO) -->
   <!-- ========================================================================= -->
-  <section class="relative pt-16 pb-24 md:pt-24 md:pb-32 overflow-hidden gradient-glow">
+  <section class="relative pt-14 pb-20 md:pt-20 md:pb-28 overflow-hidden bg-gradient-to-b from-white via-surface-50 to-surface-100 border-b border-surface-200">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
       
-      <!-- Selo de Destaque -->
-      <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-brand-500/30 bg-brand-500/10 text-brand-300 text-xs font-semibold mb-8 animate-pulse-slow">
-        <i data-lucide="sparkles" class="size-3.5 text-brand-400"></i>
+      <!-- Selo de Categoria -->
+      <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-gold-300 bg-gold-50 text-gold-800 text-xs font-semibold mb-6 shadow-sm">
+        <i data-lucide="sparkles" class="size-3.5 text-gold-600"></i>
         <span>Desenvolvido exclusivamente para Psicólogos, Psicanalistas e Terapeutas</span>
       </div>
 
-      <!-- Título Principal -->
-      <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white max-w-4xl mx-auto leading-tight sm:leading-none">
+      <!-- Título Editorial -->
+      <h1 class="text-4xl sm:text-5xl lg:text-6xl font-serif font-bold tracking-tight text-stone-900 max-w-4xl mx-auto leading-tight">
         Menos Burocracia, Mais Presença Clínica:
-        <span class="block mt-2 bg-gradient-to-r from-brand-300 via-brand-400 to-emerald-200 bg-clip-text text-transparent">
+        <span class="block mt-2 font-serif italic text-gold-600">
           O Prontuário com Transcrição por IA e Cofre Blindado.
         </span>
       </h1>
 
-      <!-- Subtítulo Persuasivo -->
-      <p class="mt-6 text-lg sm:text-xl text-slate-300 max-w-2xl mx-auto font-normal leading-relaxed">
-        Grave sessões de até <strong class="text-white font-semibold">45 minutos</strong>, obtenha transcrições clínicas fiéis em segundos e guarde os prontuários dos seus pacientes sob <strong class="text-white font-semibold">criptografia Zero-Knowledge de nível militar</strong> onde nem mesmo nossa equipe consegue ler.
+      <!-- Subtítulo -->
+      <p class="mt-6 text-lg sm:text-xl text-stone-600 max-w-2xl mx-auto font-normal leading-relaxed">
+        Grave <strong class="text-stone-900 font-semibold">sessões clínicas completas</strong>, obtenha transcrições clínicas contínuas com IA Gemini e guarde as anotações dos seus pacientes sob <strong class="text-stone-900 font-semibold">Cofre Criptográfico Zero-Knowledge</strong>.
       </p>
 
       <!-- CTAs da Hero -->
-      <div class="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4 max-w-md mx-auto">
-        <a href="#planos" class="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-2xl font-bold text-sm bg-gradient-to-r from-brand-400 to-brand-600 text-slate-950 hover:scale-[1.02] shadow-xl shadow-brand-500/30 transition-all">
+      <div class="mt-9 flex flex-col sm:flex-row items-center justify-center gap-4 max-w-md mx-auto">
+        <a href="#planos" class="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-2xl font-bold text-sm bg-gold-600 hover:bg-gold-700 text-white shadow-lg shadow-gold-600/20 hover:scale-[1.02] transition-all">
           <i data-lucide="play-circle" class="size-5"></i>
           <span>Começar Teste de 7 Dias Grátis</span>
         </a>
-        <a href="#simulador" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-4 rounded-2xl font-semibold text-sm border border-slate-700 bg-slate-900/60 hover:bg-slate-800 text-slate-200 transition-all">
-          <i data-lucide="eye" class="size-4 text-brand-400"></i>
-          <span>Ver Demonstração ao Vivo</span>
+        <a href="#transcricao" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-4 rounded-2xl font-semibold text-sm border border-stone-300 bg-white hover:bg-stone-50 text-stone-800 transition-all">
+          <i data-lucide="eye" class="size-4 text-gold-600"></i>
+          <span>Ver o Serviço de Transcrição</span>
         </a>
       </div>
 
-      <!-- Prova Social Imediata -->
-      <div class="mt-12 flex flex-wrap items-center justify-center gap-6 sm:gap-10 text-xs text-slate-400 font-medium">
+      <!-- Provas de Ética e Segurança -->
+      <div class="mt-10 flex flex-wrap items-center justify-center gap-6 sm:gap-10 text-xs text-stone-600 font-medium">
         <div class="flex items-center gap-2">
-          <i data-lucide="check-circle-2" class="size-4 text-brand-400"></i>
-          <span>Sem fidelidade ou carência</span>
-        </div>
-        <div class="flex items-center gap-2">
-          <i data-lucide="check-circle-2" class="size-4 text-brand-400"></i>
+          <span class="size-2 rounded-full bg-emerald-500"></span>
           <span>100% de acordo com o CFP e LGPD</span>
         </div>
         <div class="flex items-center gap-2">
-          <i data-lucide="check-circle-2" class="size-4 text-brand-400"></i>
-          <span>Funciona no Celular, Tablet e Computador</span>
+          <span class="size-2 rounded-full bg-gold-600"></span>
+          <span>Sem fidelidade • Cancele quando quiser</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="size-2 rounded-full bg-emerald-500"></span>
+          <span>Funciona no Computador, Celular e Tablet</span>
         </div>
       </div>
 
       <!-- ========================================================================= -->
-      <!-- SIMULADOR INTERATIVO DA TRANSCRIÇÃO & GRAVADOR (MOCKUP INTERATIVO) -->
+      <!-- MOSTRUÁRIO VISUAL: NOVA IMAGEM CLÍNICA DA TRANSCRIÇÃO (MOLDURA CLARA) -->
       <!-- ========================================================================= -->
-      <div id="simulador" class="mt-16 max-w-5xl mx-auto text-left relative">
-        <div class="absolute -inset-1 rounded-3xl bg-gradient-to-r from-brand-500/30 to-brand-600/10 blur-xl opacity-60"></div>
+      <div id="transcricao" class="mt-14 max-w-5xl mx-auto text-left relative scroll-mt-28">
         
-        <div class="relative glass-panel rounded-3xl p-5 sm:p-7 border border-slate-700/80 shadow-2xl">
+        <!-- Moldura Clara e Elegante (Totalmente alinhada à paleta da 2ª imagem) -->
+        <div class="bg-white rounded-3xl p-3 sm:p-5 shadow-xl shadow-gold-900/5 border border-surface-200">
           
-          <!-- Top bar da janela do sistema -->
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-800 gap-3">
+          <!-- Topo da Moldura -->
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-3 mb-3 border-b border-surface-200 gap-3 px-2 bg-surface-50/70 py-2.5 rounded-2xl">
             <div class="flex items-center gap-3">
               <div class="flex gap-1.5">
-                <span class="size-3 rounded-full bg-rose-500/80"></span>
-                <span class="size-3 rounded-full bg-amber-500/80"></span>
-                <span class="size-3 rounded-full bg-emerald-500/80"></span>
+                <span class="size-3 rounded-full bg-rose-400"></span>
+                <span class="size-3 rounded-full bg-amber-400"></span>
+                <span class="size-3 rounded-full bg-emerald-400"></span>
               </div>
-              <div class="h-4 w-px bg-slate-800"></div>
-              <div class="flex items-center gap-2">
-                <span class="size-2 rounded-full bg-brand-500 animate-ping"></span>
-                <span class="text-xs font-semibold text-slate-200">Sessão Psicoterapêutica em Andamento</span>
-                <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400">Paciente: Juliana Mendes</span>
+              <div class="h-4 w-px bg-surface-300"></div>
+              <div class="flex items-center gap-2 text-xs text-stone-700 font-medium">
+                <span class="size-2 rounded-full bg-emerald-500 animate-ping"></span>
+                <span>Módulo Clínico: Gravação de Áudio & Transcrição da Sessão</span>
               </div>
             </div>
 
-            <!-- Status de Criptografia do Cofre -->
-            <div class="flex items-center gap-2 self-start sm:self-auto">
-              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-brand-500/15 text-brand-300 border border-brand-500/30">
-                <i data-lucide="lock" class="size-3 text-brand-400"></i>
-                Cofre Local Ativo (AES-256-GCM)
-              </span>
-            </div>
+            <!-- Pill de Segurança do Cofre -->
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 self-start sm:self-auto">
+              <i data-lucide="lock" class="size-3.5 text-emerald-600"></i>
+              Cofre Blindado (AES-256-GCM)
+            </span>
           </div>
 
-          <!-- Corpo do Simulador: Gravador e Visualizador de Ondas -->
-          <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-6">
-            
-            <!-- Coluna da Esquerda: Controles do Gravador -->
-            <div class="lg:col-span-5 bg-slate-900/90 rounded-2xl p-5 border border-slate-800 flex flex-col justify-between space-y-4">
+          <!-- Imagem Oficial Anexada (Visual Clínico Claro) -->
+          <div class="relative rounded-2xl overflow-hidden border border-surface-200 bg-surface-50">
+            <img 
+              src="/assets/transcricao_clinica_light.png" 
+              alt="Módulo Oficial de Gravação de Áudio e Transcrição da Sessão em Tempo Real do PSi 4.0"
+              class="w-full h-auto object-cover block"
+              loading="eager"
+            />
+          </div>
+
+          <!-- Destaques Explicativos do Serviço (Fundos Claros) -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4 pt-3 border-t border-surface-200 text-xs text-stone-700">
+            <div class="flex items-start gap-2.5 p-3 rounded-2xl bg-surface-50 border border-surface-200">
+              <i data-lucide="mic" class="size-4 text-gold-600 shrink-0 mt-0.5"></i>
               <div>
-                <div class="flex items-center justify-between text-xs text-slate-400 mb-2">
-                  <span>Duração da Sessão</span>
-                  <span class="font-mono text-brand-400 font-bold">42:18 / 45:00</span>
-                </div>
-
-                <!-- Animação de Onda Sonora -->
-                <div class="h-20 bg-slate-950 rounded-xl p-3 flex items-center justify-center gap-1.5 overflow-hidden border border-slate-800/80">
-                  <div class="w-1.5 bg-brand-500 rounded-full h-8 animate-wave-bar" style="animation-delay: 0.1s;"></div>
-                  <div class="w-1.5 bg-brand-400 rounded-full h-14 animate-wave-bar" style="animation-delay: 0.3s;"></div>
-                  <div class="w-1.5 bg-brand-500 rounded-full h-10 animate-wave-bar" style="animation-delay: 0.2s;"></div>
-                  <div class="w-1.5 bg-brand-300 rounded-full h-16 animate-wave-bar" style="animation-delay: 0.5s;"></div>
-                  <div class="w-1.5 bg-brand-500 rounded-full h-12 animate-wave-bar" style="animation-delay: 0.4s;"></div>
-                  <div class="w-1.5 bg-brand-400 rounded-full h-6 animate-wave-bar" style="animation-delay: 0.15s;"></div>
-                  <div class="w-1.5 bg-brand-500 rounded-full h-14 animate-wave-bar" style="animation-delay: 0.35s;"></div>
-                  <div class="w-1.5 bg-brand-300 rounded-full h-9 animate-wave-bar" style="animation-delay: 0.25s;"></div>
-                  <div class="w-1.5 bg-brand-500 rounded-full h-16 animate-wave-bar" style="animation-delay: 0.45s;"></div>
-                  <div class="w-1.5 bg-brand-400 rounded-full h-7 animate-wave-bar" style="animation-delay: 0.2s;"></div>
-                </div>
-
-                <div class="flex items-center justify-between mt-3 text-[11px] text-slate-400">
-                  <span class="flex items-center gap-1.5">
-                    <i data-lucide="mic" class="size-3.5 text-brand-400"></i>
-                    Microfone Estéreo Ativo
-                  </span>
-                  <span class="text-brand-300 font-medium">Segmentação WAV 16kHz</span>
-                </div>
-              </div>
-
-              <!-- Ações do Gravador -->
-              <div class="space-y-2 pt-2 border-t border-slate-800">
-                <button type="button" class="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center gap-2 shadow-md transition-all">
-                  <i data-lucide="square" class="size-3.5"></i>
-                  <span>Concluir Gravação da Sessão</span>
-                </button>
-                <div class="grid grid-cols-2 gap-2 text-xs">
-                  <button type="button" class="py-2 px-3 rounded-lg border border-slate-700 bg-slate-800/60 hover:bg-slate-700 text-slate-300 flex items-center justify-center gap-1.5">
-                    <i data-lucide="pause" class="size-3.5"></i> Pausar
-                  </button>
-                  <button type="button" class="py-2 px-3 rounded-lg border border-slate-700 bg-slate-800/60 hover:bg-slate-700 text-slate-300 flex items-center justify-center gap-1.5">
-                    <i data-lucide="download" class="size-3.5"></i> Baixar Áudio
-                  </button>
-                </div>
+                <strong class="text-stone-900 block mb-0.5">Sessões Clínicas Completas</strong>
+                Captação clara em modo presencial ou chamadas online (Google Meet) sem timeouts.
               </div>
             </div>
-
-            <!-- Coluna da Direita: Transcrição em Tempo Real -->
-            <div class="lg:col-span-7 bg-slate-900/90 rounded-2xl p-5 border border-slate-800 flex flex-col justify-between">
+            <div class="flex items-start gap-2.5 p-3 rounded-2xl bg-surface-50 border border-surface-200">
+              <i data-lucide="sparkles" class="size-4 text-gold-600 shrink-0 mt-0.5"></i>
               <div>
-                <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-800">
-                  <div class="flex items-center gap-2">
-                    <i data-lucide="sparkles" class="size-4 text-brand-400"></i>
-                    <span class="text-xs font-bold uppercase tracking-wider text-slate-200">Transcrição Clínica por IA (Gemini)</span>
-                  </div>
-                  <span class="text-[10px] font-mono px-2 py-0.5 rounded-md bg-brand-500/10 text-brand-400 border border-brand-500/20 font-bold">
-                    Trecho 1/1 Concluído (2.1s)
-                  </span>
-                </div>
-
-                <!-- Texto Transcrito Simulado -->
-                <div class="font-mono text-xs text-slate-300 leading-relaxed space-y-3 bg-slate-950/70 p-4 rounded-xl border border-slate-800 max-h-52 overflow-y-auto custom-scrollbar">
-                  <p><strong class="text-brand-400">[Psicólogo]:</strong> Como foram esses últimos sete dias em relação às crises de ansiedade que conversamos na terça passada?</p>
-                  <p><strong class="text-indigo-400">[Paciente]:</strong> Então... tive um episódio forte na quinta-feira após a reunião de trabalho, mas consegui aplicar a técnica de respiração diafragmática que combinamos. Senti que o pico durou menos tempo.</p>
-                  <p><strong class="text-brand-400">[Psicólogo]:</strong> Excelente observação. O reconhecimento prévio dos sinais fisiológicos permitiu que você agisse antes da desorganização total.</p>
-                </div>
-              </div>
-
-              <!-- Ação de Inserção com 1 Clique -->
-              <div class="mt-4 pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
-                <span class="text-[11px] text-slate-400 flex items-center gap-1.5">
-                  <i data-lucide="check-check" class="size-4 text-brand-400"></i>
-                  Pontuação clínica e termos técnicos preservados
-                </span>
-                <button type="button" class="py-2 px-4 rounded-xl text-xs font-bold bg-brand-500 hover:bg-brand-400 text-slate-950 flex items-center gap-1.5 shadow transition-all">
-                  <i data-lucide="plus" class="size-3.5"></i>
-                  <span>Inserir no Prontuário</span>
-                </button>
+                <strong class="text-stone-900 block mb-0.5">IA Gemini Especializada</strong>
+                Rascunho contínuo em tempo real e processamento clínico oficial com pontuação exata.
               </div>
             </div>
-
+            <div class="flex items-start gap-2.5 p-3 rounded-2xl bg-surface-50 border border-surface-200">
+              <i data-lucide="shield-check" class="size-4 text-emerald-600 shrink-0 mt-0.5"></i>
+              <div>
+                <strong class="text-stone-900 block mb-0.5">Isolado & Confidencial</strong>
+                Armazenamento sob tutela exclusiva do profissional, cumprindo integralmente o CFP.
+              </div>
+            </div>
           </div>
 
         </div>
+
       </div>
 
     </div>
   </section>
 
   <!-- ========================================================================= -->
-  <!-- BARRA DE MÉTRICAS & PROVAS -->
+  <!-- BARRA DE MÉTRICAS & NÚMEROS DO CONSULTÓRIO (FUNDO BRANCO) -->
   <!-- ========================================================================= -->
-  <section class="py-12 bg-slate-900/60 border-y border-slate-800/80">
+  <section class="py-12 bg-white border-b border-surface-200">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
         <div>
-          <p class="text-3xl sm:text-4xl font-extrabold text-brand-400 font-mono">+1.400</p>
-          <p class="text-xs sm:text-sm text-slate-400 mt-1 font-medium">Psicólogos e Clínicas Ativas</p>
+          <p class="text-3xl sm:text-4xl font-serif font-bold text-gold-600">+1.400</p>
+          <p class="text-xs sm:text-sm text-stone-600 mt-1 font-medium">Psicólogos e Terapeutas Ativos</p>
         </div>
         <div>
-          <p class="text-3xl sm:text-4xl font-extrabold text-brand-400 font-mono">+65.000h</p>
-          <p class="text-xs sm:text-sm text-slate-400 mt-1 font-medium">Economizadas em Digitação</p>
+          <p class="text-3xl sm:text-4xl font-serif font-bold text-gold-600">+65.000h</p>
+          <p class="text-xs sm:text-sm text-stone-600 mt-1 font-medium">Economizadas em Digitação</p>
         </div>
         <div>
-          <p class="text-3xl sm:text-4xl font-extrabold text-brand-400 font-mono">100%</p>
-          <p class="text-xs sm:text-sm text-slate-400 mt-1 font-medium">Conforme Resolução CFP</p>
+          <p class="text-3xl sm:text-4xl font-serif font-bold text-gold-600">100%</p>
+          <p class="text-xs sm:text-sm text-stone-600 mt-1 font-medium">Conforme Resolução CFP</p>
         </div>
         <div>
-          <p class="text-3xl sm:text-4xl font-extrabold text-brand-400 font-mono">Zero</p>
-          <p class="text-xs sm:text-sm text-slate-400 mt-1 font-medium">Acesso de Terceiros ao Cofre</p>
+          <p class="text-3xl sm:text-4xl font-serif font-bold text-gold-600">Zero</p>
+          <p class="text-xs sm:text-sm text-stone-600 mt-1 font-medium">Acesso de Terceiros aos Prontuários</p>
         </div>
       </div>
     </div>
   </section>
 
   <!-- ========================================================================= -->
-  <!-- A DOR DO CONSULTÓRIO: COMPARATIVO ANTES VS DEPOIS -->
+  <!-- O CONSULTÓRIO INTEGRADO: PAINEL GERAL & CONTROLE CLÍNICO -->
   <!-- ========================================================================= -->
-  <section class="py-20 md:py-28 bg-slate-950">
+  <section id="como-funciona" class="py-20 md:py-28 bg-surface-50 border-b border-surface-200">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       
       <div class="text-center max-w-3xl mx-auto mb-16">
-        <h2 class="text-xs font-bold uppercase tracking-widest text-brand-400 mb-2">A Realidade da Rotina Clínica</h2>
-        <h3 class="text-3xl sm:text-4xl font-extrabold text-white">Quanto Vale o Seu Tempo de Descanso?</h3>
-        <p class="mt-4 text-slate-400 text-sm sm:text-base leading-relaxed">
-          Atender 6 a 8 pacientes por dia já exige máxima energia mental. Passar as noites e fins de semana digitando evoluções e cobrando mensalidades não precisa ser a sua rotina.
+        <h2 class="text-xs font-bold uppercase tracking-widest text-gold-700 mb-2">Visão Geral do Seu Setting</h2>
+        <h3 class="text-3xl sm:text-4xl font-serif font-bold text-stone-900">
+          Painel Geral Clínico Completo
+        </h3>
+        <p class="mt-4 text-stone-600 text-sm sm:text-base leading-relaxed">
+          Tudo o que acontece no seu consultório organizado em uma interface clara, limpa e pensada para a rotina do psicólogo clínico e psicanalista.
         </p>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto">
-        
-        <!-- Cartão: Sem o PSi 4.0 -->
-        <div class="bg-rose-950/20 border border-rose-900/40 rounded-3xl p-8 relative">
-          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-500/10 text-rose-400 text-xs font-bold mb-6">
-            <i data-lucide="x-circle" class="size-4"></i>
-            <span>Consultório Convencional (Manual)</span>
-          </div>
-          <ul class="space-y-4 text-sm text-slate-300">
-            <li class="flex items-start gap-3">
-              <i data-lucide="x" class="size-5 text-rose-500 shrink-0 mt-0.5"></i>
-              <span>10 a 15 horas semanais perdidas digitando anotações à noite.</span>
-            </li>
-            <li class="flex items-start gap-3">
-              <i data-lucide="x" class="size-5 text-rose-500 shrink-0 mt-0.5"></i>
-              <span>Prontuários salvos no Word, papel ou nuvens genéricas que não cumprem o sigilo do CFP.</span>
-            </li>
-            <li class="flex items-start gap-3">
-              <i data-lucide="x" class="size-5 text-rose-500 shrink-0 mt-0.5"></i>
-              <span>Constangimento para cobrar faltas e calcular recibos manualmente.</span>
-            </li>
-            <li class="flex items-start gap-3">
-              <i data-lucide="x" class="size-5 text-rose-500 shrink-0 mt-0.5"></i>
-              <span>Medo constante de falhas éticas ou perda do histórico de pacientes antigos.</span>
-            </li>
-          </ul>
+      <!-- Showcase do Painel Geral Clínico (Imagem Real) -->
+      <div class="max-w-5xl mx-auto rounded-3xl overflow-hidden border border-surface-200 card-clean p-2 sm:p-4">
+        <div class="rounded-2xl overflow-hidden border border-stone-200 bg-white">
+          <img 
+            src="/assets/painel_clinico_referencia.png" 
+            alt="Painel Geral do PSi 4.0: Casos Ativos, Faturamento Total, Sessões Clínicas Realizadas por Mês e Estruturas Clínicas"
+            class="w-full h-auto object-cover block"
+            loading="lazy"
+          />
         </div>
 
-        <!-- Cartão: Com o PSi 4.0 -->
-        <div class="bg-brand-950/25 border border-brand-500/40 rounded-3xl p-8 relative shadow-lg shadow-brand-500/5">
-          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-500/20 text-brand-300 text-xs font-bold mb-6">
-            <i data-lucide="check-circle-2" class="size-4 text-brand-400"></i>
-            <span>Com o PSi 4.0 (Automatizado & Blindado)</span>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4 pt-3 text-xs text-stone-700">
+          <div class="p-3 rounded-xl bg-surface-100 border border-surface-200">
+            <span class="font-bold text-stone-900 block mb-1 flex items-center gap-1.5">
+              <i data-lucide="bar-chart-3" class="size-4 text-gold-600"></i>
+              Sessões Mês a Mês
+            </span>
+            Acompanhe o volume real de atendimentos realizados e evoluções clínicas registradas.
           </div>
-          <ul class="space-y-4 text-sm text-slate-200">
-            <li class="flex items-start gap-3">
-              <i data-lucide="check" class="size-5 text-brand-400 shrink-0 mt-0.5"></i>
-              <span>Sessões de 45 minutos transcritas fielmente em segundos por IA clínica.</span>
-            </li>
-            <li class="flex items-start gap-3">
-              <i data-lucide="check" class="size-5 text-brand-400 shrink-0 mt-0.5"></i>
-              <span>Cofre Criptográfico Zero-Knowledge: apenas você tem a chave de acesso.</span>
-            </li>
-            <li class="flex items-start gap-3">
-              <i data-lucide="check" class="size-5 text-brand-400 shrink-0 mt-0.5"></i>
-              <span>Emissão de recibos profissionais e controle de sessões pagas com 1 toque.</span>
-            </li>
-            <li class="flex items-start gap-3">
-              <i data-lucide="check" class="size-5 text-brand-400 shrink-0 mt-0.5"></i>
-              <span>Laudos e declarações emitidos dentro das normas oficiais do CFP.</span>
-            </li>
-          </ul>
+          <div class="p-3 rounded-xl bg-surface-100 border border-surface-200">
+            <span class="font-bold text-stone-900 block mb-1 flex items-center gap-1.5">
+              <i data-lucide="wallet" class="size-4 text-gold-600"></i>
+              Faturamento & Honorários
+            </span>
+            Controle de mensalidades, pagamentos pendentes e emissão rápida de recibos para IRPF.
+          </div>
+          <div class="p-3 rounded-xl bg-surface-100 border border-surface-200">
+            <span class="font-bold text-stone-900 block mb-1 flex items-center gap-1.5">
+              <i data-lucide="shield-check" class="size-4 text-emerald-600"></i>
+              Cofre com 1 Toque
+            </span>
+            Bloqueie o cofre instantaneamente com botão de segurança física ao encerrar o dia.
+          </div>
         </div>
-
       </div>
 
     </div>
   </section>
 
   <!-- ========================================================================= -->
-  <!-- FUNCIONALIDADES COMPLETAS EM GRID -->
+  <!-- FORMULÁRIOS & MODELOS CLÍNICOS DENTRO DAS NORMAS CFP -->
   <!-- ========================================================================= -->
-  <section id="funcionalidades" class="py-20 md:py-28 bg-slate-900/40 border-t border-slate-800">
+  <section id="modelos" class="py-20 md:py-28 bg-white border-b border-surface-200">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       
-      <div class="text-center max-w-3xl mx-auto mb-16">
-        <h2 class="text-xs font-bold uppercase tracking-widest text-brand-400 mb-2">Engenharia Clínica Completa</h2>
-        <h3 class="text-3xl sm:text-4xl font-extrabold text-white">Tudo o que seu Consultório Precisa em um Único Lugar</h3>
-        <p class="mt-4 text-slate-400 text-sm sm:text-base leading-relaxed">
-          O PSi 4.0 foi concebido sob medida para a prática psicoterapêutica, integrando tecnologia de ponta e facilidade de uso diário.
-        </p>
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
         
-        <!-- Recurso 1: Transcrição por IA de até 45 min -->
-        <div class="glass-panel rounded-3xl p-6 sm:p-8 hover:border-brand-500/50 transition-all group">
-          <div class="size-12 rounded-2xl bg-brand-500/10 text-brand-400 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-            <i data-lucide="mic" class="size-6"></i>
+        <div class="lg:col-span-5 space-y-6">
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gold-100 text-gold-800 text-xs font-bold border border-gold-300">
+            <i data-lucide="file-text" class="size-3.5 text-gold-700"></i>
+            <span>Biblioteca Clínica Integrada</span>
           </div>
-          <h4 class="text-lg font-bold text-white mb-2">Transcrição Clínica por IA</h4>
-          <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
-            Processa sessões longas de até 45 minutos com IA Google Gemini. O áudio é segmentado em fatias WAV autônomas sem travamentos ou limites de upload.
+
+          <h3 class="text-3xl sm:text-4xl font-serif font-bold text-stone-900 leading-tight">
+            Mais de 15 Modelos Oficiais Prontos para Uso Clínico
+          </h3>
+
+          <p class="text-stone-600 text-sm sm:text-base leading-relaxed">
+            Nunca mais perca tempo formatando documentos do zero. O PSi 4.0 já vem abastecido com instrumentos de avaliação, anamneses estruturadas e documentos em estrita conformidade com o Conselho Federal de Psicologia.
           </p>
+
+          <div class="space-y-3 pt-2">
+            <div class="flex items-center gap-3 text-sm text-stone-700">
+              <i data-lucide="check" class="size-5 text-gold-600 shrink-0"></i>
+              <span><strong>Anamneses:</strong> Geral, PBE, TCC, Breve, Detalhada e de Rotina.</span>
+            </div>
+            <div class="flex items-center gap-3 text-sm text-stone-700">
+              <i data-lucide="check" class="size-5 text-gold-600 shrink-0"></i>
+              <span><strong>Instrumentos:</strong> Beck BDI, Beck BAI, QSG-12, Rosenberg e Notas SOAP.</span>
+            </div>
+            <div class="flex items-center gap-3 text-sm text-stone-700">
+              <i data-lucide="check" class="size-5 text-gold-600 shrink-0"></i>
+              <span><strong>Documentos CFP:</strong> TCLE, Encaminhamento, Atestado, Declaração e Contrato de Serviço.</span>
+            </div>
+          </div>
         </div>
 
-        <!-- Recurso 2: Cofre Criptográfico Zero-Knowledge -->
-        <div class="glass-panel rounded-3xl p-6 sm:p-8 hover:border-brand-500/50 transition-all group">
-          <div class="size-12 rounded-2xl bg-brand-500/10 text-brand-400 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-            <i data-lucide="shield-check" class="size-6"></i>
+        <!-- Imagem dos Modelos Clínicos -->
+        <div class="lg:col-span-7">
+          <div class="card-clean rounded-3xl p-3 sm:p-5 border border-surface-200 shadow-xl bg-surface-50">
+            <div class="rounded-2xl overflow-hidden border border-stone-200 bg-white">
+              <img 
+                src="/assets/aistudio/Captura_de_Tela_2026-10-26_a_s_13.37.08_873245d7.png" 
+                alt="Formulários e Modelos Clínicos integrados ao PSi 4.0: Anamneses, TCLE, Inventários de Beck, Notas SOAP e Atestados"
+                class="w-full h-auto object-cover block"
+                loading="lazy"
+              />
+            </div>
+            <p class="text-[11px] text-stone-500 text-center mt-3 font-medium">
+              Todos os modelos salvam diretamente no prontuário do paciente criptografado no cofre.
+            </p>
           </div>
-          <h4 class="text-lg font-bold text-white mb-2">Cofre Local Zero-Knowledge</h4>
-          <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
-            Criptografia AES-256-GCM com chave derivada localmente por PBKDF2. Nenhum dado de paciente trafega desprotegido. Segurança ética máxima.
-          </p>
-        </div>
-
-        <!-- Recurso 3: Prontuário & Linha do Tempo -->
-        <div class="glass-panel rounded-3xl p-6 sm:p-8 hover:border-brand-500/50 transition-all group">
-          <div class="size-12 rounded-2xl bg-brand-500/10 text-brand-400 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-            <i data-lucide="clipboard-list" class="size-6"></i>
-          </div>
-          <h4 class="text-lg font-bold text-white mb-2">Prontuário & Anamnese</h4>
-          <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
-            Histórico cronológico completo de atendimentos, notas de evolução, queixa principal e busca integrada por diagnósticos no DSM-5 e CID-11.
-          </p>
-        </div>
-
-        <!-- Recurso 4: Documentos Oficiais CFP -->
-        <div class="glass-panel rounded-3xl p-6 sm:p-8 hover:border-brand-500/50 transition-all group">
-          <div class="size-12 rounded-2xl bg-brand-500/10 text-brand-400 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-            <i data-lucide="file-text" class="size-6"></i>
-          </div>
-          <h4 class="text-lg font-bold text-white mb-2">Documentos Padronizados</h4>
-          <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
-            Gere declarações de comparecimento, atestados, relatórios e pareceres em segundos de acordo com as normas estritas do Conselho Federal de Psicologia.
-          </p>
-        </div>
-
-        <!-- Recurso 5: Gestão Financeira & Recibos -->
-        <div class="glass-panel rounded-3xl p-6 sm:p-8 hover:border-brand-500/50 transition-all group">
-          <div class="size-12 rounded-2xl bg-brand-500/10 text-brand-400 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-            <i data-lucide="dollar-sign" class="size-6"></i>
-          </div>
-          <h4 class="text-lg font-bold text-white mb-2">Controle Financeiro & Recibos</h4>
-          <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
-            Acompanhe pagamentos pendentes, sessões realizadas e emita recibos de honorários profissionais em PDF prontos para declaração de imposto de renda.
-          </p>
-        </div>
-
-        <!-- Recurso 6: Backup & Modo Offline-First -->
-        <div class="glass-panel rounded-3xl p-6 sm:p-8 hover:border-brand-500/50 transition-all group">
-          <div class="size-12 rounded-2xl bg-brand-500/10 text-brand-400 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-            <i data-lucide="wifi-off" class="size-6"></i>
-          </div>
-          <h4 class="text-lg font-bold text-white mb-2">Modo Offline & Backup .psi</h4>
-          <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
-            Se a internet oscilar no consultório, o sistema continua funcionando perfeitamente. Exporte e guarde backups criptografados com 1 clique.
-          </p>
         </div>
 
       </div>
@@ -501,74 +400,72 @@
   </section>
 
   <!-- ========================================================================= -->
-  <!-- SEÇÃO DE SEGURANÇA E CUMPRIMENTO DO CFP -->
+  <!-- SEGURANÇA E CUMPRIMENTO DO CFP: TOTALMENTE EM CORES CLARAS (SEM PRETO) -->
   <!-- ========================================================================= -->
-  <section id="seguranca" class="py-20 md:py-28 bg-slate-950 relative overflow-hidden">
+  <section id="seguranca" class="py-20 md:py-28 bg-surface-100 text-stone-900 border-b border-surface-200 relative overflow-hidden">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
         
         <div class="lg:col-span-6 space-y-6">
-          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-500/10 text-brand-400 text-xs font-bold">
-            <i data-lucide="lock" class="size-3.5"></i>
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 text-xs font-bold border border-emerald-200 shadow-sm">
+            <i data-lucide="lock" class="size-3.5 text-emerald-600"></i>
             <span>Arquitetura de Sigilo Absoluto</span>
           </div>
 
-          <h2 class="text-3xl sm:text-4xl font-extrabold text-white leading-tight">
+          <h2 class="text-3xl sm:text-4xl font-serif font-bold text-stone-900 leading-tight">
             Por que outros sistemas violam o sigilo do CFP e o PSi 4.0 não?
           </h2>
 
-          <p class="text-slate-300 text-sm sm:text-base leading-relaxed">
-            Na maioria dos softwares, os prontuários dos seus pacientes ficam armazenados em texto puro nos servidores da empresa, acessíveis para funcionários e vulneráveis a vazamentos.
+          <p class="text-stone-600 text-sm sm:text-base leading-relaxed">
+            Na maioria dos softwares convencionais, os prontuários dos pacientes ficam armazenados em texto puro nos servidores da empresa, acessíveis a desenvolvedores e vulneráveis a vazamentos.
           </p>
 
-          <p class="text-slate-300 text-sm sm:text-base leading-relaxed">
-            No <strong class="text-brand-400 font-semibold">PSi 4.0</strong>, a criptografia acontece diretamente no seu navegador. Os dados saem do seu computador já transformados em blocos cifrados (Zero-Knowledge). Nem nossos desenvolvedores, nem a Vercel, nem o Google têm acesso ao conteúdo dos seus prontuários.
+          <p class="text-stone-600 text-sm sm:text-base leading-relaxed">
+            No <strong class="text-gold-700 font-semibold">PSi 4.0</strong>, a criptografia acontece diretamente no seu navegador. Os dados saem do seu computador já transformados em blocos cifrados (Zero-Knowledge). Nem nossos desenvolvedores, nem terceiros têm acesso ao conteúdo dos seus atendimentos.
           </p>
 
           <div class="space-y-3 pt-2">
-            <div class="flex items-center gap-3 text-sm text-slate-200">
-              <i data-lucide="check-circle" class="size-5 text-brand-400 shrink-0"></i>
+            <div class="flex items-center gap-3 text-sm text-stone-700">
+              <i data-lucide="check-circle" class="size-5 text-emerald-600 shrink-0"></i>
               <span>Guarda documental em conformidade com o prazo mínimo de 5 anos do CFP.</span>
             </div>
-            <div class="flex items-center gap-3 text-sm text-slate-200">
-              <i data-lucide="check-circle" class="size-5 text-brand-400 shrink-0"></i>
+            <div class="flex items-center gap-3 text-sm text-stone-700">
+              <i data-lucide="check-circle" class="size-5 text-emerald-600 shrink-0"></i>
               <span>Sem rastreamento, sem venda de dados e sem telemetria em dados sensíveis.</span>
             </div>
-            <div class="flex items-center gap-3 text-sm text-slate-200">
-              <i data-lucide="check-circle" class="size-5 text-brand-400 shrink-0"></i>
-              <span>Áudio original e transcrições sob tutela e custódia exclusiva do profissional.</span>
+            <div class="flex items-center gap-3 text-sm text-stone-700">
+              <i data-lucide="check-circle" class="size-5 text-emerald-600 shrink-0"></i>
+              <span>Gravações originais e transcrições sob tutela e custódia exclusiva do profissional.</span>
             </div>
           </div>
         </div>
 
         <div class="lg:col-span-6">
-          <div class="glass-panel p-6 sm:p-8 rounded-3xl border border-brand-500/30 relative">
-            <div class="space-y-6">
-              
-              <div class="p-4 rounded-2xl bg-slate-900 border border-slate-800">
-                <span class="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-1">Como outros sistemas guardam suas notas:</span>
-                <p class="font-mono text-xs text-rose-400 bg-slate-950 p-2.5 rounded-lg border border-rose-900/40">
-                  "Paciente relata sintomas depressivos e ideação..." <br/>
-                  <span class="text-[10px] text-slate-500">(Texto visível a administradores de banco de dados)</span>
-                </p>
-              </div>
-
-              <div class="flex justify-center">
-                <div class="size-10 rounded-full bg-brand-500/20 text-brand-400 flex items-center justify-center border border-brand-500/40">
-                  <i data-lucide="arrow-down" class="size-5"></i>
-                </div>
-              </div>
-
-              <div class="p-4 rounded-2xl bg-brand-950/40 border border-brand-500/40">
-                <span class="text-xs font-bold text-brand-300 uppercase tracking-wider block mb-1">Como o PSi 4.0 protege seus dados no Cofre:</span>
-                <p class="font-mono text-xs text-brand-300 bg-slate-950 p-2.5 rounded-lg border border-brand-500/30 break-all">
-                  U2FsdGVkX1+vLzQ8e9W2Z8xK9pQ1...8dK== <br/>
-                  <span class="text-[10px] text-brand-400 font-sans font-semibold">(Cifrado com AES-256-GCM. Decifrável apenas com sua senha mestra pessoal)</span>
-                </p>
-              </div>
-
+          <div class="p-6 sm:p-8 rounded-3xl border border-surface-200 bg-white shadow-xl space-y-6">
+            
+            <div class="p-5 rounded-2xl bg-rose-50/60 border border-rose-200">
+              <span class="text-xs font-bold text-rose-800 uppercase tracking-wider block mb-1">Como outros sistemas guardam suas notas:</span>
+              <p class="font-mono text-xs text-rose-900 bg-white p-3 rounded-xl border border-rose-200">
+                "Paciente relata sintomas depressivos e ideação..." <br/>
+                <span class="text-[10px] text-stone-500 font-sans">(Texto desprotegido visível a administradores de banco de dados)</span>
+              </p>
             </div>
+
+            <div class="flex justify-center">
+              <div class="size-10 rounded-full bg-gold-100 text-gold-700 flex items-center justify-center border border-gold-300 shadow-sm">
+                <i data-lucide="arrow-down" class="size-5"></i>
+              </div>
+            </div>
+
+            <div class="p-5 rounded-2xl bg-emerald-50/70 border border-emerald-300">
+              <span class="text-xs font-bold text-emerald-900 uppercase tracking-wider block mb-1">Como o PSi 4.0 protege seus dados no Cofre:</span>
+              <p class="font-mono text-xs text-emerald-900 bg-white p-3 rounded-xl border border-emerald-300 break-all">
+                U2FsdGVkX1+vLzQ8e9W2Z8xK9pQ1...8dK== <br/>
+                <span class="text-[10px] text-emerald-700 font-sans font-semibold">(Cifrado com AES-256-GCM. Decifrável apenas com sua senha mestra pessoal)</span>
+              </p>
+            </div>
+
           </div>
         </div>
 
@@ -578,129 +475,163 @@
   </section>
 
   <!-- ========================================================================= -->
-  <!-- TABELA DE PLANOS & PREÇOS -->
+  <!-- TABELA DE PLANOS & PREÇOS (CLARA / DOURADA) -->
   <!-- ========================================================================= -->
-  <section id="planos" class="py-20 md:py-28 bg-slate-900/50 border-t border-slate-800">
+  <section id="planos" class="py-20 md:py-28 bg-white border-t border-surface-200 scroll-mt-20">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       
       <div class="text-center max-w-3xl mx-auto mb-16">
-        <h2 class="text-xs font-bold uppercase tracking-widest text-brand-400 mb-2">Investimento Acessível</h2>
-        <h3 class="text-3xl sm:text-4xl font-extrabold text-white">Escolha o Plano Ideal para o Seu Consultório</h3>
-        <p class="mt-4 text-slate-400 text-sm sm:text-base leading-relaxed">
-          Economize dezenas de horas por mês pelo valor de menos de uma única consulta.
+        <h2 class="text-xs font-bold uppercase tracking-widest text-gold-700 mb-2">Investimento Acessível</h2>
+        <h3 class="text-3xl sm:text-4xl font-serif font-bold text-stone-900">Escolha o Plano Ideal para o Seu Consultório</h3>
+        <p class="mt-4 text-stone-600 text-sm sm:text-base leading-relaxed">
+          Economize dezenas de horas por mês com transcrições clínicas por IA e cofre criptográfico blindado.
         </p>
 
-        <!-- Toggle Mensal / Anual -->
-        <div class="mt-8 inline-flex items-center p-1.5 rounded-2xl bg-slate-900 border border-slate-800">
-          <button type="button" id="btn-mensal" class="px-5 py-2 rounded-xl text-xs font-bold text-slate-300 hover:text-white transition-all bg-slate-800">Mensal</button>
-          <button type="button" id="btn-anual" class="px-5 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white transition-all flex items-center gap-1.5">
-            <span>Anual</span>
-            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-500/20 text-brand-300">2 Meses Grátis</span>
-          </button>
+        <!-- Destaque Geral de Economia Anual -->
+        <div class="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-gold-100 border border-gold-300 text-gold-900 text-xs sm:text-sm font-semibold shadow-sm">
+          <i data-lucide="sparkles" class="size-4 text-gold-700 shrink-0"></i>
+          <span>Plano Anual: Economia de <strong>R$ 150,88 (34%)</strong> com parcelamento em até 12x</span>
         </div>
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-4xl mx-auto items-stretch">
         
-        <!-- Plano Profissional Autônomo -->
-        <div class="glass-panel rounded-3xl p-8 border border-slate-800 flex flex-col justify-between hover:border-slate-700 transition-all">
+        <!-- Plano Mensal -->
+        <div class="card-clean rounded-3xl p-8 flex flex-col justify-between hover:border-stone-300 transition-all">
           <div>
             <div class="flex items-center justify-between">
-              <h4 class="text-xl font-bold text-white">Plano Autônomo</h4>
-              <span class="text-xs px-3 py-1 rounded-full font-bold bg-slate-800 text-slate-300">Individual</span>
+              <h4 class="text-2xl font-serif font-bold text-stone-900">Plano Mensal</h4>
+              <span class="text-xs px-3 py-1 rounded-full font-bold bg-stone-100 text-stone-700 border border-stone-200">Sem Fidelidade</span>
             </div>
-            <p class="text-xs text-slate-400 mt-2">Ideal para psicólogos autônomos que desejam automatizar prontuários e transcrições.</p>
+            <p class="text-xs text-stone-600 mt-2">Flexibilidade total para psicólogos e terapeutas que desejam contratar mês a mês com cancelamento a qualquer momento.</p>
 
-            <div class="my-6">
-              <span class="text-4xl font-extrabold text-white font-mono" id="preco-autonomo">R$ 69</span>
-              <span class="text-xs text-slate-400 font-medium" id="periodo-autonomo">/mês</span>
+            <div class="my-6 pb-6 border-b border-surface-200">
+              <div class="flex items-baseline gap-1.5">
+                <span class="text-4xl font-extrabold text-stone-900 font-mono">R$ 37,49</span>
+                <span class="text-xs text-stone-500 font-medium">/mês</span>
+              </div>
+              <p class="text-[11px] text-stone-500 mt-1">Cobrança recorrente mensal • Cancele quando quiser</p>
             </div>
 
-            <ul class="space-y-3.5 text-xs sm:text-sm text-slate-300 border-t border-slate-800/80 pt-6">
+            <ul class="space-y-3.5 text-xs sm:text-sm text-stone-700">
               <li class="flex items-center gap-2.5">
-                <i data-lucide="check" class="size-4 text-brand-400 shrink-0"></i>
+                <i data-lucide="check" class="size-4 text-gold-600 shrink-0"></i>
                 <span>Transcrições ilimitadas com IA Gemini</span>
               </li>
               <li class="flex items-center gap-2.5">
-                <i data-lucide="check" class="size-4 text-brand-400 shrink-0"></i>
-                <span>Sessões de gravação de até 45 minutos</span>
+                <i data-lucide="check" class="size-4 text-gold-600 shrink-0"></i>
+                <span>Gravação contínua de sessões clínicas completas</span>
               </li>
               <li class="flex items-center gap-2.5">
-                <i data-lucide="check" class="size-4 text-brand-400 shrink-0"></i>
-                <span>Cofre Criptográfico Zero-Knowledge local</span>
+                <i data-lucide="check" class="size-4 text-gold-600 shrink-0"></i>
+                <span>Cofre Criptográfico Zero-Knowledge local (AES-256)</span>
               </li>
               <li class="flex items-center gap-2.5">
-                <i data-lucide="check" class="size-4 text-brand-400 shrink-0"></i>
-                <span>Emissão de recibos e atestados CFP</span>
+                <i data-lucide="check" class="size-4 text-gold-600 shrink-0"></i>
+                <span>Modelos de anamneses, formulários e atestados CFP</span>
               </li>
               <li class="flex items-center gap-2.5">
-                <i data-lucide="check" class="size-4 text-brand-400 shrink-0"></i>
-                <span>Backup seguro em arquivo .psi</span>
+                <i data-lucide="check" class="size-4 text-gold-600 shrink-0"></i>
+                <span>Emissão de recibos e controle de faturamento</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <i data-lucide="check" class="size-4 text-gold-600 shrink-0"></i>
+                <span>Backup seguro em arquivo .psi criptografado</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <i data-lucide="check" class="size-4 text-gold-600 shrink-0"></i>
+                <span>Acesso pelo celular, tablet e computador</span>
               </li>
             </ul>
           </div>
 
-          <a href="https://wa.me/5511999999999?text=Quero%20assinar%20o%20Plano%20Autônomo%20do%20PSi%204.0" target="_blank" rel="noopener noreferrer" class="mt-8 w-full py-3.5 px-6 rounded-2xl font-bold text-xs uppercase tracking-wider border border-slate-700 bg-slate-800 hover:bg-slate-700 text-white text-center transition-all">
-            Assinar Plano Autônomo
+          <a href="https://pay.cakto.com.br/6tsntdc" target="_blank" rel="noopener noreferrer" class="mt-8 w-full py-4 px-6 rounded-2xl font-bold text-xs uppercase tracking-wider border border-stone-300 bg-white hover:bg-stone-50 text-stone-900 text-center shadow-sm transition-all flex items-center justify-center gap-2">
+            <span>Assinar Plano Mensal</span>
+            <i data-lucide="arrow-right" class="size-4 text-stone-600"></i>
           </a>
         </div>
 
-        <!-- Plano Clínica PRO (Destaque) -->
-        <div class="glass-panel rounded-3xl p-8 border-2 border-brand-500/80 flex flex-col justify-between relative shadow-2xl shadow-brand-500/10">
-          <div class="absolute -top-3.5 right-6 px-3.5 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-brand-500 text-slate-950 shadow-md">
-            Mais Escolhido
+        <!-- Plano Anual (Destaque Dourado) -->
+        <div class="card-gold-highlight rounded-3xl p-8 flex flex-col justify-between relative shadow-xl">
+          <div class="absolute -top-3.5 right-6 px-3.5 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-gold-600 text-white shadow-md flex items-center gap-1.5">
+            <i data-lucide="sparkles" class="size-3.5"></i>
+            <span>Mais Econômico</span>
           </div>
 
           <div>
             <div class="flex items-center justify-between">
-              <h4 class="text-xl font-bold text-white">Plano Clínica PRO</h4>
-              <span class="text-xs px-3 py-1 rounded-full font-bold bg-brand-500/20 text-brand-300">Completo</span>
+              <h4 class="text-2xl font-serif font-bold text-stone-900">Plano Anual</h4>
+              <span class="text-xs px-3 py-1 rounded-full font-bold bg-gold-100 text-gold-800 border border-gold-300">Economize 34%</span>
             </div>
-            <p class="text-xs text-slate-400 mt-2">Para terapeutas que exigem prioridade máxima de IA, suporte VIP e múltiplos consultórios.</p>
+            <p class="text-xs text-stone-600 mt-2">A melhor escolha para terapeutas que querem tranquilidade o ano todo com desconto e parcelamento.</p>
 
-            <div class="my-6">
-              <span class="text-4xl font-extrabold text-brand-400 font-mono" id="preco-pro">R$ 99</span>
-              <span class="text-xs text-slate-400 font-medium" id="periodo-pro">/mês</span>
+            <div class="my-6 pb-6 border-b border-gold-100">
+              <div class="flex items-baseline gap-2">
+                <span class="text-4xl font-extrabold text-gold-700 font-mono">R$ 299,00</span>
+                <span class="text-xs text-stone-500 font-medium">/ano</span>
+              </div>
+
+              <!-- Tag Parcelamento em até 12x -->
+              <div class="mt-2.5 flex flex-wrap items-center gap-2">
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gold-100 border border-gold-300 text-gold-900 text-xs font-semibold">
+                  <i data-lucide="credit-card" class="size-3.5 text-gold-700"></i>
+                  Parcelamento em até 12x
+                </span>
+                <span class="text-[11px] text-stone-500 font-medium">
+                  (equivale a R$ 24,91/mês)
+                </span>
+              </div>
+
+              <!-- Destaque Anual: Economia R$ 150,88 (34%) -->
+              <div class="mt-3 p-3 rounded-xl bg-gold-50 border border-gold-200 text-xs text-gold-900 font-semibold flex items-center gap-2">
+                <i data-lucide="badge-percent" class="size-4 text-gold-700 shrink-0"></i>
+                <span>Economia de R$ 150,88 (34%) frente a 12 mensalidades</span>
+              </div>
             </div>
 
-            <ul class="space-y-3.5 text-xs sm:text-sm text-slate-200 border-t border-slate-800/80 pt-6">
-              <li class="flex items-center gap-2.5 font-semibold text-white">
-                <i data-lucide="check" class="size-4 text-brand-400 shrink-0"></i>
-                <span>Tudo do Plano Autônomo incluso</span>
+            <ul class="space-y-3.5 text-xs sm:text-sm text-stone-800">
+              <li class="flex items-center gap-2.5 font-semibold text-stone-900">
+                <i data-lucide="check" class="size-4 text-gold-600 shrink-0"></i>
+                <span>Tudo do Plano Mensal incluso</span>
               </li>
               <li class="flex items-center gap-2.5">
-                <i data-lucide="check" class="size-4 text-brand-400 shrink-0"></i>
+                <i data-lucide="check" class="size-4 text-gold-600 shrink-0"></i>
                 <span>Prioridade em fila acelerada de IA (Gemini Flash)</span>
               </li>
               <li class="flex items-center gap-2.5">
-                <i data-lucide="check" class="size-4 text-brand-400 shrink-0"></i>
+                <i data-lucide="check" class="size-4 text-gold-600 shrink-0"></i>
                 <span>Pacientes e prontuários ilimitados</span>
               </li>
               <li class="flex items-center gap-2.5">
-                <i data-lucide="check" class="size-4 text-brand-400 shrink-0"></i>
-                <span>Relatórios financeiros avançados para IRPF</span>
+                <i data-lucide="check" class="size-4 text-gold-600 shrink-0"></i>
+                <span>Acesso prioritário a novos testes e formulários clínicos</span>
               </li>
               <li class="flex items-center gap-2.5">
-                <i data-lucide="check" class="size-4 text-brand-400 shrink-0"></i>
+                <i data-lucide="check" class="size-4 text-gold-600 shrink-0"></i>
+                <span>Relatórios financeiros detalhados para declaração IRPF</span>
+              </li>
+              <li class="flex items-center gap-2.5">
+                <i data-lucide="check" class="size-4 text-gold-600 shrink-0"></i>
                 <span>Suporte prioritário via WhatsApp direto</span>
               </li>
             </ul>
           </div>
 
-          <a href="https://wa.me/5511999999999?text=Quero%20assinar%20o%20Plano%20Clínica%20PRO%20do%20PSi%204.0" target="_blank" rel="noopener noreferrer" class="mt-8 w-full py-4 px-6 rounded-2xl font-bold text-xs uppercase tracking-wider bg-gradient-to-r from-brand-400 to-brand-600 text-slate-950 hover:brightness-110 text-center shadow-lg shadow-brand-500/25 transition-all">
-            Começar 7 Dias Grátis no PRO
+          <a href="https://pay.cakto.com.br/v5uuewz_1249524" target="_blank" rel="noopener noreferrer" class="mt-8 w-full py-4 px-6 rounded-2xl font-bold text-xs uppercase tracking-wider bg-gold-600 hover:bg-gold-700 text-white text-center shadow-lg shadow-gold-600/20 transition-all flex items-center justify-center gap-2">
+            <span>Assinar Plano Anual com Desconto</span>
+            <i data-lucide="arrow-right" class="size-4 text-white"></i>
           </a>
         </div>
 
       </div>
 
-      <!-- Garantia Incondicional de 7 Dias -->
-      <div class="mt-12 max-w-2xl mx-auto p-5 rounded-2xl border border-brand-500/30 bg-brand-950/20 text-center flex flex-col sm:flex-row items-center gap-4">
-        <div class="size-12 rounded-xl bg-brand-500/20 text-brand-400 flex items-center justify-center shrink-0">
+      <!-- Garantia de 7 Dias -->
+      <div class="mt-12 max-w-2xl mx-auto p-5 rounded-2xl border border-surface-200 bg-white text-center flex flex-col sm:flex-row items-center gap-4 card-clean">
+        <div class="size-12 rounded-xl bg-gold-100 text-gold-700 flex items-center justify-center shrink-0">
           <i data-lucide="badge-check" class="size-6"></i>
         </div>
-        <div class="text-left text-xs sm:text-sm text-slate-300">
-          <strong class="text-white block mb-0.5">Garantia Blindada de Satisfação (7 Dias)</strong>
+        <div class="text-left text-xs sm:text-sm text-stone-600">
+          <strong class="text-stone-900 block mb-0.5 font-serif">Garantia Blindada de Satisfação (7 Dias)</strong>
           Teste o PSi 4.0 em suas sessões. Se na primeira semana você não economizar pelo menos 10 horas de digitação, devolvemos 100% do seu investimento sem perguntas.
         </div>
       </div>
@@ -711,67 +642,67 @@
   <!-- ========================================================================= -->
   <!-- FAQ - PERGUNTAS FREQUENTES -->
   <!-- ========================================================================= -->
-  <section id="faq" class="py-20 md:py-28 bg-slate-950">
+  <section id="faq" class="py-20 md:py-28 bg-surface-50 border-t border-surface-200">
     <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
       
       <div class="text-center mb-16">
-        <h2 class="text-xs font-bold uppercase tracking-widest text-brand-400 mb-2">Esclareça suas Dúvidas</h2>
-        <h3 class="text-3xl sm:text-4xl font-extrabold text-white">Perguntas Frequentes de Terapeutas</h3>
+        <h2 class="text-xs font-bold uppercase tracking-widest text-gold-700 mb-2">Esclareça suas Dúvidas</h2>
+        <h3 class="text-3xl sm:text-4xl font-serif font-bold text-stone-900">Perguntas Frequentes de Terapeutas</h3>
       </div>
 
       <div class="space-y-4" id="faq-accordion">
         
         <!-- Pergunta 1 -->
-        <div class="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
-          <button type="button" class="faq-btn w-full p-5 text-left font-bold text-sm sm:text-base text-white flex items-center justify-between gap-4">
+        <div class="card-clean rounded-2xl border border-surface-200 overflow-hidden">
+          <button type="button" class="faq-btn w-full p-5 text-left font-bold text-sm sm:text-base text-stone-900 flex items-center justify-between gap-4">
             <span>O Conselho Federal de Psicologia (CFP) autoriza gravar e transcrever atendimentos?</span>
-            <i data-lucide="chevron-down" class="size-5 text-brand-400 shrink-0 transition-transform"></i>
+            <i data-lucide="chevron-down" class="size-5 text-gold-600 shrink-0 transition-transform"></i>
           </button>
-          <div class="faq-content hidden p-5 pt-0 text-xs sm:text-sm text-slate-300 leading-relaxed border-t border-slate-800/60">
+          <div class="faq-content hidden p-5 pt-0 text-xs sm:text-sm text-stone-600 leading-relaxed border-t border-surface-200">
             Sim! O CFP exige que o paciente esteja ciente e autorize o registro para fins estritamente clínicos (Resoluções CFP 01/2009 e 004/2020). O próprio PSi 4.0 já disponibiliza um modelo de Termo de Consentimento Livre e Esclarecido (TCLE) pronto para seu paciente assinar com segurança jurídica total.
           </div>
         </div>
 
         <!-- Pergunta 2 -->
-        <div class="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
-          <button type="button" class="faq-btn w-full p-5 text-left font-bold text-sm sm:text-base text-white flex items-center justify-between gap-4">
+        <div class="card-clean rounded-2xl border border-surface-200 overflow-hidden">
+          <button type="button" class="faq-btn w-full p-5 text-left font-bold text-sm sm:text-base text-stone-900 flex items-center justify-between gap-4">
             <span>Alguém da equipe do PSi 4.0 pode ver as anotações dos meus pacientes?</span>
-            <i data-lucide="chevron-down" class="size-5 text-brand-400 shrink-0 transition-transform"></i>
+            <i data-lucide="chevron-down" class="size-5 text-gold-600 shrink-0 transition-transform"></i>
           </button>
-          <div class="faq-content hidden p-5 pt-0 text-xs sm:text-sm text-slate-300 leading-relaxed border-t border-slate-800/60">
-            <strong>Absolutamente não.</strong> O PSi 4.0 opera sob o conceito de arquitetura <em>Zero-Knowledge</em>. A criptografia AES-256 é feita localmente no seu dispositivo. A chave de decifração nunca é enviada aos nossos servidores. Mesmo que ocorresse uma invasão ao banco de dados em nuvem, ninguém conseguiria ler suas anotações.
+          <div class="faq-content hidden p-5 pt-0 text-xs sm:text-sm text-stone-600 leading-relaxed border-t border-surface-200">
+            <strong>Absolutamente não.</strong> O PSi 4.0 opera sob o conceito de arquitetura <em>Zero-Knowledge</em>. A criptografia AES-256 é feita localmente no seu dispositivo. A chave de decifração nunca é enviada aos nossos servidores. Mesmo que ocorresse uma invasão externa, ninguém conseguiria ler suas anotações.
           </div>
         </div>
 
         <!-- Pergunta 3 -->
-        <div class="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
-          <button type="button" class="faq-btn w-full p-5 text-left font-bold text-sm sm:text-base text-white flex items-center justify-between gap-4">
-            <span>Sessões longas de 45 a 50 minutos funcionam sem travamentos?</span>
-            <i data-lucide="chevron-down" class="size-5 text-brand-400 shrink-0 transition-transform"></i>
+        <div class="card-clean rounded-2xl border border-surface-200 overflow-hidden">
+          <button type="button" class="faq-btn w-full p-5 text-left font-bold text-sm sm:text-base text-stone-900 flex items-center justify-between gap-4">
+            <span>Sessões longas e completas funcionam sem travamentos?</span>
+            <i data-lucide="chevron-down" class="size-5 text-gold-600 shrink-0 transition-transform"></i>
           </button>
-          <div class="faq-content hidden p-5 pt-0 text-xs sm:text-sm text-slate-300 leading-relaxed border-t border-slate-800/60">
-            Sim. Desenvolvemos um algoritmo proprietário de segmentação acústica via Web Audio API que divide gravações longas em trechos canônicos de 90 segundos com cabeçalho RIFF/WAVE em 16kHz mono. Isso elimina timeouts e permite recuperar partes que oscilaram sem ter que reprocessar a sessão toda.
+          <div class="faq-content hidden p-5 pt-0 text-xs sm:text-sm text-stone-600 leading-relaxed border-t border-surface-200">
+            Sim. Desenvolvemos um algoritmo proprietário de segmentação acústica via Web Audio API que divide gravações longas em trechos canônicos em 16kHz mono. Isso elimina timeouts e permite transcrever sessões completas com fidelidade total e processamento ágil.
           </div>
         </div>
 
         <!-- Pergunta 4 -->
-        <div class="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
-          <button type="button" class="faq-btn w-full p-5 text-left font-bold text-sm sm:text-base text-white flex items-center justify-between gap-4">
+        <div class="card-clean rounded-2xl border border-surface-200 overflow-hidden">
+          <button type="button" class="faq-btn w-full p-5 text-left font-bold text-sm sm:text-base text-stone-900 flex items-center justify-between gap-4">
             <span>O que acontece se minha conexão com a internet cair durante o atendimento?</span>
-            <i data-lucide="chevron-down" class="size-5 text-brand-400 shrink-0 transition-transform"></i>
+            <i data-lucide="chevron-down" class="size-5 text-gold-600 shrink-0 transition-transform"></i>
           </button>
-          <div class="faq-content hidden p-5 pt-0 text-xs sm:text-sm text-slate-300 leading-relaxed border-t border-slate-800/60">
+          <div class="faq-content hidden p-5 pt-0 text-xs sm:text-sm text-stone-600 leading-relaxed border-t border-surface-200">
             O PSi 4.0 é <em>Offline-First</em>. A gravação de áudio e as suas anotações continuam sendo salvas diretamente na memória segura do navegador. Quando sua conexão for restabelecida, você pode clicar para transcrever e sincronizar com o cofre com total segurança.
           </div>
         </div>
 
         <!-- Pergunta 5 -->
-        <div class="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
-          <button type="button" class="faq-btn w-full p-5 text-left font-bold text-sm sm:text-base text-white flex items-center justify-between gap-4">
+        <div class="card-clean rounded-2xl border border-surface-200 overflow-hidden">
+          <button type="button" class="faq-btn w-full p-5 text-left font-bold text-sm sm:text-base text-stone-900 flex items-center justify-between gap-4">
             <span>Posso usar no computador do consultório e no celular de casa?</span>
-            <i data-lucide="chevron-down" class="size-5 text-brand-400 shrink-0 transition-transform"></i>
+            <i data-lucide="chevron-down" class="size-5 text-gold-600 shrink-0 transition-transform"></i>
           </button>
-          <div class="faq-content hidden p-5 pt-0 text-xs sm:text-sm text-slate-300 leading-relaxed border-t border-slate-800/60">
+          <div class="faq-content hidden p-5 pt-0 text-xs sm:text-sm text-stone-600 leading-relaxed border-t border-surface-200">
             Sim! O sistema é uma Progressive Web App (PWA) totalmente responsiva, funcionando no Windows, Mac, iPhone, iPad e celulares Android sem precisar baixar aplicativos pesados pela loja.
           </div>
         </div>
@@ -782,33 +713,33 @@
   </section>
 
   <!-- ========================================================================= -->
-  <!-- CTA FINAL DE FECHAMENTO -->
+  <!-- CTA FINAL DE FECHAMENTO (CLARO) -->
   <!-- ========================================================================= -->
-  <section class="py-20 md:py-28 bg-gradient-to-b from-slate-950 to-brand-950/60 border-t border-slate-800 text-center relative overflow-hidden">
+  <section class="py-20 md:py-28 bg-gradient-to-b from-white to-gold-50/60 border-t border-surface-200 text-center relative overflow-hidden">
     <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
       
-      <div class="size-16 rounded-3xl bg-brand-500/20 text-brand-400 flex items-center justify-center mx-auto mb-6 border border-brand-500/30">
+      <div class="size-16 rounded-3xl bg-gold-100 text-gold-700 flex items-center justify-center mx-auto mb-6 border border-gold-200 shadow-sm">
         <i data-lucide="sparkles" class="size-8"></i>
       </div>
 
-      <h2 class="text-3xl sm:text-5xl font-extrabold text-white tracking-tight">
+      <h2 class="text-3xl sm:text-5xl font-serif font-bold text-stone-900 tracking-tight">
         Recupere Suas Noites e Finais de Semana.
       </h2>
-      <p class="mt-4 text-base sm:text-lg text-slate-300 max-w-2xl mx-auto leading-relaxed">
+      <p class="mt-4 text-base sm:text-lg text-stone-600 max-w-2xl mx-auto leading-relaxed">
         Junte-se a mais de 1.400 psicólogos que transformaram suas rotinas clínicas com transcrição automática por IA e prontuários protegidos por cofre blindado.
       </p>
 
       <div class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
-        <a href="#planos" class="w-full sm:w-auto px-8 py-4 rounded-2xl font-bold text-sm bg-gradient-to-r from-brand-400 to-brand-600 text-slate-950 hover:brightness-110 shadow-xl shadow-brand-500/30 transition-all">
+        <a href="#planos" class="w-full sm:w-auto px-8 py-4 rounded-2xl font-bold text-sm bg-gold-600 hover:bg-gold-700 text-white shadow-xl shadow-gold-600/20 transition-all">
           Começar Agora Mesmo (7 Dias Grátis)
         </a>
-        <a href="https://wa.me/5511999999999?text=Olá!%20Gostaria%20de%20tirar%20uma%20dúvida%20sobre%20o%20PSi%204.0" target="_blank" rel="noopener noreferrer" class="w-full sm:w-auto px-7 py-4 rounded-2xl font-semibold text-sm border border-slate-700 bg-slate-900/60 text-slate-200 hover:bg-slate-800 transition-all flex items-center justify-center gap-2">
-          <i data-lucide="message-circle" class="size-4 text-brand-400"></i>
+        <a href="https://wa.me/5511999999999?text=Olá!%20Gostaria%20de%20tirar%20uma%20dúvida%20sobre%20o%20PSi%204.0" target="_blank" rel="noopener noreferrer" class="w-full sm:w-auto px-7 py-4 rounded-2xl font-semibold text-sm border border-stone-300 bg-white text-stone-800 hover:bg-stone-50 transition-all flex items-center justify-center gap-2">
+          <i data-lucide="message-circle" class="size-4 text-gold-600"></i>
           <span>Tirar Dúvidas no WhatsApp</span>
         </a>
       </div>
 
-      <p class="mt-6 text-xs text-slate-400">
+      <p class="mt-6 text-xs text-stone-500">
         Sem compromisso. Cancele com 1 clique a qualquer momento.
       </p>
 
@@ -816,23 +747,23 @@
   </section>
 
   <!-- ========================================================================= -->
-  <!-- RODAPÉ INSTITUCIONAL -->
+  <!-- RODAPÉ INSTITUCIONAL (TOTALMENTE CLARO) -->
   <!-- ========================================================================= -->
-  <footer class="py-12 bg-slate-950 border-t border-slate-800/80 text-xs text-slate-400">
+  <footer class="py-12 bg-white border-t border-surface-200 text-xs text-stone-600">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-6">
       <div class="flex items-center gap-3">
-        <div class="size-8 rounded-xl bg-brand-500 flex items-center justify-center text-slate-950 font-bold">
+        <div class="size-8 rounded-xl bg-gold-600 flex items-center justify-center text-white font-bold">
           <i data-lucide="brain" class="size-5"></i>
         </div>
-        <span class="text-white font-bold tracking-tight text-sm">PSi 4.0 Tecnologia Clínica</span>
+        <span class="text-stone-900 font-serif font-bold text-sm">PSi 4.0 Tecnologia Clínica</span>
       </div>
 
       <p>© 2026 PSi 4.0. Todos os direitos reservados. Conforme Resoluções CFP 01/2009 e 004/2020 e LGPD.</p>
 
-      <div class="flex items-center gap-6 text-slate-400">
-        <a href="#" class="hover:text-brand-400 transition-colors">Termos de Uso</a>
-        <a href="#" class="hover:text-brand-400 transition-colors">Privacidade & Sigilo</a>
-        <a href="https://wa.me/5511999999999" target="_blank" rel="noopener noreferrer" class="hover:text-brand-400 transition-colors">Suporte</a>
+      <div class="flex items-center gap-6 text-stone-600">
+        <a href="#" class="hover:text-gold-700 transition-colors">Termos de Uso</a>
+        <a href="#" class="hover:text-gold-700 transition-colors">Privacidade & Sigilo</a>
+        <a href="https://wa.me/5511999999999" target="_blank" rel="noopener noreferrer" class="hover:text-gold-700 transition-colors">Suporte</a>
       </div>
     </div>
   </footer>
@@ -840,28 +771,25 @@
   <!-- ========================================================================= -->
   <!-- BOTÃO FLUTUANTE DE WHATSAPP -->
   <!-- ========================================================================= -->
-  <a href="https://wa.me/5511999999999?text=Olá!%20Quero%20conhecer%20o%20PSi%204.0" target="_blank" rel="noopener noreferrer" class="fixed bottom-6 right-6 z-50 p-4 rounded-full bg-emerald-500 text-slate-950 shadow-2xl hover:scale-110 hover:bg-emerald-400 transition-all flex items-center justify-center group" aria-label="Falar pelo WhatsApp">
-    <i data-lucide="message-circle" class="size-7 stroke-[2.5]"></i>
+  <a href="https://wa.me/5511999999999?text=Olá!%20Quero%20conhecer%20o%20PSi%204.0" target="_blank" rel="noopener noreferrer" class="fixed bottom-6 right-6 z-50 p-4 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white shadow-2xl hover:scale-110 transition-all flex items-center justify-center group" aria-label="Falar pelo WhatsApp">
+    <i data-lucide="message-circle" class="size-7 stroke-[2.2]"></i>
     <span class="max-w-0 overflow-hidden whitespace-nowrap group-hover:max-w-xs transition-all duration-300 ease-in-out font-bold text-xs pl-0 group-hover:pl-2">
       Falar com Especialista
     </span>
   </a>
 
   <!-- ========================================================================= -->
-  <!-- JAVASCRIPT: ACCORDION DO FAQ & TOGGLE DE PREÇOS -->
+  <!-- JAVASCRIPT: ACCORDION DO FAQ -->
   <!-- ========================================================================= -->
   <script>
-    // Inicializa ícones Lucide
     lucide.createIcons();
 
-    // Accordion do FAQ
     document.querySelectorAll('.faq-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const content = btn.nextElementSibling;
         const icon = btn.querySelector('[data-lucide="chevron-down"]');
         const isOpen = !content.classList.contains('hidden');
 
-        // Fecha todos os outros
         document.querySelectorAll('.faq-content').forEach(c => c.classList.add('hidden'));
         document.querySelectorAll('.faq-btn [data-lucide="chevron-down"]').forEach(i => i.style.transform = 'rotate(0deg)');
 
@@ -870,38 +798,6 @@
           if (icon) icon.style.transform = 'rotate(180deg)';
         }
       });
-    });
-
-    // Toggle de Preço Mensal / Anual
-    const btnMensal = document.getElementById('btn-mensal');
-    const btnAnual = document.getElementById('btn-anual');
-    const precoAutonomo = document.getElementById('preco-autonomo');
-    const periodoAutonomo = document.getElementById('periodo-autonomo');
-    const precoPro = document.getElementById('preco-pro');
-    const periodoPro = document.getElementById('periodo-pro');
-
-    btnAnual.addEventListener('click', () => {
-      btnAnual.classList.add('bg-slate-800', 'text-white');
-      btnAnual.classList.remove('text-slate-400');
-      btnMensal.classList.remove('bg-slate-800', 'text-white');
-      btnMensal.classList.add('text-slate-400');
-
-      precoAutonomo.innerText = 'R$ 49';
-      periodoAutonomo.innerText = '/mês no plano anual';
-      precoPro.innerText = 'R$ 79';
-      periodoPro.innerText = '/mês no plano anual';
-    });
-
-    btnMensal.addEventListener('click', () => {
-      btnMensal.classList.add('bg-slate-800', 'text-white');
-      btnMensal.classList.remove('text-slate-400');
-      btnAnual.classList.remove('bg-slate-800', 'text-white');
-      btnAnual.classList.add('text-slate-400');
-
-      precoAutonomo.innerText = 'R$ 69';
-      periodoAutonomo.innerText = '/mês';
-      precoPro.innerText = 'R$ 99';
-      periodoPro.innerText = '/mês';
     });
   </script>
 

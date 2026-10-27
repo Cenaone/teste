@@ -46,6 +46,7 @@ import ProntuarioModal from './components/ProntuarioModal';
 import WhatsAppModal from './components/WhatsAppModal';
 import GravadorSessao from './components/GravadorSessao';
 import SecaoNovaSessao from './components/SecaoNovaSessao';
+import SecaoFinanceiro from './components/SecaoFinanceiro';
 import ModalCadastroPaciente from './components/ModalCadastroPaciente';
 import TelaAutenticacao from './components/TelaAutenticacao';
 import TelaRedefinirSenha from './components/TelaRedefinirSenha';
@@ -168,13 +169,14 @@ const SECTIONS = [
   { id: 'analisandos', label: 'Meus Pacientes', icon: Users, category: 'Clínica' },
   { id: 'agenda', label: 'Agenda Clínica', icon: Calendar, category: 'Clínica' },
   { id: 'sessoes', label: 'Sessões Realizadas', icon: Clock, category: 'Clínica' },
+  { id: 'financeiro', label: 'Financeiro & Recibos', icon: DollarSign, category: 'Clínica' },
   { id: 'modalidades', label: 'Modalidades de Sessão', icon: Briefcase, category: 'Clínica' },
   { id: 'relatorios', label: 'Relatórios & Métricas', icon: TrendingUp, category: 'Clínica' },
 
   { id: 'previstos', label: 'Retornos Previstos', icon: Activity, category: 'Setting' },
   { id: 'acompanhamento', label: 'Acompanhamento Crítico', icon: Heart, category: 'Setting' },
   { id: 'aniversariantes', label: 'Aniversariantes', icon: Gift, category: 'Setting' },
-  { id: 'honorarios', label: 'Gestão de Honorários', icon: DollarSign, category: 'Setting' },
+  { id: 'honorarios', label: 'Gestão de Honorários & Recibos', icon: DollarSign, category: 'Setting' },
   { id: 'reativacao', label: 'Reativação de Pausas', icon: RotateCcw, category: 'Setting' },
 
   { id: 'bia', label: 'Assistente Bia (IA)', icon: Bot, category: 'Comunicação' },
@@ -2361,125 +2363,33 @@ export default function App() {
           )}
 
           {/* ======================================================== */}
-          {/* 8. GESTÃO DE HONORÁRIOS */}
+          {/* 8. FINANCEIRO, CONSULTAS PENDENTES/PAGAS & RECIBOS */}
           {/* ======================================================== */}
-          {secaoAtiva === 'honorarios' && (
-            <div className="space-y-6">
-              <div className="flex justify-between items-center">
-                <p className="text-sm text-muted-foreground">
-                  Monitore e controle mensalidades, pacotes de sessões e faturamentos de seus analisandos.
-                </p>
-                <button
-                  onClick={() => {
-                    setHonorarioForm({
-                      id: `${Date.now()}`,
-                      analisandoId: '',
-                      valor: 0,
-                      vencimento: new Date().toISOString().slice(0, 10),
-                      status: 'pendente',
-                      observacao: ''
-                    });
-                    setMostrarFormHonorario(true);
-                  }}
-                  className="px-4 py-2 text-sm font-semibold text-white gradient-emerald rounded-xl shadow-md hover:opacity-95 transition-all flex items-center gap-1.5"
-                >
-                  <Plus className="size-4" />
-                  <span>Lançar Honorário</span>
-                </button>
-              </div>
-
-              <Card className="overflow-hidden border-border">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted/40 text-xs uppercase text-muted-foreground border-b border-border">
-                      <tr>
-                        <th className="text-left px-4 py-3 font-semibold">Analisando</th>
-                        <th className="text-right px-4 py-3 font-semibold">Valor Acertado</th>
-                        <th className="text-left px-4 py-3 font-semibold">Data Vencimento</th>
-                        <th className="text-left px-4 py-3 font-semibold">Observações</th>
-                        <th className="text-left px-4 py-3 font-semibold">Situação</th>
-                        <th className="text-right px-4 py-3"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/60">
-                      {honorarios.length === 0 ? (
-                        <tr>
-                          <td colSpan={6} className="text-center py-12 text-muted-foreground">
-                            Nenhuma pendência ou acerto de honorários lançado.
-                          </td>
-                        </tr>
-                      ) : (
-                        honorarios.map(h => {
-                          const paciente = analisandos.find(a => a.id === h.analisandoId);
-                          return (
-                            <tr key={h.id} className="hover:bg-muted/20 transition-colors">
-                              <td className="px-4 py-3 font-semibold text-foreground">{paciente?.nome || '—'}</td>
-                              <td className="px-4 py-3 text-right font-bold text-primary">
-                                {formatarMoeda(h.valor)}
-                              </td>
-                              <td className="px-4 py-3">{formatarData(h.vencimento)}</td>
-                              <td className="px-4 py-3 text-xs text-muted-foreground max-w-xs truncate">
-                                {h.observacao || '—'}
-                              </td>
-                              <td className="px-4 py-3">
-                                <select
-                                  value={h.status}
-                                  onChange={e => {
-                                    const novoStatus = e.target.value as any;
-                                    const novos = honorarios.map(x => x.id === h.id ? { ...x, status: novoStatus } : x);
-                                    atualizarHonorarios(novos);
-                                    // Se estiver vinculado a uma sessão, sincroniza o status na sessão correspondente sem duplicar
-                                    if (h.sessaoId) {
-                                      const sessoesAtualizadas = sessoes.map(s =>
-                                        s.id === h.sessaoId
-                                          ? { ...s, pagamentoStatus: (novoStatus === 'pago' ? 'pago' : novoStatus === 'parcial' ? 'parcial' : 'pendente') as any }
-                                          : s
-                                      );
-                                      atualizarSessoes(sessoesAtualizadas);
-                                    }
-                                  }}
-                                  className="px-2.5 py-1 rounded-md border border-border text-xs bg-card text-foreground font-semibold"
-                                >
-                                  <option value="pendente">Pendente</option>
-                                  <option value="parcial">Parcial</option>
-                                  <option value="pago">Pago</option>
-                                  <option value="atrasado">Atrasado</option>
-                                </select>
-                              </td>
-                              <td className="px-4 py-3 text-right space-x-1.5 whitespace-nowrap">
-                                <button
-                                  onClick={() => setWhatsappAlvo({
-                                    analisando: paciente!,
-                                    valor: h.valor,
-                                    data: h.vencimento,
-                                    servico: h.observacao || 'honorários analíticos'
-                                  })}
-                                  disabled={!paciente}
-                                  className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-semibold text-xs transition-colors inline-flex items-center gap-1"
-                                >
-                                  <Send className="size-3" />
-                                  <span>Enviar WhatsApp</span>
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    if (window.confirm('Excluir este lançamento de honorário?')) {
-                                      atualizarHonorarios(honorarios.filter(x => x.id !== h.id));
-                                    }
-                                  }}
-                                  className="text-destructive hover:bg-destructive/10 p-1.5 rounded-lg transition-colors inline-flex"
-                                >
-                                  <Trash2 className="size-4" />
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-            </div>
+          {(secaoAtiva === 'financeiro' || secaoAtiva === 'honorarios') && (
+            <SecaoFinanceiro
+              sessoes={sessoes}
+              honorarios={honorarios}
+              analisandos={analisandos}
+              modalidades={modalidades}
+              perfil={perfil}
+              consultorio={consultorio}
+              contaUsuario={contaUsuario}
+              onAtualizarSessoes={atualizarSessoes}
+              onAtualizarHonorarios={atualizarHonorarios}
+              onAbrirWhatsApp={dados => setWhatsappAlvo(dados)}
+              onNovoHonorarioClick={() => {
+                setHonorarioForm({
+                  id: `${Date.now()}`,
+                  analisandoId: '',
+                  valor: 0,
+                  vencimento: new Date().toISOString().slice(0, 10),
+                  status: 'pendente',
+                  observacao: ''
+                });
+                setMostrarFormHonorario(true);
+              }}
+              onNovaSessaoClick={() => setSecaoAtiva('nova_sessao')}
+            />
           )}
 
           {/* ======================================================== */}

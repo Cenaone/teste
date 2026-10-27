@@ -659,6 +659,17 @@ function salvarUsuariosServidor(lista: any[]): void {
     }
   });
 
+  // Download direto do pacote estático pronto para deploy no Netlify
+  app.get('/landing-netlify.zip', (_req, res) => {
+    const zipPath = path.resolve(__dirname, 'public', 'landing-netlify.zip');
+    if (fs.existsSync(zipPath)) {
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', 'attachment; filename="landing-netlify.zip"');
+      return res.sendFile(zipPath);
+    }
+    return res.status(404).send('Arquivo não encontrado');
+  });
+
   const isProd = process.env.NODE_ENV === 'production';
   if (!isProd) {
     const vite = await createViteServer({

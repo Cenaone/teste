@@ -371,3 +371,33 @@ h1, h2, h3 {
   background-clip: text;
   color: transparent;
 }
+
+/* ========================================================================= */
+/* IMPRESSÃO DE RECIBOS CLÍNICOS E DOCUMENTOS CFP (A4 / PDF)                 */
+/* ========================================================================= */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #recibo-imprimir,
+  #recibo-imprimir * {
+    visibility: visible;
+  }
+  #recibo-imprimir {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 2.5cm !important;
+    background: #ffffff !important;
+    color: #1c1917 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
+

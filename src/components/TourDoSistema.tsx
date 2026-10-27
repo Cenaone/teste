@@ -44,7 +44,7 @@ import {
  * 2. Incremente CURRENT_TOUR_VERSION (ex: '2026.10-v4.1.0' -> '2026.10-v4.2.0')
  * Isso garante que todos os usuários recebam automaticamente o aviso e o tour atualizado!
  */
-export const CURRENT_TOUR_VERSION = '2026.10-v4.1.0';
+export const CURRENT_TOUR_VERSION = '2026.10-v4.2.0';
 
 export function checarNovosImplementosTour(): boolean {
   try {
@@ -262,17 +262,21 @@ const ALL_TOUR_STEPS: TourStep[] = [
     ]
   },
   {
-    id: 'honorarios',
-    sectionId: 'honorarios',
-    title: 'Gestão de Honorários & Recibos',
-    category: 'Setting',
+    id: 'financeiro',
+    sectionId: 'financeiro',
+    title: 'Financeiro, Consultas Pendentes/Pagas & Recibos',
+    category: 'Clínica',
     icon: DollarSign,
-    description: 'Controle rigoroso dos valores a receber, pagamentos efetuados e emissão de recibos.',
+    isNew: true,
+    novoBadge: 'Novo Módulo Financeiro & Recibos',
+    description: 'Acesso unificado a todas as consultas clínicas com status de pagamento, controle de honorários e emissão/impressão de recibos para IRPF.',
     details: [
-      'Visualização de honorários pendentes, pagos e em aberto por paciente.',
-      'Geração de recibos profissionais com seus dados de CRP e consultório.',
-      'Lembretes sutis de pagamento enviados ao WhatsApp com chave PIX.'
-    ]
+      'Visão instantânea de consultas Pagas, Pendentes de Pagamento e em Atraso com filtros por paciente e período.',
+      'Emissão e impressão profissional de recibos de atendimento para declaração de IRPF com dados de CRP/CPF do terapeuta e paciente.',
+      'Geração de Recibo Consolidado / Fechamento Mensal somando todas as sessões do paciente no mês.',
+      'Valor por extenso automático em reais, alternância de status em 1 toque e disparo de recibo e cobrança pelo WhatsApp.'
+    ],
+    tip: 'Clique em "Recibo" em qualquer consulta para visualizar o documento oficial timbrado, pronto para impressão em folha A4 ou envio direto no WhatsApp do paciente.'
   },
   {
     id: 'reativacao',
