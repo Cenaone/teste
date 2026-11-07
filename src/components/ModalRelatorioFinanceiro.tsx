@@ -17,7 +17,9 @@ import {
   CreditCard,
   Building,
   ShieldCheck,
-  ArrowUpDown
+  ArrowUpDown,
+  Download,
+  Layers
 } from 'lucide-react';
 import {
   SessaoClinica,
@@ -54,10 +56,11 @@ export default function ModalRelatorioFinanceiro({
 }: ModalRelatorioFinanceiroProps) {
   if (!aberto) return null;
 
-  // Filtros internos do relatório
-  const [filtroPeriodo, setFiltroPeriodo] = useState<'mes_atual' | 'mes_anterior' | 'ultimos_3' | 'ano_atual' | 'todos'>('mes_atual');
+  // Filtros internos do relatório (por padrão exibe Todos para não ocultar nenhum honorário recém-lançado)
+  const [filtroPeriodo, setFiltroPeriodo] = useState<'todos' | 'mes_atual' | 'mes_anterior' | 'ultimos_3' | 'ano_atual'>('todos');
   const [pacienteId, setPacienteId] = useState<string>('todos');
   const [filtroStatus, setFiltroStatus] = useState<'todos' | 'pago' | 'pendente' | 'atrasado'>('todos');
+  const [tipoVisualizacaoTabela, setTipoVisualizacaoTabela] = useState<'todos' | 'honorarios' | 'sessoes'>('todos');
   const [copiado, setCopiado] = useState(false);
 
   // Datas de referência
@@ -68,17 +71,26 @@ export default function ModalRelatorioFinanceiro({
   const mesAnteriorStr = mesAnteriorDate.toISOString().slice(0, 7);
   const anoAtualStr = `${hoje.getFullYear()}`;
 
-  // Helper de filtragem de data
+  // Helper de filtragem de data com suporte universal a ISO e datas formatadas
   const dataPertenceAoPeriodo = (dataIso?: string): boolean => {
-    if (!dataIso) return false;
     if (filtroPeriodo === 'todos') return true;
-    if (filtroPeriodo === 'mes_atual') return dataIso.startsWith(mesAtualStr);
-    if (filtroPeriodo === 'mes_anterior') return dataIso.startsWith(mesAnteriorStr);
-    if (filtroPeriodo === 'ano_atual') return dataIso.startsWith(anoAtualStr);
+    if (!dataIso) return false;
+
+    const str = String(dataIso).trim();
+    let dataFormatada = str;
+    if (/^\d{2}\/\d{2}\/\d{4}/.test(str)) {
+      const [dia, mes, ano] = str.split('/');
+      dataFormatada = `${ano}-${mes}-${dia}`;
+    }
+
+    if (filtroPeriodo === 'mes_atual') return dataFormatada.startsWith(mesAtualStr);
+    if (filtroPeriodo === 'mes_anterior') return dataFormatada.startsWith(mesAnteriorStr);
+    if (filtroPeriodo === 'ano_atual') return dataFormatada.startsWith(anoAtualStr);
     if (filtroPeriodo === 'ultimos_3') {
       const limite = new Date();
       limite.setMonth(limite.getMonth() - 3);
-      return new Date(dataIso) >= limite;
+      const dataObj = new Date(dataFormatada.slice(0, 10));
+      return !isNaN(dataObj.getTime()) && dataObj >= limite;
     }
     return true;
   };
@@ -279,6 +291,120 @@ export default function ModalRelatorioFinanceiro({
     return Array.from(mapa.entries());
   }, [sessoesFiltradas, honorariosFiltrados, sessoes]);
 
+  interface ItemPlanilha {
+    id: string;
+    origem: 'sessao' | 'honorario';
+    tipoBadge: string;
+    data: string;
+    pacienteNome: string;
+    pacienteId: string;
+    descricao: string;
+    meioPagamento: string;
+    status: 'pago' | 'pendente' | 'atrasado' | 'parcial';
+    valor: number;
+    valorPago: number;
+  }
+
+  // Planilha Unificada com todos os lançamentos financeiros (Sessões e Honorários)
+  const itensPlanilha = useMemo(() => {
+    const lista: ItemPlanilha[] = [];
+
+    // 1. Sessões Clínicas
+    if (tipoVisualizacaoTabela === 'todos' || tipoVisualizacaoTabela === 'sessoes') {
+      for (const s of sessoesFiltradas) {
+        const paciente = analisandos.find(a => a.id === s.analisandoId);
+        const modalidade = modalidades.find(m => m.id === s.modalidadeId);
+        const isPago = s.pagamentoStatus === 'pago';
+        const isParcial = s.pagamentoStatus === 'parcial';
+        const isAtrasado = !isPago && s.data < hojeStr;
+        const statusFinal: 'pago' | 'pendente' | 'atrasado' | 'parcial' = isPago
+          ? 'pago'
+          : isParcial
+          ? 'parcial'
+          : isAtrasado
+          ? 'atrasado'
+          : 'pendente';
+
+        lista.push({
+          id: `sessao-${s.id}`,
+          origem: 'sessao',
+          tipoBadge: 'Consulta Clínica',
+          data: s.data,
+          pacienteNome: paciente?.nome || 'Paciente não identificado',
+          pacienteId: s.analisandoId,
+          descricao: modalidade?.nome || 'Sessão de Psicoterapia',
+          meioPagamento: s.meioPagamento || 'pix',
+          status: statusFinal,
+          valor: Number(s.valorCobrado) || 0,
+          valorPago: isPago ? (Number(s.valorCobrado) || 0) : Number(s.valorPago) || 0
+        });
+      }
+    }
+
+    // 2. Honorários & Mensalidades
+    if (tipoVisualizacaoTabela === 'todos' || tipoVisualizacaoTabela === 'honorarios') {
+      for (const h of honorariosFiltrados) {
+        const paciente = analisandos.find(a => a.id === h.analisandoId);
+        const isPago = h.status === 'pago';
+        const isParcial = h.status === 'parcial';
+        const isAtrasado = h.status === 'atrasado' || (!isPago && h.vencimento < hojeStr);
+        const statusFinal: 'pago' | 'pendente' | 'atrasado' | 'parcial' = isPago
+          ? 'pago'
+          : isParcial
+          ? 'parcial'
+          : isAtrasado
+          ? 'atrasado'
+          : 'pendente';
+
+        lista.push({
+          id: `honorario-${h.id}`,
+          origem: 'honorario',
+          tipoBadge: 'Honorário / Mensalidade',
+          data: h.vencimento,
+          pacienteNome: paciente?.nome || 'Paciente não identificado',
+          pacienteId: h.analisandoId,
+          descricao: h.observacao || 'Mensalidade de psicoterapia / Honorários acordados',
+          meioPagamento: h.meioPagamento || 'pix',
+          status: statusFinal,
+          valor: Number(h.valor) || 0,
+          valorPago: isPago ? (Number(h.valor) || 0) : Number(h.valorPago) || 0
+        });
+      }
+    }
+
+    return lista.sort((a, b) => b.data.localeCompare(a.data));
+  }, [sessoesFiltradas, honorariosFiltrados, tipoVisualizacaoTabela, analisandos, modalidades, hojeStr]);
+
+  const exportarPlanilhaCSV = () => {
+    if (itensPlanilha.length === 0) {
+      alert('Não há dados para exportar com os filtros selecionados.');
+      return;
+    }
+
+    const headers = ['Data/Vencimento', 'Paciente', 'Tipo', 'Descrição', 'Forma Pagamento', 'Status', 'Valor (R$)', 'Valor Pago (R$)'];
+    const rows = itensPlanilha.map(item => [
+      `"${formatarData(item.data)}"`,
+      `"${item.pacienteNome.replace(/"/g, '""')}"`,
+      `"${item.tipoBadge}"`,
+      `"${item.descricao.replace(/"/g, '""')}"`,
+      `"${item.meioPagamento.toUpperCase()}"`,
+      `"${item.status.toUpperCase()}"`,
+      item.valor.toFixed(2).replace('.', ','),
+      item.valorPago.toFixed(2).replace('.', ',')
+    ]);
+
+    const csvContent = '\uFEFF' + [headers.join(';'), ...rows.map(r => r.join(';'))].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `relatorio_financeiro_${hojeStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   // Formatação de texto para envio por WhatsApp
   const mensagemWhatsApp = useMemo(() => {
     const profissional = perfil.nome || contaUsuario?.nomeCompleto || 'Dr. Roberto Martins';
@@ -376,6 +502,15 @@ export default function ModalRelatorioFinanceiro({
             >
               <Send className="size-3.5" />
               <span>Enviar WhatsApp</span>
+            </button>
+
+            <button
+              onClick={exportarPlanilhaCSV}
+              className="px-3.5 py-1.5 rounded-xl border border-border bg-card hover:bg-muted text-foreground font-semibold text-xs transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+              title="Baixar planilha compatível com Excel e Google Planilhas (CSV)"
+            >
+              <Download className="size-3.5 text-primary" />
+              <span>Baixar Planilha (CSV)</span>
             </button>
 
             <button
@@ -561,58 +696,121 @@ export default function ModalRelatorioFinanceiro({
             )}
           </div>
 
-          {/* Tabela de Detalhamento das Sessões Clínicas */}
+          {/* Planilha Unificada de Lançamentos Financeiros (Honorários + Consultas) */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-stone-800">
-                Detalhamento dos Atendimentos & Sessões ({sessoesFiltradas.length})
-              </h4>
-              <span className="text-[11px] text-stone-500">Ordenado por data decrescente</span>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-stone-800">
+                    Planilha de Lançamentos Financeiros ({itensPlanilha.length})
+                  </h4>
+                  <span className="text-[10px] bg-stone-200 text-stone-700 px-2 py-0.5 rounded-full font-medium">
+                    {honorariosFiltrados.length} honorários • {sessoesFiltradas.length} consultas
+                  </span>
+                </div>
+                <p className="text-[11px] text-stone-500 mt-0.5">
+                  Extrato consolidado de honorários, mensalidades e consultas clínicas no período selecionado.
+                </p>
+              </div>
+
+              {/* Botões de Alternância Rápida: Todos / Honorários / Sessões */}
+              <div className="flex items-center bg-stone-100 p-0.5 rounded-lg border border-stone-200 text-xs self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setTipoVisualizacaoTabela('todos')}
+                  className={`px-2.5 py-1 rounded-md font-medium transition-all ${
+                    tipoVisualizacaoTabela === 'todos'
+                      ? 'bg-white text-stone-900 shadow-sm font-semibold'
+                      : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                >
+                  Todos ({sessoesFiltradas.length + honorariosFiltrados.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTipoVisualizacaoTabela('honorarios')}
+                  className={`px-2.5 py-1 rounded-md font-medium transition-all ${
+                    tipoVisualizacaoTabela === 'honorarios'
+                      ? 'bg-white text-stone-900 shadow-sm font-semibold'
+                      : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                >
+                  Honorários ({honorariosFiltrados.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTipoVisualizacaoTabela('sessoes')}
+                  className={`px-2.5 py-1 rounded-md font-medium transition-all ${
+                    tipoVisualizacaoTabela === 'sessoes'
+                      ? 'bg-white text-stone-900 shadow-sm font-semibold'
+                      : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                >
+                  Consultas ({sessoesFiltradas.length})
+                </button>
+              </div>
             </div>
 
-            <div className="rounded-xl border border-stone-200 overflow-hidden bg-white">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-stone-100 text-stone-700 font-bold uppercase tracking-wider text-[10px] border-b border-stone-200">
-                  <tr>
-                    <th className="p-2.5">Data</th>
-                    <th className="p-2.5">Paciente</th>
-                    <th className="p-2.5">Modalidade / Serviço</th>
-                    <th className="p-2.5">Meio</th>
-                    <th className="p-2.5">Status</th>
-                    <th className="p-2.5 text-right">Valor Cobrado</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-200">
-                  {sessoesFiltradas.length === 0 ? (
+            <div className="rounded-xl border border-stone-200 overflow-hidden bg-white shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-stone-100 text-stone-700 font-bold uppercase tracking-wider text-[10px] border-b border-stone-200">
                     <tr>
-                      <td colSpan={6} className="p-4 text-center text-stone-500">
-                        Nenhuma sessão localizada para os filtros selecionados.
-                      </td>
+                      <th className="p-2.5">Data / Venc.</th>
+                      <th className="p-2.5">Paciente</th>
+                      <th className="p-2.5">Origem & Descrição</th>
+                      <th className="p-2.5">Meio</th>
+                      <th className="p-2.5">Status</th>
+                      <th className="p-2.5 text-right">Valor Total</th>
+                      <th className="p-2.5 text-right">Recebido</th>
                     </tr>
-                  ) : (
-                    sessoesFiltradas.map(s => {
-                      const paciente = analisandos.find(a => a.id === s.analisandoId);
-                      const modalidade = modalidades.find(m => m.id === s.modalidadeId);
-                      const isPago = s.pagamentoStatus === 'pago';
-                      const isParcial = s.pagamentoStatus === 'parcial';
-                      const isAtrasado = !isPago && s.data < hojeStr;
-
-                      return (
-                        <tr key={s.id} className="hover:bg-stone-50 transition-colors">
-                          <td className="p-2.5 font-mono text-stone-800">{formatarData(s.data)}</td>
-                          <td className="p-2.5 font-semibold text-stone-900">{paciente?.nome || '—'}</td>
-                          <td className="p-2.5 text-stone-700">{modalidade?.nome || 'Sessão de Psicoterapia'}</td>
-                          <td className="p-2.5 font-mono uppercase text-[11px] text-stone-600">{s.meioPagamento || 'pix'}</td>
-                          <td className="p-2.5">
-                            {isPago ? (
+                  </thead>
+                  <tbody className="divide-y divide-stone-200">
+                    {itensPlanilha.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="p-8 text-center text-stone-500">
+                          <p className="font-medium text-stone-700 text-sm mb-1">Nenhum lançamento financeiro localizado</p>
+                          <p className="text-xs text-stone-400">Verifique os filtros de período e paciente selecionados acima.</p>
+                        </td>
+                      </tr>
+                    ) : (
+                      itensPlanilha.map(item => (
+                        <tr key={item.id} className="hover:bg-stone-50 transition-colors">
+                          <td className="p-2.5 font-mono text-stone-800 whitespace-nowrap">
+                            {formatarData(item.data)}
+                          </td>
+                          <td className="p-2.5 font-semibold text-stone-900 whitespace-nowrap">
+                            {item.pacienteNome}
+                          </td>
+                          <td className="p-2.5 text-stone-700 max-w-xs">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {item.origem === 'honorario' ? (
+                                <span className="inline-flex items-center gap-0.5 text-[9px] uppercase tracking-wider font-bold bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded border border-amber-300">
+                                  Honorário
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-0.5 text-[9px] uppercase tracking-wider font-bold bg-stone-100 text-stone-800 px-1.5 py-0.5 rounded border border-stone-300">
+                                  Consulta
+                                </span>
+                              )}
+                              <span className="text-stone-800 font-medium truncate" title={item.descricao}>
+                                {item.descricao}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="p-2.5 font-mono uppercase text-[11px] text-stone-600 whitespace-nowrap">
+                            {item.meioPagamento || 'pix'}
+                          </td>
+                          <td className="p-2.5 whitespace-nowrap">
+                            {item.status === 'pago' ? (
                               <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 text-[10px]">
                                 <CheckCircle2 className="size-3" /> Pago
                               </span>
-                            ) : isParcial ? (
+                            ) : item.status === 'parcial' ? (
                               <span className="inline-flex items-center gap-1 text-blue-700 font-semibold bg-blue-50 px-2 py-0.5 rounded border border-blue-200 text-[10px]">
-                                Parcial ({formatarMoeda(s.valorPago || 0)})
+                                Parcial ({formatarMoeda(item.valorPago)})
                               </span>
-                            ) : isAtrasado ? (
+                            ) : item.status === 'atrasado' ? (
                               <span className="inline-flex items-center gap-1 text-rose-700 font-semibold bg-rose-50 px-2 py-0.5 rounded border border-rose-200 text-[10px]">
                                 <AlertTriangle className="size-3" /> Em Atraso
                               </span>
@@ -622,69 +820,35 @@ export default function ModalRelatorioFinanceiro({
                               </span>
                             )}
                           </td>
-                          <td className="p-2.5 text-right font-mono font-bold text-stone-900">
-                            {formatarMoeda(s.valorCobrado || 0)}
+                          <td className="p-2.5 text-right font-mono font-bold text-stone-900 whitespace-nowrap">
+                            {formatarMoeda(item.valor)}
+                          </td>
+                          <td className="p-2.5 text-right font-mono text-emerald-700 font-semibold whitespace-nowrap">
+                            {formatarMoeda(item.valorPago)}
                           </td>
                         </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Honorários e Mensalidades Avulsas */}
-          {honorariosFiltrados.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-stone-800">
-                  Honorários & Mensalidades Avulsas ({honorariosFiltrados.length})
-                </h4>
-              </div>
-
-              <div className="rounded-xl border border-stone-200 overflow-hidden bg-white">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-stone-100 text-stone-700 font-bold uppercase tracking-wider text-[10px] border-b border-stone-200">
-                    <tr>
-                      <th className="p-2.5">Vencimento</th>
-                      <th className="p-2.5">Paciente</th>
-                      <th className="p-2.5">Observação / Descrição</th>
-                      <th className="p-2.5">Status</th>
-                      <th className="p-2.5 text-right">Valor</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-stone-200">
-                    {honorariosFiltrados.map(h => {
-                      const paciente = analisandos.find(a => a.id === h.analisandoId);
-                      const isPago = h.status === 'pago';
-                      const isAtrasado = h.status === 'atrasado' || (!isPago && h.vencimento < hojeStr);
-
-                      return (
-                        <tr key={h.id} className="hover:bg-stone-50 transition-colors">
-                          <td className="p-2.5 font-mono text-stone-800">{formatarData(h.vencimento)}</td>
-                          <td className="p-2.5 font-semibold text-stone-900">{paciente?.nome || '—'}</td>
-                          <td className="p-2.5 text-stone-700">{h.observacao || 'Honorários clínicos acordados'}</td>
-                          <td className="p-2.5">
-                            {isPago ? (
-                              <span className="text-emerald-700 font-semibold text-[10px]">Pago</span>
-                            ) : isAtrasado ? (
-                              <span className="text-rose-700 font-semibold text-[10px]">Vencido</span>
-                            ) : (
-                              <span className="text-amber-700 font-semibold text-[10px]">Pendente</span>
-                            )}
-                          </td>
-                          <td className="p-2.5 text-right font-mono font-bold text-stone-900">
-                            {formatarMoeda(h.valor || 0)}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                      ))
+                    )}
                   </tbody>
+                  {itensPlanilha.length > 0 && (
+                    <tfoot className="bg-stone-100 text-stone-900 font-bold border-t-2 border-stone-300 text-xs">
+                      <tr>
+                        <td colSpan={5} className="p-2.5 uppercase tracking-wider text-[11px] text-stone-700">
+                          Subtotal da Tabela ({itensPlanilha.length} lançamentos):
+                        </td>
+                        <td className="p-2.5 text-right font-mono text-stone-900 whitespace-nowrap">
+                          {formatarMoeda(itensPlanilha.reduce((acc, curr) => acc + curr.valor, 0))}
+                        </td>
+                        <td className="p-2.5 text-right font-mono text-emerald-700 whitespace-nowrap">
+                          {formatarMoeda(itensPlanilha.reduce((acc, curr) => acc + curr.valorPago, 0))}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
               </div>
             </div>
-          )}
+          </div>
 
           {/* Resumo Consolidado por Paciente */}
           {resumoPorPaciente.length > 0 && pacienteId === 'todos' && (

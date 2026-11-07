@@ -95,15 +95,24 @@ export default function SecaoFinanceiro({
 
   // Helper de filtragem de data
   const dataPertenceAoPeriodo = (dataIso?: string): boolean => {
-    if (!dataIso) return false;
     if (filtroPeriodo === 'todos') return true;
-    if (filtroPeriodo === 'mes_atual') return dataIso.startsWith(mesAtualStr);
-    if (filtroPeriodo === 'mes_anterior') return dataIso.startsWith(mesAnteriorStr);
-    if (filtroPeriodo === 'ano_atual') return dataIso.startsWith(anoAtualStr);
+    if (!dataIso) return false;
+
+    const str = String(dataIso).trim();
+    let dataFormatada = str;
+    if (/^\d{2}\/\d{2}\/\d{4}/.test(str)) {
+      const [dia, mes, ano] = str.split('/');
+      dataFormatada = `${ano}-${mes}-${dia}`;
+    }
+
+    if (filtroPeriodo === 'mes_atual') return dataFormatada.startsWith(mesAtualStr);
+    if (filtroPeriodo === 'mes_anterior') return dataFormatada.startsWith(mesAnteriorStr);
+    if (filtroPeriodo === 'ano_atual') return dataFormatada.startsWith(anoAtualStr);
     if (filtroPeriodo === 'ultimos_3') {
       const limite = new Date();
       limite.setMonth(limite.getMonth() - 3);
-      return new Date(dataIso) >= limite;
+      const dataObj = new Date(dataFormatada.slice(0, 10));
+      return !isNaN(dataObj.getTime()) && dataObj >= limite;
     }
     return true;
   };
