@@ -69,7 +69,7 @@ export default function SecaoFinanceiro({
   onNovaSessaoClick
 }: SecaoFinanceiroProps) {
   // Filtros de visualização
-  const [abaVisualizacao, setAbaVisualizacao] = useState<'sessoes' | 'honorarios' | 'fechamento_mensal'>('sessoes');
+  const [abaVisualizacao, setAbaVisualizacao] = useState<'todos' | 'sessoes' | 'honorarios' | 'fechamento_mensal'>('todos');
   const [filtroStatus, setFiltroStatus] = useState<'todos' | 'pendente' | 'pago' | 'atrasado'>('todos');
   const [filtroPeriodo, setFiltroPeriodo] = useState<'mes_atual' | 'mes_anterior' | 'ultimos_3' | 'ano_atual' | 'todos'>('mes_atual');
   const [buscaPaciente, setBuscaPaciente] = useState('');
@@ -301,6 +301,151 @@ export default function SecaoFinanceiro({
     const pendentes = noPrazo + atrasados;
     return { total: pagos + pendentes, pagos, noPrazo, atrasados, pendentes, qtd: honorariosFiltrados.length };
   }, [honorariosFiltrados]);
+
+  // Interface para os itens unificados da grade financeira
+  interface ItemGradeFinanceiro {
+    id: string;
+    tipo: 'sessao' | 'honorario';
+    data: string;
+    hora?: string;
+    pacienteNome: string;
+    pacienteCpf?: string;
+    paciente?: Analisando;
+    modalidadeNome: string;
+    descricao: string;
+    valor: number;
+    valorPago: number;
+    saldoDevedor: number;
+    isPago: boolean;
+    isAtrasado: boolean;
+    status: 'pago' | 'pendente' | 'atrasado' | 'parcial';
+    meioPagamento: 'pix' | 'transferencia' | 'dinheiro' | 'cartao';
+    sessaoOriginal?: SessaoClinica;
+    honorarioOriginal?: Honorario;
+  }
+
+  // Lista unificada para a Grade Financeira & Emissão de Recibos
+  const itensGrade = useMemo<ItemGradeFinanceiro[]>(() => {
+    const lista: ItemGradeFinanceiro[] = [];
+    const hojeStr = hoje.toISOString().slice(0, 10);
+
+    // 1. Sessões clínicas
+    if (abaVisualizacao === 'todos' || abaVisualizacao === 'sessoes') {
+      for (const s of sessoesFiltradas) {
+        const paciente = analisandos.find(a => a.id === s.analisandoId);
+        const modalidade = modalidades.find(m => m.id === s.modalidadeId);
+        const isPago = s.pagamentoStatus === 'pago';
+        const isParcial = s.pagamentoStatus === 'parcial';
+        const isAtrasado = !isPago && s.data < hojeStr;
+        const status: 'pago' | 'pendente' | 'atrasado' | 'parcial' = isPago
+          ? 'pago'
+          : isParcial
+          ? 'parcial'
+          : isAtrasado
+          ? 'atrasado'
+          : 'pendente';
+        const valor = Number(s.valorCobrado) || 0;
+        const valorPago = isPago ? valor : Number(s.valorPago) || 0;
+
+        lista.push({
+          id: `sessao-${s.id}`,
+          tipo: 'sessao',
+          data: s.data,
+          hora: s.hora,
+          pacienteNome: paciente?.nome || 'Paciente não identificado',
+          pacienteCpf: paciente?.cpf,
+          paciente,
+          modalidadeNome: modalidade?.nome || 'Atendimento Clínico',
+          descricao: `Sessão de ${modalidade?.nome || 'Psicoterapia'}`,
+          valor,
+          valorPago,
+          saldoDevedor: Math.max(0, valor - valorPago),
+          isPago,
+          isAtrasado,
+          status,
+          meioPagamento: (s.meioPagamento || 'pix') as any,
+          sessaoOriginal: s
+        });
+      }
+    }
+
+    // 2. Honorários & Mensalidades
+    if (abaVisualizacao === 'todos' || abaVisualizacao === 'honorarios') {
+      for (const h of honorariosFiltrados) {
+        const paciente = analisandos.find(a => a.id === h.analisandoId);
+        const isPago = h.status === 'pago';
+        const isParcial = h.status === 'parcial';
+        const isAtrasado = h.status === 'atrasado' || (!isPago && h.vencimento < hojeStr);
+        const status: 'pago' | 'pendente' | 'atrasado' | 'parcial' = isPago
+          ? 'pago'
+          : isParcial
+          ? 'parcial'
+          : isAtrasado
+          ? 'atrasado'
+          : 'pendente';
+        const valor = Number(h.valor) || 0;
+        const valorPago = isPago ? valor : Number(h.valorPago) || 0;
+
+        lista.push({
+          id: `honorario-${h.id}`,
+          tipo: 'honorario',
+          data: h.vencimento,
+          pacienteNome: paciente?.nome || 'Paciente não identificado',
+          pacienteCpf: paciente?.cpf,
+          paciente,
+          modalidadeNome: h.observacao || 'Honorários Clínicos / Mensalidade',
+          descricao: h.observacao || 'Honorários Clínicos / Mensalidade Acordada',
+          valor,
+          valorPago,
+          saldoDevedor: Math.max(0, valor - valorPago),
+          isPago,
+          isAtrasado,
+          status,
+          meioPagamento: (h.meioPagamento || 'pix') as any,
+          honorarioOriginal: h
+        });
+      }
+    }
+
+    return lista.sort((a, b) => (b.data || '').localeCompare(a.data || ''));
+  }, [abaVisualizacao, sessoesFiltradas, honorariosFiltrados, analisandos, modalidades, hoje]);
+
+  // Resumo contextual para a grade ativa
+  const resumoGradeTab = useMemo(() => {
+    let pagos = 0;
+    let pendentes = 0;
+    let atrasados = 0;
+    let qtdSessoes = 0;
+    let qtdHonorarios = 0;
+
+    itensGrade.forEach(item => {
+      if (item.tipo === 'sessao') qtdSessoes++;
+      else qtdHonorarios++;
+
+      if (item.isPago) {
+        pagos += item.valor;
+      } else if (item.status === 'parcial') {
+        pagos += item.valorPago;
+        if (item.isAtrasado) atrasados += item.saldoDevedor;
+        else pendentes += item.saldoDevedor;
+      } else if (item.isAtrasado) {
+        atrasados += item.valor;
+      } else {
+        pendentes += item.valor;
+      }
+    });
+
+    const total = pagos + pendentes + atrasados;
+    return {
+      total,
+      pagos,
+      pendentes,
+      atrasados,
+      qtd: itensGrade.length,
+      qtdSessoes,
+      qtdHonorarios
+    };
+  }, [itensGrade]);
 
   // Ação: Alternar Pagamento de Sessão (Pendente <-> Pago)
   const alternarPagamentoSessao = (sessao: SessaoClinica, novoStatus: 'pago' | 'pendente' | 'parcial', meio?: string) => {
@@ -628,6 +773,18 @@ export default function SecaoFinanceiro({
       {/* Barra de Abas do Módulo Financeiro */}
       <div className="flex border-b border-border text-sm font-medium gap-2 sm:gap-6 overflow-x-auto">
         <button
+          onClick={() => setAbaVisualizacao('todos')}
+          className={`pb-3 px-1 border-b-2 font-semibold transition-colors whitespace-nowrap flex items-center gap-2 ${
+            abaVisualizacao === 'todos'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Layers className="size-4" />
+          <span>Todos os Lançamentos ({sessoesFiltradas.length + honorariosFiltrados.length})</span>
+        </button>
+
+        <button
           onClick={() => setAbaVisualizacao('sessoes')}
           className={`pb-3 px-1 border-b-2 font-semibold transition-colors whitespace-nowrap flex items-center gap-2 ${
             abaVisualizacao === 'sessoes'
@@ -659,13 +816,13 @@ export default function SecaoFinanceiro({
               : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
-          <Layers className="size-4" />
+          <Sparkles className="size-4" />
           <span>Fechamento Mensal & Recibo Agrupado</span>
         </button>
       </div>
 
-      {/* Conteúdo da Aba 1 & 2: Listagem com Filtros */}
-      {(abaVisualizacao === 'sessoes' || abaVisualizacao === 'honorarios') && (
+      {/* Conteúdo das Abas: Listagem com Filtros */}
+      {(abaVisualizacao === 'todos' || abaVisualizacao === 'sessoes' || abaVisualizacao === 'honorarios') && (
         <div className="space-y-4">
           
           {/* Barra de Ferramentas de Filtros */}
@@ -751,29 +908,45 @@ export default function SecaoFinanceiro({
 
           </div>
 
-          {/* TABELA DE SESSÕES CLÍNICAS */}
-          {abaVisualizacao === 'sessoes' && (
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between text-xs px-4 py-2.5 rounded-xl bg-muted/30 border border-border text-muted-foreground">
-                <span className="font-semibold text-foreground">
-                  Consultas no Filtro: <strong className="text-primary font-mono">{resumoSessoesTab.qtd}</strong>
-                </span>
-                <div className="flex flex-wrap items-center gap-2 sm:gap-3 font-mono text-xs">
-                  <span>Subtotal: <strong className="text-foreground font-semibold">{formatarMoeda(resumoSessoesTab.total)}</strong></span>
-                  <span>•</span>
-                  <span>Quitadas: <strong className="text-emerald-600 dark:text-emerald-400 font-semibold">{formatarMoeda(resumoSessoesTab.pagas)}</strong></span>
-                  <span>•</span>
-                  <span>Pendentes: <strong className="text-amber-600 dark:text-amber-400 font-semibold">{formatarMoeda(resumoSessoesTab.pendentes)}</strong></span>
-                  {resumoSessoesTab.atrasadas > 0 && (
-                    <>
-                      <span>•</span>
-                      <span>Vencidas: <strong className="text-rose-600 dark:text-rose-400 font-semibold">{formatarMoeda(resumoSessoesTab.atrasadas)}</strong></span>
-                    </>
-                  )}
-                </div>
+          {/* GRADE FINANCEIRA UNIFICADA (CONSULTAS & HONORÁRIOS) */}
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between text-xs px-4 py-2.5 rounded-xl bg-muted/30 border border-border text-muted-foreground gap-2">
+              <span className="font-semibold text-foreground">
+                {abaVisualizacao === 'todos' && (
+                  <>
+                    Lançamentos no Filtro: <strong className="text-primary font-mono">{resumoGradeTab.qtd}</strong>
+                    <span className="text-muted-foreground font-normal ml-1">
+                      ({resumoGradeTab.qtdSessoes} consultas • {resumoGradeTab.qtdHonorarios} honorários)
+                    </span>
+                  </>
+                )}
+                {abaVisualizacao === 'sessoes' && (
+                  <>
+                    Consultas no Filtro: <strong className="text-primary font-mono">{resumoGradeTab.qtd}</strong>
+                  </>
+                )}
+                {abaVisualizacao === 'honorarios' && (
+                  <>
+                    Mensalidades no Filtro: <strong className="text-primary font-mono">{resumoGradeTab.qtd}</strong>
+                  </>
+                )}
+              </span>
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3 font-mono text-xs">
+                <span>Subtotal: <strong className="text-foreground font-semibold">{formatarMoeda(resumoGradeTab.total)}</strong></span>
+                <span>•</span>
+                <span>Quitadas: <strong className="text-emerald-600 dark:text-emerald-400 font-semibold">{formatarMoeda(resumoGradeTab.pagos)}</strong></span>
+                <span>•</span>
+                <span>Pendentes: <strong className="text-amber-600 dark:text-amber-400 font-semibold">{formatarMoeda(resumoGradeTab.pendentes)}</strong></span>
+                {resumoGradeTab.atrasados > 0 && (
+                  <>
+                    <span>•</span>
+                    <span>Vencidas: <strong className="text-rose-600 dark:text-rose-400 font-semibold">{formatarMoeda(resumoGradeTab.atrasados)}</strong></span>
+                  </>
+                )}
               </div>
+            </div>
 
-              <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+            <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
                 <table className="w-full text-xs text-left">
                   <thead className="bg-muted/40 uppercase text-[11px] font-semibold text-muted-foreground border-b border-border">
@@ -788,253 +961,186 @@ export default function SecaoFinanceiro({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/60">
-                    {sessoesFiltradas.length === 0 ? (
+                    {itensGrade.length === 0 ? (
                       <tr>
                         <td colSpan={7} className="text-center py-12 text-muted-foreground">
-                          Nenhuma consulta clínica encontrada com os filtros selecionados.
+                          Nenhum lançamento financeiro encontrado com os filtros selecionados.
                         </td>
                       </tr>
                     ) : (
-                      sessoesFiltradas.map(s => {
-                        const paciente = analisandos.find(a => a.id === s.analisandoId);
-                        const modalidade = modalidades.find(m => m.id === s.modalidadeId);
-                        const isPago = s.pagamentoStatus === 'pago';
-                        const isAtrasado = !isPago && s.data < hoje.toISOString().slice(0, 10);
-
-                        return (
-                          <tr key={s.id} className="hover:bg-muted/30 transition-colors">
-                            {/* Paciente */}
-                            <td className="px-4 py-3 font-semibold text-foreground">
-                              <div className="flex items-center gap-2">
-                                <div className="size-7 rounded-full bg-primary/15 text-primary flex items-center justify-center font-bold text-xs shrink-0">
-                                  {paciente?.nome ? paciente.nome.charAt(0).toUpperCase() : 'P'}
-                                </div>
-                                <div>
-                                  <span className="block text-sm text-foreground">{paciente?.nome || 'Paciente não identificado'}</span>
-                                  {paciente?.cpf && (
-                                    <span className="text-[10px] text-muted-foreground font-mono">CPF: {paciente.cpf}</span>
+                      itensGrade.map(item => (
+                        <tr key={item.id} className="hover:bg-muted/30 transition-colors">
+                          {/* Paciente */}
+                          <td className="px-4 py-3 font-semibold text-foreground">
+                            <div className="flex items-center gap-2">
+                              <div className={`size-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
+                                item.tipo === 'honorario'
+                                  ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
+                                  : 'bg-primary/15 text-primary'
+                              }`}>
+                                {item.pacienteNome ? item.pacienteNome.charAt(0).toUpperCase() : 'P'}
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="block text-sm text-foreground">{item.pacienteNome}</span>
+                                  {item.tipo === 'honorario' ? (
+                                    <span className="text-[9px] uppercase tracking-wider font-bold bg-amber-500/10 text-amber-800 dark:text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/20">
+                                      Honorário
+                                    </span>
+                                  ) : (
+                                    <span className="text-[9px] uppercase tracking-wider font-bold bg-muted text-muted-foreground px-1.5 py-0.5 rounded border border-border">
+                                      Consulta
+                                    </span>
                                   )}
                                 </div>
+                                {item.pacienteCpf && (
+                                  <span className="text-[10px] text-muted-foreground font-mono">CPF: {item.pacienteCpf}</span>
+                                )}
                               </div>
-                            </td>
+                            </div>
+                          </td>
 
-                            {/* Data & Hora */}
-                            <td className="px-4 py-3 text-muted-foreground">
-                              <span className="font-semibold text-foreground block">{formatarData(s.data)}</span>
-                              {s.hora && <span className="text-[11px] text-muted-foreground">{s.hora}</span>}
-                            </td>
+                          {/* Data & Hora */}
+                          <td className="px-4 py-3 text-muted-foreground">
+                            <span className="font-semibold text-foreground block">{formatarData(item.data)}</span>
+                            {item.hora ? (
+                              <span className="text-[11px] text-muted-foreground">{item.hora}</span>
+                            ) : (
+                              <span className="text-[10px] text-amber-700 dark:text-amber-400 font-medium">Vencimento</span>
+                            )}
+                          </td>
 
-                            {/* Modalidade */}
-                            <td className="px-4 py-3 text-muted-foreground">
-                              <span className="px-2 py-0.5 rounded-md bg-muted text-[11px] font-medium text-foreground">
-                                {modalidade?.nome || 'Atendimento Clínico'}
+                          {/* Modalidade */}
+                          <td className="px-4 py-3 text-muted-foreground">
+                            <span className={`px-2 py-0.5 rounded-md text-[11px] font-medium max-w-[200px] truncate block ${
+                              item.tipo === 'honorario'
+                                ? 'bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-500/20 font-semibold'
+                                : 'bg-muted text-foreground'
+                            }`} title={item.modalidadeNome}>
+                              {item.modalidadeNome}
+                            </span>
+                          </td>
+
+                          {/* Valor */}
+                          <td className="px-4 py-3 text-right font-mono font-bold text-sm text-foreground whitespace-nowrap">
+                            {formatarMoeda(item.valor)}
+                            {item.status === 'parcial' && (
+                              <span className="block text-[10px] font-normal text-emerald-600">
+                                Pago: {formatarMoeda(item.valorPago)}
                               </span>
-                            </td>
+                            )}
+                          </td>
 
-                            {/* Valor */}
-                            <td className="px-4 py-3 text-right font-mono font-bold text-sm text-foreground">
-                              {formatarMoeda(s.valorCobrado || 0)}
-                            </td>
+                          {/* Status de Pagamento */}
+                          <td className="px-4 py-3 text-center whitespace-nowrap">
+                            {item.status === 'pago' ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
+                                <CheckCircle2 className="size-3 text-emerald-500" />
+                                Pago
+                              </span>
+                            ) : item.status === 'parcial' ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20">
+                                Parcial
+                              </span>
+                            ) : item.isAtrasado ? (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/20">
+                                <AlertTriangle className="size-3 text-rose-500" />
+                                Atrasado
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                                <Clock className="size-3 text-amber-500" />
+                                Pendente
+                              </span>
+                            )}
+                          </td>
 
-                            {/* Status de Pagamento */}
-                            <td className="px-4 py-3 text-center">
-                              {isPago ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
-                                  <CheckCircle2 className="size-3 text-emerald-500" />
-                                  Pago
-                                </span>
-                              ) : isAtrasado ? (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-500/20">
-                                  <AlertTriangle className="size-3 text-rose-500" />
-                                  Atrasado
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
-                                  <Clock className="size-3 text-amber-500" />
-                                  Pendente
-                                </span>
-                              )}
-                            </td>
-
-                            {/* Meio de Pagamento */}
-                            <td className="px-4 py-3">
-                              <select
-                                value={s.meioPagamento || 'pix'}
-                                onChange={e => {
-                                  const novoMeio = e.target.value as any;
-                                  const atualizadas = sessoes.map(x => x.id === s.id ? { ...x, meioPagamento: novoMeio } : x);
+                          {/* Meio de Pagamento */}
+                          <td className="px-4 py-3">
+                            <select
+                              value={item.meioPagamento || 'pix'}
+                              onChange={e => {
+                                const novoMeio = e.target.value as any;
+                                if (item.tipo === 'sessao' && item.sessaoOriginal) {
+                                  const atualizadas = sessoes.map(x => x.id === item.sessaoOriginal!.id ? { ...x, meioPagamento: novoMeio } : x);
                                   onAtualizarSessoes(atualizadas);
+                                } else if (item.tipo === 'honorario' && item.honorarioOriginal) {
+                                  const atualizados = honorarios.map(x => x.id === item.honorarioOriginal!.id ? { ...x, meioPagamento: novoMeio } : x);
+                                  onAtualizarHonorarios(atualizados);
+                                }
+                              }}
+                              className="px-2 py-1 rounded-lg border border-border bg-card text-[11px] text-foreground font-semibold"
+                            >
+                              <option value="pix">PIX</option>
+                              <option value="transferencia">Transferência</option>
+                              <option value="dinheiro">Dinheiro</option>
+                              <option value="cartao">Cartão</option>
+                            </select>
+                          </td>
+
+                          {/* Ações & Recibo */}
+                          <td className="px-4 py-3 text-right space-x-1.5 whitespace-nowrap">
+                            {/* Botão Alternar Pagamento Rápido */}
+                            <button
+                              onClick={() => {
+                                if (item.tipo === 'sessao' && item.sessaoOriginal) {
+                                  alternarPagamentoSessao(item.sessaoOriginal, item.isPago ? 'pendente' : 'pago');
+                                } else if (item.tipo === 'honorario' && item.honorarioOriginal) {
+                                  alternarPagamentoHonorario(item.honorarioOriginal, item.isPago ? 'pendente' : 'pago');
+                                }
+                              }}
+                              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all inline-flex items-center gap-1 ${
+                                item.isPago
+                                  ? 'border border-border bg-muted/30 hover:bg-muted text-muted-foreground'
+                                  : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
+                              }`}
+                              title={item.isPago ? 'Marcar como Pendente' : 'Confirmar Pagamento'}
+                            >
+                              {item.isPago ? 'Desmarcar' : 'Receber'}
+                            </button>
+
+                            {/* Botão Imprimir Recibo Oficial */}
+                            <button
+                              onClick={() => {
+                                if (item.tipo === 'sessao' && item.sessaoOriginal) {
+                                  abrirReciboSessao(item.sessaoOriginal);
+                                } else if (item.tipo === 'honorario' && item.honorarioOriginal) {
+                                  abrirReciboHonorario(item.honorarioOriginal);
+                                }
+                              }}
+                              className="px-3 py-1.5 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 text-primary font-semibold text-xs transition-all inline-flex items-center gap-1"
+                              title="Gerar e imprimir recibo oficial"
+                            >
+                              <Printer className="size-3.5" />
+                              <span>Recibo</span>
+                            </button>
+
+                            {/* Cobrança WhatsApp (se pendente) */}
+                            {!item.isPago && item.paciente && (
+                              <button
+                                onClick={() => {
+                                  onAbrirWhatsApp({
+                                    analisando: item.paciente!,
+                                    valor: item.valor,
+                                    data: item.data,
+                                    servico: item.modalidadeNome
+                                  });
                                 }}
-                                className="px-2 py-1 rounded-lg border border-border bg-card text-[11px] text-foreground font-semibold"
+                                className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 transition-colors inline-flex"
+                                title="Enviar lembrete de pagamento no WhatsApp"
                               >
-                                <option value="pix">PIX</option>
-                                <option value="transferencia">Transferência</option>
-                                <option value="dinheiro">Dinheiro</option>
-                                <option value="cartao">Cartão</option>
-                              </select>
-                            </td>
-
-                            {/* Ações */}
-                            <td className="px-4 py-3 text-right space-x-1.5 whitespace-nowrap">
-                              {/* Botão Alternar Status Rápido */}
-                              <button
-                                onClick={() => alternarPagamentoSessao(s, isPago ? 'pendente' : 'pago')}
-                                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all inline-flex items-center gap-1 ${
-                                  isPago
-                                    ? 'border border-border bg-muted/30 hover:bg-muted text-muted-foreground'
-                                    : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
-                                }`}
-                                title={isPago ? 'Marcar como Pendente' : 'Confirmar Pagamento'}
-                              >
-                                {isPago ? 'Desmarcar' : 'Receber'}
+                                <Send className="size-3.5" />
                               </button>
-
-                              {/* Botão Imprimir Recibo */}
-                              <button
-                                onClick={() => abrirReciboSessao(s)}
-                                className="px-3 py-1.5 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 text-primary font-semibold text-xs transition-all inline-flex items-center gap-1"
-                                title="Gerar e imprimir recibo oficial"
-                              >
-                                <Printer className="size-3.5" />
-                                <span>Recibo</span>
-                              </button>
-
-                              {/* Cobrança WhatsApp (se pendente) */}
-                              {!isPago && paciente && (
-                                <button
-                                  onClick={() => onAbrirWhatsApp({
-                                    analisando: paciente,
-                                    valor: s.valorCobrado,
-                                    data: s.data,
-                                    servico: modalidade?.nome || 'consulta de psicoterapia'
-                                  })}
-                                  className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 transition-colors inline-flex"
-                                  title="Enviar lembrete de pagamento no WhatsApp"
-                                >
-                                  <Send className="size-3.5" />
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })
+                            )}
+                          </td>
+                        </tr>
+                      ))
                     )}
                   </tbody>
                 </table>
               </div>
             </div>
           </div>
-          )}
-
-          {/* TABELA DE HONORÁRIOS & MENSALIDADES */}
-          {abaVisualizacao === 'honorarios' && (
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between text-xs px-4 py-2.5 rounded-xl bg-muted/30 border border-border text-muted-foreground">
-                <span className="font-semibold text-foreground">
-                  Mensalidades no Filtro: <strong className="text-primary font-mono">{resumoHonorariosTab.qtd}</strong>
-                </span>
-                <div className="flex flex-wrap items-center gap-2 sm:gap-3 font-mono text-xs">
-                  <span>Subtotal: <strong className="text-foreground font-semibold">{formatarMoeda(resumoHonorariosTab.total)}</strong></span>
-                  <span>•</span>
-                  <span>No Prazo: <strong className="text-amber-600 dark:text-amber-400 font-semibold">{formatarMoeda(resumoHonorariosTab.noPrazo)}</strong></span>
-                  <span>•</span>
-                  <span>Em Atraso: <strong className="text-rose-600 dark:text-rose-400 font-semibold">{formatarMoeda(resumoHonorariosTab.atrasados)}</strong></span>
-                  <span>•</span>
-                  <span>Quitados: <strong className="text-emerald-600 dark:text-emerald-400 font-semibold">{formatarMoeda(resumoHonorariosTab.pagos)}</strong></span>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-muted/40 uppercase text-[11px] font-semibold text-muted-foreground border-b border-border">
-                    <tr>
-                      <th className="px-4 py-3">Paciente</th>
-                      <th className="px-4 py-3">Vencimento</th>
-                      <th className="px-4 py-3">Descrição / Observação</th>
-                      <th className="px-4 py-3 text-right">Valor</th>
-                      <th className="px-4 py-3 text-center">Situação</th>
-                      <th className="px-4 py-3 text-right">Ações & Recibo</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border/60">
-                    {honorariosFiltrados.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="text-center py-12 text-muted-foreground">
-                          Nenhum lançamento de mensalidade ou honorário encontrado.
-                        </td>
-                      </tr>
-                    ) : (
-                      honorariosFiltrados.map(h => {
-                        const paciente = analisandos.find(a => a.id === h.analisandoId);
-                        const isPago = h.status === 'pago';
-
-                        return (
-                          <tr key={h.id} className="hover:bg-muted/30 transition-colors">
-                            <td className="px-4 py-3 font-semibold text-foreground">
-                              {paciente?.nome || '—'}
-                            </td>
-                            <td className="px-4 py-3 text-muted-foreground font-semibold">
-                              {formatarData(h.vencimento)}
-                            </td>
-                            <td className="px-4 py-3 text-muted-foreground max-w-xs truncate">
-                              {h.observacao || 'Mensalidade / Honorários Clínicos'}
-                            </td>
-                            <td className="px-4 py-3 text-right font-mono font-bold text-sm text-foreground">
-                              {formatarMoeda(h.valor)}
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <select
-                                value={h.status}
-                                onChange={e => alternarPagamentoHonorario(h, e.target.value as any)}
-                                className={`px-2.5 py-1 rounded-lg border text-xs font-semibold ${
-                                  h.status === 'pago'
-                                    ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30'
-                                    : h.status === 'atrasado'
-                                    ? 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/30'
-                                    : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30'
-                                }`}
-                              >
-                                <option value="pendente">Pendente</option>
-                                <option value="pago">Pago</option>
-                                <option value="parcial">Parcial</option>
-                                <option value="atrasado">Atrasado</option>
-                              </select>
-                            </td>
-                            <td className="px-4 py-3 text-right space-x-1.5 whitespace-nowrap">
-                              <button
-                                onClick={() => abrirReciboHonorario(h)}
-                                className="px-3 py-1.5 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 text-primary font-semibold text-xs transition-all inline-flex items-center gap-1"
-                              >
-                                <Printer className="size-3.5" />
-                                <span>Recibo</span>
-                              </button>
-
-                              {paciente && (
-                                <button
-                                  onClick={() => onAbrirWhatsApp({
-                                    analisando: paciente,
-                                    valor: h.valor,
-                                    data: h.vencimento,
-                                    servico: h.observacao || 'mensalidade de psicoterapia'
-                                  })}
-                                  className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 transition-colors inline-flex"
-                                  title="Enviar cobrança via WhatsApp"
-                                >
-                                  <Send className="size-3.5" />
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-          )}
 
         </div>
       )}
