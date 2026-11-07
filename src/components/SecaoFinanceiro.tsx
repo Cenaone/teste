@@ -32,6 +32,7 @@ import {
 } from '../types';
 import { formatarMoeda, formatarData } from '../utils/helpers';
 import ModalRecibo, { DadosReciboProps } from './ModalRecibo';
+import ModalRelatorioFinanceiro from './ModalRelatorioFinanceiro';
 
 interface SecaoFinanceiroProps {
   sessoes: SessaoClinica[];
@@ -74,9 +75,10 @@ export default function SecaoFinanceiro({
   const [buscaPaciente, setBuscaPaciente] = useState('');
   const [pacienteSelecionadoId, setPacienteSelecionadoId] = useState<string>('todos');
 
-  // Estado para emissão de recibo
+  // Estado para emissão de recibo e relatório financeiro
   const [modalReciboAberto, setModalReciboAberto] = useState(false);
   const [dadosRecibo, setDadosRecibo] = useState<DadosReciboProps | null>(null);
+  const [modalRelatorioAberto, setModalRelatorioAberto] = useState(false);
 
   // Estados para Fechamento Mensal / Recibo Agrupado
   const [fechamentoPacienteId, setFechamentoPacienteId] = useState<string>(analisandos[0]?.id || '');
@@ -140,13 +142,15 @@ export default function SecaoFinanceiro({
 
   // Filtragem dos Honorários/Mensalidades
   const honorariosFiltrados = useMemo(() => {
+    const hojeStr = hoje.toISOString().slice(0, 10);
     return honorarios.filter(h => {
       if (!dataPertenceAoPeriodo(h.vencimento)) return false;
       if (pacienteSelecionadoId !== 'todos' && h.analisandoId !== pacienteSelecionadoId) return false;
 
       const isPago = h.status === 'pago';
-      const isPendente = h.status === 'pendente' || h.status === 'parcial';
-      const isAtrasado = h.status === 'atrasado' || (isPendente && h.vencimento < hoje.toISOString().slice(0, 10));
+      const isAtrasado = h.status === 'atrasado' || ((h.status === 'pendente' || h.status === 'parcial') && h.vencimento < hojeStr);
+      // Qualquer honorário em aberto (não pago) é pendente de liquidação
+      const isPendente = !isPago;
 
       if (filtroStatus === 'pago' && !isPago) return false;
       if (filtroStatus === 'pendente' && !isPendente) return false;
@@ -162,12 +166,17 @@ export default function SecaoFinanceiro({
     }).sort((a, b) => b.vencimento.localeCompare(a.vencimento));
   }, [honorarios, filtroPeriodo, pacienteSelecionadoId, filtroStatus, buscaPaciente, analisandos]);
 
-  // Cálculos de Métricas Totais (baseados nas sessões e honorários do período atual)
+  // Cálculos de Métricas Globais (reconciliação rigorosa sem sobreposição)
   const metricas = useMemo(() => {
     let totalPago = 0;
-    let totalPendente = 0;
+    let totalNoPrazo = 0;
     let totalAtrasado = 0;
     let totalConsultasNoPeriodo = 0;
+
+    // Mapeia IDs de sessões vinculadas em honorários para evitar qualquer dupla contagem
+    const sessoesVinculadas = new Set<string>();
+    sessoes.forEach(s => sessoesVinculadas.add(s.id));
+    const hojeStr = hoje.toISOString().slice(0, 10);
 
     // Soma sessões no período
     sessoes.forEach(s => {
@@ -176,10 +185,21 @@ export default function SecaoFinanceiro({
         const valor = Number(s.valorCobrado) || 0;
         if (s.pagamentoStatus === 'pago') {
           totalPago += valor;
+        } else if (s.pagamentoStatus === 'parcial') {
+          const pago = Number(s.valorPago) || 0;
+          const pendente = Math.max(0, valor - pago);
+          totalPago += pago;
+          if (s.data < hojeStr && pendente > 0) {
+            totalAtrasado += pendente;
+          } else {
+            totalNoPrazo += pendente;
+          }
         } else {
-          totalPendente += valor;
-          if (s.data < hoje.toISOString().slice(0, 10)) {
+          // Pendente integral
+          if (s.data < hojeStr && valor > 0) {
             totalAtrasado += valor;
+          } else {
+            totalNoPrazo += valor;
           }
         }
       }
@@ -187,26 +207,91 @@ export default function SecaoFinanceiro({
 
     // Soma honorários não vinculados a sessões já contadas
     honorarios.forEach(h => {
-      if (!h.sessaoId && dataPertenceAoPeriodo(h.vencimento)) {
+      if ((!h.sessaoId || !sessoesVinculadas.has(h.sessaoId)) && dataPertenceAoPeriodo(h.vencimento)) {
         const valor = Number(h.valor) || 0;
         if (h.status === 'pago') {
           totalPago += valor;
+        } else if (h.status === 'parcial') {
+          const pago = Number(h.valorPago) || 0;
+          const pendente = Math.max(0, valor - pago);
+          totalPago += pago;
+          if (h.vencimento < hojeStr && pendente > 0) {
+            totalAtrasado += pendente;
+          } else {
+            totalNoPrazo += pendente;
+          }
         } else {
-          totalPendente += valor;
-          if (h.vencimento < hoje.toISOString().slice(0, 10)) {
+          // Pendente ou atrasado
+          if (h.status === 'atrasado' || (h.vencimento < hojeStr && valor > 0)) {
             totalAtrasado += valor;
+          } else {
+            totalNoPrazo += valor;
           }
         }
       }
     });
 
+    const totalPendente = totalNoPrazo + totalAtrasado;
+    const totalFaturamento = totalPago + totalPendente;
+    const ticketMedio = totalConsultasNoPeriodo > 0 ? totalFaturamento / totalConsultasNoPeriodo : 0;
+
     return {
+      totalFaturamento,
       totalPago,
-      totalPendente,
+      totalNoPrazo,
       totalAtrasado,
-      totalConsultasNoPeriodo
+      totalPendente,
+      totalConsultasNoPeriodo,
+      ticketMedio
     };
   }, [sessoes, honorarios, filtroPeriodo]);
+
+  // Resumos específicos por aba para transparência contextual total
+  const resumoSessoesTab = useMemo(() => {
+    let pagas = 0;
+    let noPrazo = 0;
+    let atrasadas = 0;
+    const hojeStr = hoje.toISOString().slice(0, 10);
+    sessoesFiltradas.forEach(s => {
+      const v = Number(s.valorCobrado) || 0;
+      if (s.pagamentoStatus === 'pago') pagas += v;
+      else if (s.pagamentoStatus === 'parcial') {
+        const p = Number(s.valorPago) || 0;
+        const saldo = Math.max(0, v - p);
+        pagas += p;
+        if (s.data < hojeStr) atrasadas += saldo;
+        else noPrazo += saldo;
+      } else {
+        if (s.data < hojeStr) atrasadas += v;
+        else noPrazo += v;
+      }
+    });
+    const pendentes = noPrazo + atrasadas;
+    return { total: pagas + pendentes, pagas, noPrazo, atrasadas, pendentes, qtd: sessoesFiltradas.length };
+  }, [sessoesFiltradas]);
+
+  const resumoHonorariosTab = useMemo(() => {
+    let pagos = 0;
+    let noPrazo = 0;
+    let atrasados = 0;
+    const hojeStr = hoje.toISOString().slice(0, 10);
+    honorariosFiltrados.forEach(h => {
+      const v = Number(h.valor) || 0;
+      if (h.status === 'pago') pagos += v;
+      else if (h.status === 'parcial') {
+        const p = Number(h.valorPago) || 0;
+        const saldo = Math.max(0, v - p);
+        pagos += p;
+        if (h.vencimento < hojeStr) atrasados += saldo;
+        else noPrazo += saldo;
+      } else {
+        if (h.status === 'atrasado' || h.vencimento < hojeStr) atrasados += v;
+        else noPrazo += v;
+      }
+    });
+    const pendentes = noPrazo + atrasados;
+    return { total: pagos + pendentes, pagos, noPrazo, atrasados, pendentes, qtd: honorariosFiltrados.length };
+  }, [honorariosFiltrados]);
 
   // Ação: Alternar Pagamento de Sessão (Pendente <-> Pago)
   const alternarPagamentoSessao = (sessao: SessaoClinica, novoStatus: 'pago' | 'pendente' | 'parcial', meio?: string) => {
@@ -383,10 +468,19 @@ export default function SecaoFinanceiro({
 
         {/* Botões de Ação Rápida */}
         <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            onClick={() => setModalRelatorioAberto(true)}
+            className="px-3.5 py-2 rounded-xl border border-primary/30 bg-primary/10 hover:bg-primary/20 text-xs font-bold text-primary transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+            title="Abrir relatório financeiro completo para conferência, impressão e envio via WhatsApp"
+          >
+            <FileText className="size-4" />
+            <span>Relatório Completo & WhatsApp</span>
+          </button>
+
           {onNovoHonorarioClick && (
             <button
               onClick={onNovoHonorarioClick}
-              className="px-3.5 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all flex items-center gap-1.5 shadow-sm"
+              className="px-3.5 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
             >
               <Plus className="size-4 text-primary" />
               <span>Lançar Honorário</span>
@@ -407,7 +501,7 @@ export default function SecaoFinanceiro({
                 });
                 setModalReciboAberto(true);
               }}
-              className="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider text-white gradient-emerald shadow-md hover:opacity-95 transition-all flex items-center gap-1.5"
+              className="px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider text-white gradient-emerald shadow-md hover:opacity-95 transition-all flex items-center gap-1.5 cursor-pointer"
             >
               <Printer className="size-4" />
               <span>Emitir Recibo</span>
@@ -416,13 +510,39 @@ export default function SecaoFinanceiro({
         </div>
       </div>
 
-      {/* Cards de Métricas Financeiras (Cards Limpos e Nítidos) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Cards de Métricas Financeiras Consolidadas */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         
+        {/* Faturamento Total */}
+        <div className="p-5 rounded-2xl bg-card border-2 border-primary/30 shadow-sm flex items-center justify-between relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-20 h-20 bg-primary/5 rounded-full blur-xl -mr-4 -mt-4 pointer-events-none" />
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
+                Faturamento Total
+              </span>
+              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-primary/10 text-primary">
+                {filtroPeriodo === 'todos' ? 'Geral' : 'Período'}
+              </span>
+            </div>
+            <p className="text-2xl font-bold font-mono text-primary mt-1">
+              {formatarMoeda(metricas.totalFaturamento)}
+            </p>
+            <div className="flex items-center gap-1 text-[11px] text-muted-foreground mt-0.5">
+              <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{formatarMoeda(metricas.totalPago)}</span>
+              <span>•</span>
+              <span className="text-amber-600 dark:text-amber-400 font-semibold">{formatarMoeda(metricas.totalPendente)}</span>
+            </div>
+          </div>
+          <div className="size-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+            <DollarSign className="size-5" />
+          </div>
+        </div>
+
         {/* Total Recebido (Pago) */}
         <div className="p-5 rounded-2xl bg-card border border-border shadow-sm flex items-center justify-between">
           <div>
-            <span className="text-xs font-medium text-muted-foreground block">
+            <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">
               Total Recebido (Pago)
             </span>
             <p className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1">
@@ -430,71 +550,70 @@ export default function SecaoFinanceiro({
             </p>
             <span className="text-[11px] text-muted-foreground mt-0.5 block flex items-center gap-1">
               <CheckCircle2 className="size-3 text-emerald-500" />
-              Consultas e honorários quitados
+              Quitados no período
             </span>
           </div>
-          <div className="size-12 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-            <DollarSign className="size-6" />
+          <div className="size-11 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+            <CheckCircle2 className="size-5" />
           </div>
         </div>
 
-        {/* Total Pendente (A Receber) */}
+        {/* A Vencer (No Prazo) */}
         <div className="p-5 rounded-2xl bg-card border border-border shadow-sm flex items-center justify-between">
           <div>
-            <span className="text-xs font-medium text-muted-foreground block">
-              A Receber (Pendentes)
+            <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">
+              A Vencer (No Prazo)
             </span>
             <p className="text-2xl font-bold font-mono text-amber-600 dark:text-amber-400 mt-1">
-              {formatarMoeda(metricas.totalPendente)}
+              {formatarMoeda(metricas.totalNoPrazo)}
             </p>
             <span className="text-[11px] text-muted-foreground mt-0.5 block flex items-center gap-1">
               <Clock className="size-3 text-amber-500" />
-              Aguardando pagamento
+              Vencimentos futuros
             </span>
           </div>
-          <div className="size-12 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-            <Clock className="size-6" />
+          <div className="size-11 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+            <Clock className="size-5" />
           </div>
         </div>
 
         {/* Em Atraso / Vencidos */}
         <div className="p-5 rounded-2xl bg-card border border-border shadow-sm flex items-center justify-between">
           <div>
-            <span className="text-xs font-medium text-muted-foreground block">
-              Em Atraso / Vencidos
+            <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">
+              Em Atraso (Vencidos)
             </span>
             <p className="text-2xl font-bold font-mono text-rose-600 dark:text-rose-400 mt-1">
               {formatarMoeda(metricas.totalAtrasado)}
             </p>
             <span className="text-[11px] text-muted-foreground mt-0.5 block flex items-center gap-1">
               <AlertTriangle className="size-3 text-rose-500" />
-              Pendências anteriores a hoje
+              Anteriores a hoje
             </span>
           </div>
-          <div className="size-12 rounded-2xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
-            <AlertTriangle className="size-6" />
+          <div className="size-11 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+            <AlertTriangle className="size-5" />
           </div>
         </div>
 
-        {/* Consultas Realizadas no Período */}
+        {/* Total a Receber em Aberto */}
         <div className="p-5 rounded-2xl bg-card border border-border shadow-sm flex items-center justify-between">
           <div>
-            <span className="text-xs font-medium text-muted-foreground block">
-              Consultas no Período
+            <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">
+              Total a Receber (Em Aberto)
             </span>
             <p className="text-2xl font-bold font-mono text-foreground mt-1">
-              {metricas.totalConsultasNoPeriodo}
+              {formatarMoeda(metricas.totalPendente)}
             </p>
             <span className="text-[11px] text-muted-foreground mt-0.5 block flex items-center gap-1">
-              <Calendar className="size-3 text-primary" />
-              Sessões com registro clínico
+              <TrendingUp className="size-3 text-primary" />
+              {metricas.totalConsultasNoPeriodo} atendimentos no período
             </span>
           </div>
-          <div className="size-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-            <Calendar className="size-6" />
+          <div className="size-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+            <Calendar className="size-5" />
           </div>
         </div>
-
       </div>
 
       {/* Barra de Abas do Módulo Financeiro */}
@@ -625,7 +744,27 @@ export default function SecaoFinanceiro({
 
           {/* TABELA DE SESSÕES CLÍNICAS */}
           {abaVisualizacao === 'sessoes' && (
-            <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between text-xs px-4 py-2.5 rounded-xl bg-muted/30 border border-border text-muted-foreground">
+                <span className="font-semibold text-foreground">
+                  Consultas no Filtro: <strong className="text-primary font-mono">{resumoSessoesTab.qtd}</strong>
+                </span>
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3 font-mono text-xs">
+                  <span>Subtotal: <strong className="text-foreground font-semibold">{formatarMoeda(resumoSessoesTab.total)}</strong></span>
+                  <span>•</span>
+                  <span>Quitadas: <strong className="text-emerald-600 dark:text-emerald-400 font-semibold">{formatarMoeda(resumoSessoesTab.pagas)}</strong></span>
+                  <span>•</span>
+                  <span>Pendentes: <strong className="text-amber-600 dark:text-amber-400 font-semibold">{formatarMoeda(resumoSessoesTab.pendentes)}</strong></span>
+                  {resumoSessoesTab.atrasadas > 0 && (
+                    <>
+                      <span>•</span>
+                      <span>Vencidas: <strong className="text-rose-600 dark:text-rose-400 font-semibold">{formatarMoeda(resumoSessoesTab.atrasadas)}</strong></span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
                 <table className="w-full text-xs text-left">
                   <thead className="bg-muted/40 uppercase text-[11px] font-semibold text-muted-foreground border-b border-border">
@@ -775,11 +914,28 @@ export default function SecaoFinanceiro({
                 </table>
               </div>
             </div>
+          </div>
           )}
 
           {/* TABELA DE HONORÁRIOS & MENSALIDADES */}
           {abaVisualizacao === 'honorarios' && (
-            <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between text-xs px-4 py-2.5 rounded-xl bg-muted/30 border border-border text-muted-foreground">
+                <span className="font-semibold text-foreground">
+                  Mensalidades no Filtro: <strong className="text-primary font-mono">{resumoHonorariosTab.qtd}</strong>
+                </span>
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3 font-mono text-xs">
+                  <span>Subtotal: <strong className="text-foreground font-semibold">{formatarMoeda(resumoHonorariosTab.total)}</strong></span>
+                  <span>•</span>
+                  <span>No Prazo: <strong className="text-amber-600 dark:text-amber-400 font-semibold">{formatarMoeda(resumoHonorariosTab.noPrazo)}</strong></span>
+                  <span>•</span>
+                  <span>Em Atraso: <strong className="text-rose-600 dark:text-rose-400 font-semibold">{formatarMoeda(resumoHonorariosTab.atrasados)}</strong></span>
+                  <span>•</span>
+                  <span>Quitados: <strong className="text-emerald-600 dark:text-emerald-400 font-semibold">{formatarMoeda(resumoHonorariosTab.pagos)}</strong></span>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
                 <table className="w-full text-xs text-left">
                   <thead className="bg-muted/40 uppercase text-[11px] font-semibold text-muted-foreground border-b border-border">
@@ -868,6 +1024,7 @@ export default function SecaoFinanceiro({
                 </table>
               </div>
             </div>
+          </div>
           )}
 
         </div>
@@ -1007,6 +1164,19 @@ export default function SecaoFinanceiro({
         aberto={modalReciboAberto}
         onFechar={() => setModalReciboAberto(false)}
         dados={dadosRecibo}
+        perfil={perfil}
+        consultorio={consultorio}
+        contaUsuario={contaUsuario}
+      />
+
+      {/* Modal de Relatório Financeiro Completo (Impressão & WhatsApp) */}
+      <ModalRelatorioFinanceiro
+        aberto={modalRelatorioAberto}
+        onFechar={() => setModalRelatorioAberto(false)}
+        sessoes={sessoes}
+        honorarios={honorarios}
+        analisandos={analisandos}
+        modalidades={modalidades}
         perfil={perfil}
         consultorio={consultorio}
         contaUsuario={contaUsuario}

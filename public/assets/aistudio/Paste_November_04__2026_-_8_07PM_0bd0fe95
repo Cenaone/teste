@@ -1,0 +1,635 @@
+<!DOCTYPE html><html class="scroll-smooth" lang="pt-BR"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>PSi 4.0 | Prontuário Inteligente para Terapeutas</title>
+<!-- Ícones Oficiais para Aba do Navegador (Chrome, Safari, Edge, Firefox) -->
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<link rel="shortcut icon" href="favicon.ico">
+<meta name="theme-color" content="#C59B4C">
+<meta content="Prontuário inteligente com transcrição por IA e gestão clínica completa para terapeutas, psicanalistas e psicólogos. Economize 10+ horas semanais com cofre seguro." name="description">
+<!-- Open Graph / Meta Compartilhamento (WhatsApp, Telegram, LinkedIn, Facebook) -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://psi40pro.vercel.app/">
+<meta property="og:title" content="PSi 4.0 | Prontuário Inteligente para Terapeutas">
+<meta property="og:description" content="Prontuário clínico com transcrição por IA e gestão completa de atendimentos para terapeutas, psicanalistas e psicólogos. Mais tempo para acolher e escutar.">
+<meta property="og:site_name" content="PSi 4.0 Pro — Prontuário para Terapeutas">
+<meta property="og:image" content="https://psi40pro.vercel.app/painel_clinico_referencia.png">
+<meta property="og:image:secure_url" content="https://psi40pro.vercel.app/painel_clinico_referencia.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="PSi 4.0 Pro — Prontuário Inteligente para Terapeutas">
+<!-- Twitter / X Cards -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="PSi 4.0 | Prontuário Inteligente para Terapeutas">
+<meta name="twitter:description" content="Prontuário clínico com transcrição por IA e gestão completa para terapeutas, psicanalistas e psicólogos.">
+<meta name="twitter:image" content="https://psi40pro.vercel.app/painel_clinico_referencia.png">
+<!-- Schema.org Dados Estruturados -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "PSi 4.0 Pro",
+  "applicationCategory": "HealthApplication",
+  "operatingSystem": "Web, Cloud",
+  "description": "Prontuário inteligente, transcrição clínica por IA e gestão de consultório para a área terapêutica (terapeutas, psicanalistas e psicólogos).",
+  "offers": {
+    "@type": "Offer",
+    "price": "299.99",
+    "priceCurrency": "BRL"
+  }
+}
+</script>
+<!-- Google Fonts: Plus Jakarta Sans & Playfair Display -->
+<link href="https://fonts.googleapis.com" rel="preconnect">
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,400;1,600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- Tailwind CSS via CDN -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- Lucide Icons -->
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Plus Jakarta Sans', 'Inter', 'sans-serif'],
+            serif: ['Playfair Display', 'Georgia', 'serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            gold: {
+              50: '#fdfbf7',
+              100: '#f9f3e5',
+              200: '#f2e4c7',
+              300: '#e6cfa0',
+              400: '#d7b372',
+              500: '#c59b4c',
+              600: '#ad8038',
+              700: '#8c622a',
+              800: '#734e26',
+              900: '#5f4022',
+            },
+            surface: {
+              50: '#FAF8F5',
+              100: '#F5F1EB',
+              200: '#EAE3D9',
+              300: '#D8CEBE',
+            }
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    .card-clean {
+      background-color: #ffffff;
+      border: 1px solid #eae3d9;
+      box-shadow: 0 4px 20px -2px rgba(95, 64, 34, 0.05);
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .card-clean:hover {
+      border-color: #d7b372;
+      box-shadow: 0 12px 30px -4px rgba(197, 155, 76, 0.12);
+      transform: translateY(-2px);
+    }
+    .card-featured {
+      background-color: #ffffff;
+      border: 2px solid #c59b4c;
+      box-shadow: 0 8px 30px -4px rgba(197, 155, 76, 0.16);
+    }
+  </style>
+</head>
+<body class="bg-surface-50 text-stone-900 font-sans antialiased selection:bg-gold-500 selection:text-white relative min-h-screen">
+<!-- BARRA DE CONFORMIDADE ÉTICA CFP -->
+<aside aria-label="Aviso de Conformidade" class="bg-gold-50/90 text-gold-900 border-b border-gold-200/80 text-xs py-2 px-4 text-center flex items-center justify-center gap-2">
+  <span class="inline-flex items-center gap-1.5 font-semibold">
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="shield-check" aria-hidden="true" class="lucide lucide-shield-check size-4 text-emerald-600"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg>
+    100% Conforme as Resoluções do CFP 01/2009 e 004/2020 • Criptografia Zero-Knowledge
+  </span>
+</aside>
+<!-- CABEÇALHO / NAVEGAÇÃO SUPERIOR -->
+<header class="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-surface-200">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between gap-4 flex-nowrap">
+<!-- Logotipo Humanista -->
+<a class="flex items-center gap-3 group shrink-0 flex-nowrap" href="#">
+<div class="size-11 rounded-2xl bg-gradient-to-br from-gold-500 to-gold-700 flex items-center justify-center shadow-md shadow-gold-500/20 group-hover:scale-105 transition-transform shrink-0">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="brain" aria-hidden="true" class="lucide lucide-brain size-6 text-white stroke-[2.2]"><path d="M12 18V5"></path><path d="M15 13a4.17 4.17 0 01-3-4 4.17 4.17 0 01-3 4"></path><path d="M17.707 6.294A3 3 0 1012 5a3 3 0 10-5.707 1.294"></path><path d="M17.996 5.125a4 4 0 012.526 5.77"></path><path d="M18 18a4 4 0 002-7.465"></path><path d="M19.967 17.482a4 4 0 11-7.967.517 4 4 0 11-7.967-.517"></path><path d="M6 18a4 4 0 01-2-7.465"></path><path d="M6.004 5.125a4 4 0 00-2.526 5.77"></path></svg>
+</div>
+<div class="shrink-0">
+<div class="flex items-center gap-1.5 flex-nowrap">
+<span class="text-2xl font-serif font-bold tracking-tight text-stone-900">PSi</span>
+<span class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-gold-100 text-gold-800 border border-gold-300">4.0 PRO</span>
+</div>
+<p class="text-[11px] text-stone-500 font-medium whitespace-nowrap">Prontuário &amp; IA Clínica</p>
+</div>
+</a>
+<!-- Menu em Monolinha -->
+<nav class="hidden lg:flex items-center gap-6 xl:gap-8 text-sm font-medium text-stone-600 whitespace-nowrap flex-nowrap">
+<a class="hover:text-gold-700 transition-colors shrink-0" href="#transcricao">Transcrição por IA</a>
+<a class="hover:text-gold-700 transition-colors shrink-0" href="#como-funciona">Como Funciona</a>
+<a class="hover:text-gold-700 transition-colors shrink-0" href="#modelos">Formulários &amp; CFP</a>
+<a class="hover:text-gold-700 transition-colors shrink-0" href="#seguranca">Segurança do Cofre</a>
+<a class="hover:text-gold-700 transition-colors shrink-0" href="#planos">Planos &amp; Preços</a>
+<a class="hover:text-gold-700 transition-colors shrink-0" href="#faq">Dúvidas</a>
+</nav>
+<!-- Botões de Ação -->
+<div class="flex items-center gap-2.5 shrink-0 flex-nowrap">
+<a class="hidden sm:inline-flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider bg-gold-600 hover:bg-gold-700 text-white shadow-sm transition-all whitespace-nowrap shrink-0" href="https://wa.me/5521979850079?text=Ol%C3%A1!%20Gostaria%20de%20iniciar%20meu%20teste%20de%207%20dias%20gr%C3%A1tis%20no%20PSi%204.0" rel="noopener noreferrer" target="_blank">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="sparkles" aria-hidden="true" class="lucide lucide-sparkles size-4 shrink-0"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"></path><path d="M20 2v4"></path><path d="M22 4h-4"></path><circle cx="4" cy="20" r="2"></circle></svg>
+<span class="">Testar 7 Dias Grátis</span>
+</a>
+<a class="p-2.5 rounded-xl border border-stone-200 bg-stone-50 text-stone-700 hover:text-gold-700 hover:border-gold-300 transition-colors shrink-0 flex items-center justify-center" href="https://wa.me/5521979850079?text=Ol%C3%A1!%20Gostaria%20de%20conhecer%20o%20PSi%204.0" rel="noopener noreferrer" target="_blank" title="Falar no WhatsApp">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="message-circle" aria-hidden="true" class="lucide lucide-message-circle size-5 shrink-0"><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"></path></svg>
+</a>
+</div>
+</div>
+<!-- Menu Mobile Minimalista -->
+<div class="lg:hidden flex items-center justify-between px-4 py-2 border-t border-surface-200 bg-white text-xs font-medium text-stone-600 overflow-x-auto">
+<a class="hover:text-gold-700 py-1 shrink-0" href="#transcricao">Transcrição</a>
+<a class="hover:text-gold-700 py-1 shrink-0" href="#como-funciona">Visão Geral</a>
+<a class="hover:text-gold-700 py-1 shrink-0" href="#modelos">CFP</a>
+<a class="hover:text-gold-700 py-1 shrink-0" href="#seguranca">Segurança</a>
+<a class="hover:text-gold-700 py-1 shrink-0" href="#planos">Planos</a>
+<a class="text-gold-700 font-bold py-1 shrink-0" href="https://wa.me/5521979850079?text=Ol%C3%A1!%20Gostaria%20de%20come%C3%A7ar%20meu%20teste%20de%207%20dias%20gr%C3%A1tis%20no%20PSi%204.0" target="_blank" rel="noopener noreferrer">Testar 7 Dias</a>
+</div>
+</header>
+<!-- HERO SECTION -->
+<section class="relative pt-14 pb-20 md:pt-20 md:pb-28 overflow-hidden bg-gradient-to-b from-white via-surface-50 to-surface-100 border-b border-surface-200">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
+<!-- Selo de Categoria -->
+<div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-gold-300 bg-gold-50 text-gold-800 text-xs font-semibold mb-6 shadow-sm"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="sparkles" aria-hidden="true" class="lucide lucide-sparkles size-3.5 text-gold-600"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"></path><path d="M20 2v4"></path><path d="M22 4h-4"></path><circle cx="4" cy="20" r="2"></circle></svg><span class="">Mais organização na gestão. Mais tempo para escutar e acolher.</span></div>
+<!-- Título Editorial -->
+<h1 class="text-4xl sm:text-5xl lg:text-6xl font-serif font-bold tracking-tight text-stone-900 max-w-4xl mx-auto leading-tight">Seus pacientes e atendimentos organizados em um só lugar</h1>
+<!-- Subtítulo -->
+<div class="mt-6 max-w-3xl mx-auto space-y-3"><p class="text-lg sm:text-xl text-stone-700 font-medium leading-relaxed">Com o PSi 4.0, você reúne as informações dos pacientes, acompanha o histórico das sessões e organiza a rotina do consultório com mais praticidade.</p><p class="text-sm sm:text-base text-stone-600 font-normal leading-relaxed">Do cadastro à evolução clínica, mantenha os registros acessíveis para dar continuidade a cada atendimento. Organize sua agenda, acompanhe pagamentos e emita recibos sem perder tempo com tarefas espalhadas.</p></div>
+<!-- CTAs da Hero -->
+<div class="mt-9 flex flex-col sm:flex-row items-center justify-center gap-4 max-w-md mx-auto"><a class="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-2xl font-bold text-sm bg-gold-600 hover:bg-gold-700 text-white shadow-lg shadow-gold-600/20 hover:scale-[1.02] transition-all" href="https://wa.me/5521979850079?text=Ol%C3%A1!%20Gostaria%20de%20come%C3%A7ar%20meu%20teste%20de%207%20dias%20gr%C3%A1tis%20no%20PSi%204.0" rel="noopener noreferrer" target="_blank"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="play-circle" aria-hidden="true" class="lucide lucide-play-circle size-5"><path d="M9 9.003a1 1 0 0 1 1.517-.859l4.997 2.997a1 1 0 0 1 0 1.718l-4.997 2.997A1 1 0 0 1 9 14.996z"></path><circle cx="12" cy="12" r="10"></circle></svg><span class="">Começar Teste de 7 Dias Grátis</span></a><a class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-4 rounded-2xl font-semibold text-sm border border-stone-300 bg-white hover:bg-stone-50 text-stone-800 transition-all" href="#transcricao"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="eye" aria-hidden="true" class="lucide lucide-eye size-4 text-gold-600"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"></path><circle cx="12" cy="12" r="3"></circle></svg><span class="">Ver Demonstração</span></a></div>
+<!-- Provas de Ética e Segurança -->
+<div class="mt-10 flex flex-wrap items-center justify-center gap-6 sm:gap-10 text-xs text-stone-600 font-medium">
+<div class="flex items-center gap-2">
+<span class="size-2 rounded-full bg-emerald-500"></span>
+<span class="">Conformidade Regulatória CFP &amp; LGPD</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="size-2 rounded-full bg-gold-600"></span>
+<span class="">Redução Comprovada de Horas Operacionais</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="size-2 rounded-full bg-emerald-500"></span>
+<span class="">Ambiente Multiplataforma Corporativo</span>
+</div>
+</div><div class="mt-8 max-w-2xl mx-auto p-4 rounded-2xl bg-white/80 border border-gold-200/80 shadow-sm text-stone-700 text-xs sm:text-sm leading-relaxed"><p class="flex items-center justify-center gap-2 text-gold-900 font-semibold mb-1"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-shield-check text-emerald-600"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg>Tecnologia Inteligente com Sigilo Clínico Rigoroso</p><p class="text-stone-600">A gravação de áudio e a transcrição por inteligência artificial ajudam a preparar os registros das sessões, para sua revisão e complementação. Os prontuários ficam protegidos no cofre criptografado do sistema.</p></div>
+<!-- MOSTRUÁRIO VISUAL: TRANSCRIÇÃO CLÍNICA -->
+<div class="mt-14 max-w-5xl mx-auto text-left relative scroll-mt-28" id="transcricao"><div class="bg-white rounded-3xl p-3 sm:p-6 shadow-xl shadow-gold-900/5 border border-surface-200"><div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 mb-5 border-b border-surface-200 gap-3 px-2 bg-surface-50/70 py-3 rounded-2xl"><div class="flex items-center gap-3"><div class="flex gap-1.5"><span class="size-3 rounded-full bg-rose-400"></span><span class="size-3 rounded-full bg-amber-400"></span><span class="size-3 rounded-full bg-emerald-400"></span></div><div class="h-4 w-px bg-surface-300"></div><div class="flex items-center gap-2 text-xs text-stone-700 font-medium"><span class="size-2 rounded-full bg-emerald-500 animate-ping"></span><span class="">Sessão Remota ou Presencial com Transcrição Ativa</span></div></div><div class="flex flex-wrap items-center gap-2"><span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-gold-50 text-gold-800 border border-gold-300"><svg class="lucide lucide-sparkles" fill="none" height="14" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="14" xmlns="http://www.w3.org/2000/svg"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"></path><circle cx="4" cy="20" r="2"></circle></svg>Compatível com Google Meet, Zoom &amp; Presencial</span><span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200"><svg class="lucide lucide-lock" fill="none" height="14" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="14" xmlns="http://www.w3.org/2000/svg"><rect height="11" rx="2" ry="2" width="18" x="3" y="11"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>AES-256 Zero-Knowledge</span></div></div><div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch"><div class="lg:col-span-6 relative rounded-2xl overflow-hidden border border-surface-200 shadow-sm flex flex-col justify-end min-h-[300px]"><img alt="Sessão de teleconsulta na área terapêutica com acolhimento profissional e anotação segura" class="absolute inset-0 w-full h-full object-cover" src="teleconsulta_acolhimento.jpg" onerror="if(!this.dataset.retried){this.dataset.retried=1;this.src='assets/teleconsulta_acolhimento.jpg';}else{this.onerror=null;this.src='https://lh3.googleusercontent.com/aida-public/AB6AXuD4iZ9bnYDsXSdu6Q4HjdklV6q0NKVUsf8Tds0rM1bk63O5acCs4W8w9GwWhZK3ENtRjGR47EMHHFjWsuVx05eb7j45NfrhybsVKp4jxQpOVkfQvNeKSqTXUgqn-zLedhCMXdMQ7T7-nCZUg76Zy1ey_k2w8rG4Q2jiFnE-ick_aKGGJapGWLtjO8qbZ1U17WKiDzAEr6t9Od8jvi1o8lNTluZR7jHzcycwb0K06nK-';}"><div class="absolute inset-0 bg-gradient-to-t from-stone-900/75 via-stone-900/20 to-transparent"></div><div class="relative z-10 p-5 text-white"><div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/20 backdrop-blur-md border border-white/30 text-white text-xs font-semibold mb-2"><span class="size-2 rounded-full bg-emerald-400 animate-pulse"></span>Captação Acústica em Alta Fidelidade (16kHz Mono)</div><h4 class="text-lg font-serif font-bold text-white">Atendimento Terapêutico em Tempo Real</h4><p class="text-xs text-stone-200 mt-1 leading-relaxed">O profissional mantém foco absoluto na escuta e vínculo terapêutico enquanto a IA processa sínteses estruturadas sob sigilo máximo.</p></div></div><div class="lg:col-span-6 flex flex-col justify-between rounded-2xl border border-surface-200 bg-surface-50 p-5"><div class="flex items-center justify-between pb-3 border-b border-surface-200"><div class="flex items-center gap-3"><div class="size-10 rounded-full bg-gold-100 flex items-center justify-center text-gold-700 font-bold shrink-0">MC</div><div><h4 class="font-bold text-stone-900 text-sm">Mariana Costa — Sessão #14</h4><p class="text-xs text-stone-500">Terapia Integrativa • 24 Out 2026 • Teleconsulta Online</p></div></div><span class="px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 text-xs font-bold flex items-center gap-1.5 animate-pulse"><span class="size-2 rounded-full bg-rose-600"></span>48:12 Gravando</span></div><div class="my-4 space-y-3 text-xs"><div class="p-3 rounded-xl bg-white border border-surface-200 shadow-sm"><span class="text-[11px] font-bold text-gold-700 block mb-1">Mariana (Paciente):</span><p class="text-stone-700 leading-relaxed">"Percebi que toda vez que sou cobrada no trabalho por um prazo apertado, sinto aquela palpitação no peito e acabo procrastinando por medo do resultado..."</p></div><div class="p-3 rounded-xl bg-gold-50/60 border border-gold-200"><span class="text-[11px] font-bold text-stone-800 block mb-1">Terapeuta:</span><p class="text-stone-700 leading-relaxed">"Vamos analisar esse ciclo: o gatilho da cobrança ativa a crença sobre perfeccionismo, gerando ansiedade fisiológica. Notou diferença ao aplicar a pausa consciente?"</p></div></div><div class="p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between text-xs text-emerald-900"><span class="flex items-center gap-2 font-medium"><svg class="lucide lucide-sparkles text-emerald-600" fill="none" height="15" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="15" xmlns="http://www.w3.org/2000/svg"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"></path><circle cx="4" cy="20" r="2"></circle></svg>Síntese SOAP gerada automaticamente</span><span class="font-bold text-emerald-700">Pronto para o Prontuário</span></div></div></div><div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4 pt-3 border-t border-surface-200 text-xs text-stone-700"><div class="flex items-start gap-2.5 p-3 rounded-2xl bg-surface-50 border border-surface-200"><svg class="lucide lucide-mic size-4 text-gold-600 shrink-0 mt-0.5" fill="none" height="24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M12 19v3"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><rect height="13" rx="3" width="6" x="9" y="2"></rect></svg><div class=""><strong class="text-stone-900 block mb-0.5">Sessões Clínicas Completas</strong>Captação contínua de 50min a 2h sem interrupções ou cortes.</div></div><div class="flex items-start gap-2.5 p-3 rounded-2xl bg-surface-50 border border-surface-200"><svg class="lucide lucide-sparkles size-4 text-gold-600 shrink-0 mt-0.5" fill="none" height="24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"></path><circle cx="4" cy="20" r="2"></circle></svg><div class=""><strong class="text-stone-900 block mb-0.5">IA Gemini Especializada</strong>Distingue terapeuta e paciente com pontuação e termos técnicos exatos.</div></div><div class="flex items-start gap-2.5 p-3 rounded-2xl bg-surface-50 border border-surface-200"><svg class="lucide lucide-shield-check size-4 text-emerald-600 shrink-0 mt-0.5" fill="none" height="24" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg><div class=""><strong class="text-stone-900 block mb-0.5">Isolado &amp; Confidencial</strong>Gravações cifradas sob tutela exclusiva, em total acordo com o CFP.</div></div></div></div></div>
+</div>
+</section>
+<!-- BARRA DE MÉTRICAS -->
+<section class="py-12 bg-white border-b border-surface-200">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+<div>
+<p class="text-3xl sm:text-4xl font-serif font-bold text-gold-600">+1.400</p>
+<p class="text-xs sm:text-sm text-stone-600 mt-1 font-medium">Terapeutas e Clínicos Ativos</p>
+</div>
+<div>
+<p class="text-3xl sm:text-4xl font-serif font-bold text-gold-600">+65.000h</p>
+<p class="text-xs sm:text-sm text-stone-600 mt-1 font-medium">Economizadas em Digitação</p>
+</div>
+<div>
+<p class="text-3xl sm:text-4xl font-serif font-bold text-gold-600">100%</p>
+<p class="text-xs sm:text-sm text-stone-600 mt-1 font-medium">Conforme Resolução CFP</p>
+</div>
+<div>
+<p class="text-3xl sm:text-4xl font-serif font-bold text-gold-600">Zero</p>
+<p class="text-xs sm:text-sm text-stone-600 mt-1 font-medium">Acesso de Terceiros aos Prontuários</p>
+</div>
+</div>
+</div>
+</section>
+<!-- O CONSULTÓRIO INTEGRADO -->
+<section class="py-20 md:py-28 bg-surface-50 border-b border-surface-200" id="como-funciona">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="text-center max-w-3xl mx-auto mb-16">
+<h2 class="text-xs font-bold uppercase tracking-widest text-gold-700 mb-2">Visão Geral do Seu Setting</h2>
+<h3 class="text-3xl sm:text-4xl font-serif font-bold text-stone-900">
+          Painel Geral Clínico Completo
+        </h3>
+<p class="mt-4 text-stone-600 text-sm sm:text-base leading-relaxed">
+          Tudo o que acontece no seu consultório organizado em uma interface clara, limpa e pensada para a rotina de terapeutas, psicanalistas e psicólogos.
+        </p>
+</div>
+<!-- Dashboard Visual Preview -->
+<div class="max-w-5xl mx-auto rounded-3xl overflow-hidden border border-surface-200 card-clean p-6">
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+<div class="p-4 rounded-2xl bg-surface-50 border border-surface-200">
+<span class="text-xs text-stone-500 font-medium">Casos Ativos</span>
+<p class="text-2xl font-bold font-serif text-stone-900 mt-1">28 Pacientes</p>
+<span class="text-[11px] text-emerald-600 font-semibold mt-1 inline-block">↑ 4 novos este mês</span>
+</div>
+<div class="p-4 rounded-2xl bg-surface-50 border border-surface-200">
+<span class="text-xs text-stone-500 font-medium">Horas Gravadas &amp; Transcritas</span>
+<p class="text-2xl font-bold font-serif text-stone-900 mt-1">114 Horas</p>
+<span class="text-[11px] text-gold-700 font-semibold mt-1 inline-block">100% Cifradas em Cofre</span>
+</div>
+<div class="p-4 rounded-2xl bg-surface-50 border border-surface-200">
+<span class="text-xs text-stone-500 font-medium">Status do Cofre</span>
+<p class="text-2xl font-bold font-serif text-emerald-600 mt-1 flex items-center gap-1.5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="shield-check" aria-hidden="true" class="lucide lucide-shield-check size-6 text-emerald-600"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg>
+              Ativo &amp; Blindado
+            </p>
+<span class="text-[11px] text-stone-500 mt-1 inline-block">AES-256 Zero-Knowledge</span>
+</div>
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-3 border-t border-surface-200 text-xs text-stone-700">
+<div class="p-3 rounded-xl bg-surface-100 border border-surface-200">
+<span class="font-bold text-stone-900 block mb-1 flex items-center gap-1.5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="bar-chart-3" aria-hidden="true" class="lucide lucide-bar-chart-3 size-4 text-gold-600"><path d="M3 3v16a2 2 0 0 0 2 2h16"></path><path d="M18 17V9"></path><path d="M13 17V5"></path><path d="M8 17v-3"></path></svg>
+              Sessões Mês a Mês
+            </span>
+            Acompanhe o volume real de atendimentos realizados e evoluções clínicas registradas.
+          </div>
+<div class="p-3 rounded-xl bg-surface-100 border border-surface-200">
+<span class="font-bold text-stone-900 block mb-1 flex items-center gap-1.5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="wallet" aria-hidden="true" class="lucide lucide-wallet size-4 text-gold-600"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"></path><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"></path></svg>
+              Faturamento &amp; Honorários
+            </span>
+            Controle honorários por sessão, pendências e recibos sem misturar finanças com prontuários.
+          </div>
+<div class="p-3 rounded-xl bg-surface-100 border border-surface-200">
+<span class="font-bold text-stone-900 block mb-1 flex items-center gap-1.5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="clock" aria-hidden="true" class="lucide lucide-clock size-4 text-gold-600"><path d="M12 6v6l4 2"></path><circle cx="12" cy="12" r="10"></circle></svg>
+              Agenda Sincronizada
+            </span>
+            Integração contínua com Google Agenda e lembretes automáticos para seus pacientes.
+          </div>
+</div>
+</div>
+</div>
+</section>
+<!-- MODELOS CLÍNICOS E CFP -->
+<section class="py-20 md:py-28 bg-white border-b border-surface-200" id="modelos">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="text-center max-w-3xl mx-auto mb-16">
+<h2 class="text-xs font-bold uppercase tracking-widest text-gold-700 mb-2">Conformidade Documental</h2>
+<h3 class="text-3xl sm:text-4xl font-serif font-bold text-stone-900">
+          Formulários Oficiais e Normas do CFP
+        </h3>
+<p class="mt-4 text-stone-600 text-sm sm:text-base leading-relaxed">
+          Evite riscos éticos e jurídicos. O PSi 4.0 já vem pré-configurado com os principais modelos e relatórios exigidos pela legislação e pelas boas práticas de consultório.
+        </p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+<!-- Card 1 -->
+<div class="card-clean rounded-3xl p-8 flex flex-col justify-between">
+<div>
+<div class="size-12 rounded-2xl bg-gold-100 text-gold-700 flex items-center justify-center mb-6">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="file-text" aria-hidden="true" class="lucide lucide-file-text size-6"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M10 9H8"></path><path d="M16 13H8"></path><path d="M16 17H8"></path></svg>
+</div>
+<h4 class="text-xl font-serif font-bold text-stone-900">Evolução Clínica SOAP &amp; DAP</h4>
+<p class="mt-3 text-stone-600 text-sm leading-relaxed">
+              Estruturas padronizadas internacionalmente para registro de sintomas subjetivos, dados objetivos, análise clínica e plano terapêutico.
+            </p>
+</div>
+<ul class="mt-6 pt-6 border-t border-surface-200 space-y-2.5 text-xs text-stone-700 font-medium">
+<li class="flex items-center gap-2.5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check size-4 text-emerald-600"><path d="M20 6 9 17l-5-5"></path></svg>
+              Auto-preenchimento por IA assistida
+            </li>
+<li class="flex items-center gap-2.5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check size-4 text-emerald-600"><path d="M20 6 9 17l-5-5"></path></svg>
+              Assinatura digital e carimbo de data/hora
+            </li>
+</ul>
+</div>
+<!-- Card 2 -->
+<div class="card-clean rounded-3xl p-8 flex flex-col justify-between">
+<div>
+<div class="size-12 rounded-2xl bg-gold-100 text-gold-700 flex items-center justify-center mb-6">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="scale" aria-hidden="true" class="lucide lucide-scale size-6"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="M7 21h10"></path><path d="M12 3v18"></path><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"></path></svg>
+</div>
+<h4 class="text-xl font-serif font-bold text-stone-900">Resoluções CFP 01/2009 e 004/2020</h4>
+<p class="mt-3 text-stone-600 text-sm leading-relaxed">
+              Total aderência às exigências do Conselho Federal de Psicologia para registro documental decorrente da prestação de serviços psicológicos presenciais e online.
+            </p>
+</div>
+<ul class="mt-6 pt-6 border-t border-surface-200 space-y-2.5 text-xs text-stone-700 font-medium">
+<li class="flex items-center gap-2.5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check size-4 text-emerald-600"><path d="M20 6 9 17l-5-5"></path></svg>
+              Guarda obrigatória de 5 anos em cofre blindado
+            </li>
+<li class="flex items-center gap-2.5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check size-4 text-emerald-600"><path d="M20 6 9 17l-5-5"></path></svg>
+              Exportação oficial em PDF auditável com 1 clique
+            </li>
+</ul>
+</div>
+<!-- Card 3 -->
+<div class="card-clean rounded-3xl p-8 flex flex-col justify-between">
+<div>
+<div class="size-12 rounded-2xl bg-gold-100 text-gold-700 flex items-center justify-center mb-6">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="clipboard-check" aria-hidden="true" class="lucide lucide-clipboard-check size-6"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><path d="m9 14 2 2 4-4"></path></svg>
+</div>
+<h4 class="text-xl font-serif font-bold text-stone-900">Termos, TCLE &amp; Contratos</h4>
+<p class="mt-3 text-stone-600 text-sm leading-relaxed">
+              Modelos de Termo de Consentimento Livre e Esclarecido (TCLE) para teleatendimento, contratos terapêuticos e política de sigilo prontos para envio.
+            </p>
+</div>
+<ul class="mt-6 pt-6 border-t border-surface-200 space-y-2.5 text-xs text-stone-700 font-medium">
+<li class="flex items-center gap-2.5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check size-4 text-emerald-600"><path d="M20 6 9 17l-5-5"></path></svg>
+              Assinatura eletrônica direto pelo celular do paciente
+            </li>
+<li class="flex items-center gap-2.5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check size-4 text-emerald-600"><path d="M20 6 9 17l-5-5"></path></svg>
+              Arquivo vinculado diretamente à ficha do paciente
+            </li>
+</ul>
+</div>
+</div>
+</div>
+</section>
+<!-- SEGURANÇA E COFRE ZERO-KNOWLEDGE -->
+<section class="py-20 md:py-28 bg-surface-50 border-b border-surface-200" id="seguranca">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+<div>
+<div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-emerald-300 bg-emerald-50 text-emerald-800 text-xs font-semibold mb-4">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="lock" aria-hidden="true" class="lucide lucide-lock size-3.5 text-emerald-600"><rect height="11" rx="2" ry="2" width="18" x="3" y="11"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+            Arquitetura de Segurança de Nível Bancário
+          </div>
+<h3 class="text-3xl sm:text-4xl font-serif font-bold text-stone-900 leading-tight">
+            Nem mesmo nós temos acesso aos dados clínicos dos seus pacientes
+          </h3>
+<p class="mt-4 text-stone-600 text-sm sm:text-base leading-relaxed">
+            O PSi 4.0 opera sob o conceito de <strong>Criptografia Zero-Knowledge (AES-256)</strong>. Os dados e transcrições são cifrados antes de serem transmitidos para o servidor. Somente a sua chave de segurança clínica tem o poder de decodificar as anotações.
+          </p>
+<div class="mt-8 space-y-4">
+<div class="flex items-start gap-3">
+<div class="size-8 rounded-xl bg-white border border-surface-200 flex items-center justify-center text-emerald-600 shrink-0 mt-0.5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="shield-check" aria-hidden="true" class="lucide lucide-shield-check size-4"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg>
+</div>
+<div>
+<h4 class="font-bold text-stone-900 text-sm">LGPD em Saúde e CFP em Total Conformidade</h4>
+<p class="text-stone-600 text-xs mt-0.5">Tratamento de dados sensíveis em conformidade rigorosa com o art. 11 da LGPD e o Código de Ética Profissional do Psicólogo.</p>
+</div>
+</div>
+<div class="flex items-start gap-3">
+<div class="size-8 rounded-xl bg-white border border-surface-200 flex items-center justify-center text-emerald-600 shrink-0 mt-0.5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="database" aria-hidden="true" class="lucide lucide-database size-4"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M3 5V19A9 3 0 0 0 21 19V5"></path><path d="M3 12A9 3 0 0 0 21 12"></path></svg>
+</div>
+<div>
+<h4 class="font-bold text-stone-900 text-sm">Backup Automático Diário e Redundante</h4>
+<p class="text-stone-600 text-xs mt-0.5">Seus registros armazenados com redundância em servidores Google Cloud com 99.99% de disponibilidade.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="rounded-3xl bg-stone-900 text-white p-8 border border-stone-800 shadow-2xl relative overflow-hidden">
+<div class="flex items-center justify-between pb-6 border-b border-stone-800">
+<div class="flex items-center gap-3">
+<div class="size-3 rounded-full bg-emerald-500 animate-pulse"></div>
+<span class="text-xs font-mono text-stone-300">PROTOCOLO DE SEGURANÇA ATIVO</span>
+</div>
+<span class="text-xs font-mono text-emerald-400 bg-emerald-950/80 px-2.5 py-1 rounded-md border border-emerald-800">AES-256-GCM</span>
+</div>
+<div class="py-6 space-y-3 font-mono text-xs">
+<div class="p-3 rounded-xl bg-stone-950/80 border border-stone-800">
+<span class="text-stone-400 block mb-1">// Hash Criptográfico do Prontuário</span>
+<p class="text-gold-400 break-all select-all">e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</p>
+</div>
+<div class="p-3 rounded-xl bg-stone-950/80 border border-stone-800 flex items-center justify-between">
+<span class="text-stone-400">Auditoria Imutável (Timestamp):</span>
+<span class="text-emerald-400">Ativo • Conforme CFP 01/2009</span>
+</div>
+</div>
+<p class="text-stone-400 text-xs leading-relaxed pt-2">
+            Mesmo em caso de mandado ou fiscalização, os dados só podem ser visualizados pelo titular da chave clínica individualizada.
+          </p>
+</div>
+</div>
+</div>
+</section>
+<!-- PLANOS E PREÇOS -->
+<section class="py-20 md:py-28 bg-white border-b border-surface-200" id="planos">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="text-center max-w-3xl mx-auto mb-16">
+<h2 class="text-xs font-bold uppercase tracking-widest text-gold-700 mb-2">Investimento Transparente</h2>
+<h3 class="text-3xl sm:text-4xl font-serif font-bold text-stone-900">
+          Planos sob medida para o seu momento clínico
+        </h3>
+<p class="mt-4 text-stone-600 text-sm sm:text-base leading-relaxed">
+          Sem taxas de adesão, sem multas contratuais. Comece hoje com 7 dias de garantia incondicional.
+        </p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+<!-- Plano Mensal -->
+<div class="card-clean rounded-3xl p-8 flex flex-col justify-between">
+<div>
+<div class="flex items-center justify-between">
+<span class="text-xs font-bold uppercase tracking-wider text-stone-500">Plano Mensal Flexível</span>
+<span class="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-surface-100 text-stone-700">Sem fidelidade</span>
+</div>
+<h4 class="text-2xl font-serif font-bold text-stone-900 mt-4">Mensal Clínico</h4>
+<div class="mt-4 flex items-baseline gap-1">
+<span class="text-4xl font-serif font-bold text-stone-900">R$ 37,49</span>
+<span class="text-stone-500 text-xs">/mês</span>
+</div>
+<p class="mt-3 text-stone-600 text-xs leading-relaxed">
+              Ideal para quem quer testar e manter total liberdade de cancelamento mês a mês.
+            </p>
+<ul class="mt-8 space-y-3 text-xs text-stone-700">
+<li class="flex items-center gap-2.5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check size-4 text-emerald-600"><path d="M20 6 9 17l-5-5"></path></svg>
+                Pacientes ilimitados cadastrados
+              </li>
+<li class="flex items-center gap-2.5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check size-4 text-emerald-600"><path d="M20 6 9 17l-5-5"></path></svg>
+                Transcrição por IA das sessões
+              </li>
+<li class="flex items-center gap-2.5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check size-4 text-emerald-600"><path d="M20 6 9 17l-5-5"></path></svg>
+                Modelos SOAP e normas do CFP
+              </li>
+<li class="flex items-center gap-2.5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check size-4 text-emerald-600"><path d="M20 6 9 17l-5-5"></path></svg>
+                Cofre criptografado com Zero-Knowledge
+              </li>
+</ul>
+</div>
+<a class="mt-8 w-full py-3.5 px-4 rounded-xl border border-stone-300 bg-white hover:bg-stone-50 text-stone-900 font-bold text-xs uppercase tracking-wider text-center block transition-all shadow-sm" href="https://wa.me/5521979850079?text=Ol%C3%A1!%20Gostaria%20de%20assinar%20o%20Plano%20Mensal%20de%20R$%2037,49%20no%20PSi%204.0" rel="noopener noreferrer" target="_blank">
+            Escolher Plano Mensal (R$ 37,49)
+          </a>
+</div>
+<!-- Plano Anual Promocional -->
+<div class="card-featured rounded-3xl p-8 flex flex-col justify-between relative">
+<div class="absolute -top-3.5 right-6 px-3.5 py-1 rounded-full bg-gold-600 text-white font-bold text-[11px] shadow-md uppercase tracking-wider">
+            33% OFF • Mais Escolhido
+          </div>
+<div>
+<div class="flex items-center justify-between">
+<span class="text-xs font-bold uppercase tracking-wider text-gold-700">Plano Anual Especial</span>
+</div>
+<h4 class="text-2xl font-serif font-bold text-stone-900 mt-4">Anual com Economia</h4>
+<div class="mt-4 flex items-baseline gap-1.5">
+<span class="text-4xl font-serif font-bold text-gold-700">R$ 24,99</span>
+<span class="text-stone-500 text-xs">/mês (12x R$ 24,99 ou R$ 299,99/ano)</span>
+</div>
+<p class="mt-3 text-stone-600 text-xs leading-relaxed">
+              R$ 299,99 cobrados anualmente (ou em até 12x de R$ 24,99). Economia de 33% (R$ 150 a menos) frente a 12 mensalidades.
+            </p>
+<ul class="mt-8 space-y-3 text-xs text-stone-700">
+<li class="flex items-center gap-2.5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check size-4 text-gold-600"><path d="M20 6 9 17l-5-5"></path></svg>
+<strong>Tudo do plano mensal</strong>
+</li>
+<li class="flex items-center gap-2.5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check size-4 text-gold-600"><path d="M20 6 9 17l-5-5"></path></svg>
+                Suporte prioritário via WhatsApp
+              </li>
+<li class="flex items-center gap-2.5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check size-4 text-gold-600"><path d="M20 6 9 17l-5-5"></path></svg>
+                Migração assistida dos seus pacientes
+              </li>
+<li class="flex items-center gap-2.5">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="check" aria-hidden="true" class="lucide lucide-check size-4 text-gold-600"><path d="M20 6 9 17l-5-5"></path></svg>
+                Atualizações contínuas de IA incluídas
+              </li>
+</ul>
+</div>
+<a class="mt-8 w-full py-3.5 px-4 rounded-xl bg-gold-600 hover:bg-gold-700 text-white font-bold text-xs uppercase tracking-wider text-center block transition-all shadow-md shadow-gold-600/20" href="https://wa.me/5521979850079?text=Ol%C3%A1!%20Gostaria%20de%20aproveitar%20o%20Plano%20Anual%20de%20R$%20299,99%20no%20PSi%204.0" rel="noopener noreferrer" target="_blank">
+            Garantir Plano Anual por R$ 299,99
+          </a>
+</div>
+</div>
+</div>
+</section>
+<!-- PERGUNTAS FREQUENTES (FAQ) -->
+<section class="py-20 md:py-28 bg-surface-50 border-b border-surface-200" id="faq">
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="text-center mb-16">
+<h2 class="text-xs font-bold uppercase tracking-widest text-gold-700 mb-2">Tire suas Dúvidas</h2>
+<h3 class="text-3xl sm:text-4xl font-serif font-bold text-stone-900">
+          Perguntas Frequentes de Terapeutas
+        </h3>
+</div>
+<div class="space-y-4">
+<!-- Item 1 -->
+<div class="card-clean rounded-2xl overflow-hidden">
+<button class="w-full p-6 text-left flex items-center justify-between gap-4 font-bold text-stone-900 text-sm sm:text-base faq-btn">
+<span>O uso da gravação e IA cumpre o Código de Ética do CFP?</span>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="chevron-down" aria-hidden="true" class="lucide lucide-chevron-down size-5 text-gold-600 shrink-0 transition-transform"><path d="m6 9 6 6 6-6"></path></svg>
+</button>
+<div class="px-6 pb-6 text-stone-600 text-xs sm:text-sm leading-relaxed border-t border-surface-100 pt-4 hidden faq-content">
+            Sim. A Resolução CFP nº 004/2020 e a Resolução CFP nº 01/2009 exigem a obtenção de consentimento prévio do paciente (TCLE) e a adoção de medidas tecnológicas hábeis para salvaguardar o sigilo profissional. O PSi 4.0 fornece o modelo de termo já pronto para assinatura e aplica criptografia avançada AES-256 no armazenamento.
+          </div>
+</div>
+<!-- Item 2 -->
+<div class="card-clean rounded-2xl overflow-hidden">
+<button class="w-full p-6 text-left flex items-center justify-between gap-4 font-bold text-stone-900 text-sm sm:text-base faq-btn">
+<span>O que acontece se eu quiser cancelar ou trocar de sistema?</span>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="chevron-down" aria-hidden="true" class="lucide lucide-chevron-down size-5 text-gold-600 shrink-0 transition-transform"><path d="m6 9 6 6 6-6"></path></svg>
+</button>
+<div class="px-6 pb-6 text-stone-600 text-xs sm:text-sm leading-relaxed border-t border-surface-100 pt-4 hidden faq-content">
+            Seus dados pertencem unicamente a você. Você pode exportar todos os prontuários, evoluções e históricos em formato PDF oficial ou arquivo estruturado a qualquer momento, com apenas um clique, sem qualquer retenção indevida.
+          </div>
+</div>
+<!-- Item 3 -->
+<div class="card-clean rounded-2xl overflow-hidden">
+<button class="w-full p-6 text-left flex items-center justify-between gap-4 font-bold text-stone-900 text-sm sm:text-base faq-btn">
+<span>A IA substitui a avaliação do terapeuta?</span>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="chevron-down" aria-hidden="true" class="lucide lucide-chevron-down size-5 text-gold-600 shrink-0 transition-transform"><path d="m6 9 6 6 6-6"></path></svg>
+</button>
+<div class="px-6 pb-6 text-stone-600 text-xs sm:text-sm leading-relaxed border-t border-surface-100 pt-4 hidden faq-content">
+            De forma alguma. A inteligência artificial atua exclusivamente como assistente operacional de transcrição e síntese documental preliminar. A decisão clínica, o diagnóstico, as intervenções e a aprovação final de qualquer registro no prontuário continuam sendo atribuições intransferíveis do profissional de saúde mental.
+          </div>
+</div>
+<!-- Item 4 -->
+<div class="card-clean rounded-2xl overflow-hidden">
+<button class="w-full p-6 text-left flex items-center justify-between gap-4 font-bold text-stone-900 text-sm sm:text-base faq-btn">
+<span>Funciona em celular, tablet e computador?</span>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="chevron-down" aria-hidden="true" class="lucide lucide-chevron-down size-5 text-gold-600 shrink-0 transition-transform"><path d="m6 9 6 6 6-6"></path></svg>
+</button>
+<div class="px-6 pb-6 text-stone-600 text-xs sm:text-sm leading-relaxed border-t border-surface-100 pt-4 hidden faq-content">
+            Sim. O sistema é 100% responsivo e pode ser acessado em navegadores no computador (Mac, Windows, Linux) e instalado diretamente no celular (iPhone e Android) como aplicativo sem ocupar memória excessiva.
+          </div>
+</div>
+</div>
+</div>
+</section>
+<!-- CTA FINAL COM GARANTIA -->
+<section class="py-20 md:py-28 bg-gradient-to-b from-surface-50 to-white text-center">
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="size-16 rounded-3xl bg-gold-100 text-gold-700 flex items-center justify-center mx-auto mb-6 shadow-sm">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="shield-check" aria-hidden="true" class="lucide lucide-shield-check size-8"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg>
+</div>
+<h3 class="text-3xl sm:text-5xl font-serif font-bold text-stone-900 tracking-tight">
+        Experimente por 7 dias sem custo algum
+      </h3>
+<p class="mt-4 text-stone-600 text-sm sm:text-base max-w-2xl mx-auto leading-relaxed">
+        Comprove na prática como economizar até 10 horas semanais em digitação e ter seus prontuários 100% protegidos e em conformidade.
+      </p>
+<div class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+<a class="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-8 py-4 rounded-2xl font-bold text-sm bg-gold-600 hover:bg-gold-700 text-white shadow-lg shadow-gold-600/20 hover:scale-[1.02] transition-all" href="https://wa.me/5521979850079?text=Ol%C3%A1!%20Gostaria%20de%20ativar%20meus%207%20dias%20gr%C3%A1tis%20no%20PSi%204.0" rel="noopener noreferrer" target="_blank">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="play-circle" aria-hidden="true" class="lucide lucide-play-circle size-5"><path d="M9 9.003a1 1 0 0 1 1.517-.859l4.997 2.997a1 1 0 0 1 0 1.718l-4.997 2.997A1 1 0 0 1 9 14.996z"></path><circle cx="12" cy="12" r="10"></circle></svg>
+<span>Iniciar Meus 7 Dias Grátis</span>
+</a>
+<a class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-4 rounded-2xl font-semibold text-sm border border-stone-300 bg-white hover:bg-stone-50 text-stone-800 transition-all" href="https://wa.me/5521979850079?text=Ol%C3%A1!%20Tenho%20algumas%20d%C3%BAvidas%20sobre%20o%20PSi%204.0" rel="noopener noreferrer" target="_blank">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="message-circle" aria-hidden="true" class="lucide lucide-message-circle size-5 text-gold-600"><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"></path></svg>
+<span>Falar com Consultor</span>
+</a>
+</div>
+<p class="mt-6 text-xs text-stone-500">
+        Sem compromisso. Cancele com 1 clique a qualquer momento.
+      </p>
+</div>
+</section>
+<!-- RODAPÉ INSTITUCIONAL -->
+<footer class="py-12 bg-white border-t border-surface-200 text-xs text-stone-600">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-6">
+<div class="flex items-center gap-3">
+<div class="size-8 rounded-xl bg-gold-600 flex items-center justify-center text-white font-bold">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="brain" aria-hidden="true" class="lucide lucide-brain size-5"><path d="M12 18V5"></path><path d="M15 13a4.17 4.17 0 01-3-4 4.17 4.17 0 01-3 4"></path><path d="M17.707 6.294A3 3 0 1012 5a3 3 0 10-5.707 1.294"></path><path d="M17.996 5.125a4 4 0 012.526 5.77"></path><path d="M18 18a4 4 0 002-7.465"></path><path d="M19.967 17.482a4 4 0 11-7.967.517 4 4 0 11-7.967-.517"></path><path d="M6 18a4 4 0 01-2-7.465"></path><path d="M6.004 5.125a4 4 0 00-2.526 5.77"></path></svg>
+</div>
+<span class="text-stone-900 font-serif font-bold text-sm">PSi 4.0 Tecnologia Clínica</span>
+</div>
+<p class="">© 2026 PSi 4.0. Todos os direitos reservados. Conforme Resoluções CFP 01/2009 e 004/2020 e LGPD.</p>
+<div class="flex items-center gap-6 text-stone-600">
+<a class="hover:text-gold-700 transition-colors" href="#">Termos de Uso</a>
+<a class="hover:text-gold-700 transition-colors" href="#">Privacidade &amp; Sigilo</a>
+<a class="hover:text-gold-700 transition-colors" href="https://wa.me/5521979850079?text=Ol%C3%A1!%20Preciso%20de%20suporte%20no%20PSi%204.0" rel="noopener noreferrer" target="_blank">Suporte WhatsApp</a>
+</div>
+</div>
+</footer>
+<!-- BOTÃO FLUTUANTE DE WHATSAPP -->
+<a aria-label="Falar pelo WhatsApp" class="fixed bottom-6 right-6 z-50 p-4 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white shadow-2xl hover:scale-110 transition-all flex items-center justify-center group" href="https://wa.me/5521979850079?text=Ol%C3%A1!%20Quero%20conhecer%20o%20PSi%204.0" rel="noopener noreferrer" target="_blank">
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" data-lucide="message-circle" aria-hidden="true" class="lucide lucide-message-circle size-7 stroke-[2.2]"><path d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"></path></svg>
+<span class="max-w-0 overflow-hidden whitespace-nowrap group-hover:max-w-xs transition-all duration-300 ease-in-out font-bold text-xs pl-0 group-hover:pl-2">
+      Falar com Especialista
+    </span>
+</a>
+<!-- JAVASCRIPT: ACCORDION DO FAQ -->
+<script>
+    lucide.createIcons();
+
+    document.querySelectorAll('.faq-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const content = btn.nextElementSibling;
+        const icon = btn.querySelector('[data-lucide="chevron-down"]');
+        const isOpen = !content.classList.contains('hidden');
+
+        document.querySelectorAll('.faq-content').forEach(c => c.classList.add('hidden'));
+        document.querySelectorAll('.faq-btn [data-lucide="chevron-down"]').forEach(i => i.style.transform = 'rotate(0deg)');
+
+        if (!isOpen) {
+          content.classList.remove('hidden');
+          if (icon) icon.style.transform = 'rotate(180deg)';
+        }
+      });
+    });
+  </script>
+</body></html>

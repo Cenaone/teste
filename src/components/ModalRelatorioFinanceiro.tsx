@@ -1,0 +1,746 @@
+import React, { useState, useMemo } from 'react';
+import {
+  X,
+  Printer,
+  Send,
+  Copy,
+  Check,
+  FileText,
+  DollarSign,
+  TrendingUp,
+  Clock,
+  CheckCircle2,
+  AlertTriangle,
+  Calendar,
+  Filter,
+  User,
+  CreditCard,
+  Building,
+  ShieldCheck,
+  ArrowUpDown
+} from 'lucide-react';
+import {
+  SessaoClinica,
+  Honorario,
+  Analisando,
+  ModalidadeAtendimento,
+  PerfilAnalista,
+  ConsultorioData
+} from '../types';
+import { formatarMoeda, formatarData, formatarTelefone } from '../utils/helpers';
+
+interface ModalRelatorioFinanceiroProps {
+  aberto: boolean;
+  onFechar: () => void;
+  sessoes: SessaoClinica[];
+  honorarios: Honorario[];
+  analisandos: Analisando[];
+  modalidades: ModalidadeAtendimento[];
+  perfil: PerfilAnalista;
+  consultorio: ConsultorioData;
+  contaUsuario?: any;
+}
+
+export default function ModalRelatorioFinanceiro({
+  aberto,
+  onFechar,
+  sessoes,
+  honorarios,
+  analisandos,
+  modalidades,
+  perfil,
+  consultorio,
+  contaUsuario
+}: ModalRelatorioFinanceiroProps) {
+  if (!aberto) return null;
+
+  // Filtros internos do relatório
+  const [filtroPeriodo, setFiltroPeriodo] = useState<'mes_atual' | 'mes_anterior' | 'ultimos_3' | 'ano_atual' | 'todos'>('mes_atual');
+  const [pacienteId, setPacienteId] = useState<string>('todos');
+  const [filtroStatus, setFiltroStatus] = useState<'todos' | 'pago' | 'pendente' | 'atrasado'>('todos');
+  const [copiado, setCopiado] = useState(false);
+
+  // Datas de referência
+  const hoje = new Date();
+  const hojeStr = hoje.toISOString().slice(0, 10);
+  const mesAtualStr = hojeStr.slice(0, 7);
+  const mesAnteriorDate = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+  const mesAnteriorStr = mesAnteriorDate.toISOString().slice(0, 7);
+  const anoAtualStr = `${hoje.getFullYear()}`;
+
+  // Helper de filtragem de data
+  const dataPertenceAoPeriodo = (dataIso?: string): boolean => {
+    if (!dataIso) return false;
+    if (filtroPeriodo === 'todos') return true;
+    if (filtroPeriodo === 'mes_atual') return dataIso.startsWith(mesAtualStr);
+    if (filtroPeriodo === 'mes_anterior') return dataIso.startsWith(mesAnteriorStr);
+    if (filtroPeriodo === 'ano_atual') return dataIso.startsWith(anoAtualStr);
+    if (filtroPeriodo === 'ultimos_3') {
+      const limite = new Date();
+      limite.setMonth(limite.getMonth() - 3);
+      return new Date(dataIso) >= limite;
+    }
+    return true;
+  };
+
+  // Label do período
+  const labelPeriodo = useMemo(() => {
+    switch (filtroPeriodo) {
+      case 'mes_atual': {
+        const nomesMeses = [
+          'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+          'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+        ];
+        return `${nomesMeses[hoje.getMonth()]} de ${hoje.getFullYear()}`;
+      }
+      case 'mes_anterior': {
+        const nomesMeses = [
+          'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+          'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+        ];
+        return `${nomesMeses[mesAnteriorDate.getMonth()]} de ${mesAnteriorDate.getFullYear()}`;
+      }
+      case 'ultimos_3':
+        return 'Últimos 3 Meses';
+      case 'ano_atual':
+        return `Ano Vigente (${anoAtualStr})`;
+      case 'todos':
+      default:
+        return 'Período Completo (Histórico Geral)';
+    }
+  }, [filtroPeriodo, mesAnteriorDate, anoAtualStr]);
+
+  // Itens filtrados de Sessões
+  const sessoesFiltradas = useMemo(() => {
+    return sessoes.filter(s => {
+      if (!dataPertenceAoPeriodo(s.data)) return false;
+      if (pacienteId !== 'todos' && s.analisandoId !== pacienteId) return false;
+
+      const isPago = s.pagamentoStatus === 'pago';
+      const isPendente = s.pagamentoStatus === 'pendente' || s.pagamentoStatus === 'parcial';
+      const isAtrasado = isPendente && s.data < hojeStr;
+
+      if (filtroStatus === 'pago' && !isPago) return false;
+      if (filtroStatus === 'pendente' && !isPendente) return false;
+      if (filtroStatus === 'atrasado' && !isAtrasado) return false;
+
+      return true;
+    }).sort((a, b) => b.data.localeCompare(a.data));
+  }, [sessoes, filtroPeriodo, pacienteId, filtroStatus, hojeStr]);
+
+  // Itens filtrados de Honorários
+  const honorariosFiltrados = useMemo(() => {
+    return honorarios.filter(h => {
+      if (!dataPertenceAoPeriodo(h.vencimento)) return false;
+      if (pacienteId !== 'todos' && h.analisandoId !== pacienteId) return false;
+
+      const isPago = h.status === 'pago';
+      const isAtrasado = h.status === 'atrasado' || ((h.status === 'pendente' || h.status === 'parcial') && h.vencimento < hojeStr);
+      // Qualquer cobrança em aberto é considerada pendente de pagamento
+      const isPendente = !isPago;
+
+      if (filtroStatus === 'pago' && !isPago) return false;
+      if (filtroStatus === 'pendente' && !isPendente) return false;
+      if (filtroStatus === 'atrasado' && !isAtrasado) return false;
+
+      return true;
+    }).sort((a, b) => b.vencimento.localeCompare(a.vencimento));
+  }, [honorarios, filtroPeriodo, pacienteId, filtroStatus, hojeStr]);
+
+  // Cálculos matematicamente rigorosos sem duplicidades
+  const metricas = useMemo(() => {
+    let totalPago = 0;
+    let totalNoPrazo = 0;
+    let totalAtrasado = 0;
+    let qtdAtendimentos = 0;
+
+    // Sessões
+    for (const s of sessoesFiltradas) {
+      qtdAtendimentos++;
+      const valor = Number(s.valorCobrado) || 0;
+      if (s.pagamentoStatus === 'pago') {
+        totalPago += valor;
+      } else if (s.pagamentoStatus === 'parcial') {
+        const pago = Number(s.valorPago) || 0;
+        const pendente = Math.max(0, valor - pago);
+        totalPago += pago;
+        if (s.data < hojeStr && pendente > 0) {
+          totalAtrasado += pendente;
+        } else {
+          totalNoPrazo += pendente;
+        }
+      } else {
+        // Pendente integral
+        if (s.data < hojeStr && valor > 0) {
+          totalAtrasado += valor;
+        } else {
+          totalNoPrazo += valor;
+        }
+      }
+    }
+
+    // Honorários Avulsos (não vinculados a sessões já contabilizadas)
+    for (const h of honorariosFiltrados) {
+      if (h.sessaoId && sessoes.some(s => s.id === h.sessaoId)) {
+        continue;
+      }
+      const valor = Number(h.valor) || 0;
+      if (h.status === 'pago') {
+        totalPago += valor;
+      } else if (h.status === 'parcial') {
+        const pago = Number(h.valorPago) || 0;
+        const pendente = Math.max(0, valor - pago);
+        totalPago += pago;
+        if (h.vencimento < hojeStr && pendente > 0) {
+          totalAtrasado += pendente;
+        } else {
+          totalNoPrazo += pendente;
+        }
+      } else {
+        // Pendente ou atrasado
+        if (h.status === 'atrasado' || (h.vencimento < hojeStr && valor > 0)) {
+          totalAtrasado += valor;
+        } else {
+          totalNoPrazo += valor;
+        }
+      }
+    }
+
+    const totalPendente = totalNoPrazo + totalAtrasado;
+    const totalFaturamento = totalPago + totalPendente;
+    const ticketMedio = qtdAtendimentos > 0 ? totalFaturamento / qtdAtendimentos : 0;
+
+    return {
+      totalFaturamento,
+      totalPago,
+      totalNoPrazo,
+      totalAtrasado,
+      totalPendente,
+      qtdAtendimentos,
+      ticketMedio
+    };
+  }, [sessoesFiltradas, honorariosFiltrados, sessoes, hojeStr]);
+
+  // Agrupamento por Paciente
+  const resumoPorPaciente = useMemo(() => {
+    const mapa = new Map<string, { nome: string; sessoes: number; pago: number; pendente: number; total: number }>();
+
+    for (const s of sessoesFiltradas) {
+      const p = analisandos.find(a => a.id === s.analisandoId);
+      const nome = p?.nome || 'Paciente não identificado';
+      const valor = Number(s.valorCobrado) || 0;
+      const pago = s.pagamentoStatus === 'pago' ? valor : s.pagamentoStatus === 'parcial' ? (Number(s.valorPago) || 0) : 0;
+      const pendente = valor - pago;
+
+      const atual = mapa.get(s.analisandoId) || { nome, sessoes: 0, pago: 0, pendente: 0, total: 0 };
+      atual.sessoes += 1;
+      atual.pago += pago;
+      atual.pendente += pendente;
+      atual.total += valor;
+      mapa.set(s.analisandoId, atual);
+    }
+
+    for (const h of honorariosFiltrados) {
+      if (h.sessaoId && sessoes.some(s => s.id === h.sessaoId)) continue;
+      const p = analisandos.find(a => a.id === h.analisandoId);
+      const nome = p?.nome || 'Paciente não identificado';
+      const valor = Number(h.valor) || 0;
+      const pago = h.status === 'pago' ? valor : h.status === 'parcial' ? (Number(h.valorPago) || 0) : 0;
+      const pendente = valor - pago;
+
+      const atual = mapa.get(h.analisandoId) || { nome, sessoes: 0, pago: 0, pendente: 0, total: 0 };
+      atual.pago += pago;
+      atual.pendente += pendente;
+      atual.total += valor;
+      mapa.set(h.analisandoId, atual);
+    }
+
+    return Array.from(mapa.values()).sort((a, b) => b.total - a.total);
+  }, [sessoesFiltradas, honorariosFiltrados, sessoes, analisandos]);
+
+  // Agrupamento por Meio de Pagamento
+  const resumoPorMeio = useMemo(() => {
+    const mapa = new Map<string, number>();
+    for (const s of sessoesFiltradas) {
+      if (s.pagamentoStatus === 'pago') {
+        const meio = s.meioPagamento || 'pix';
+        const valor = Number(s.valorCobrado) || 0;
+        mapa.set(meio, (mapa.get(meio) || 0) + valor);
+      }
+    }
+    for (const h of honorariosFiltrados) {
+      if (h.sessaoId && sessoes.some(s => s.id === h.sessaoId)) continue;
+      if (h.status === 'pago') {
+        const meio = h.meioPagamento || 'pix';
+        const valor = Number(h.valor) || 0;
+        mapa.set(meio, (mapa.get(meio) || 0) + valor);
+      }
+    }
+    return Array.from(mapa.entries());
+  }, [sessoesFiltradas, honorariosFiltrados, sessoes]);
+
+  // Formatação de texto para envio por WhatsApp
+  const mensagemWhatsApp = useMemo(() => {
+    const profissional = perfil.nome || contaUsuario?.nomeCompleto || 'Dr. Roberto Martins';
+    const crp = perfil.registroProfissional || contaUsuario?.crp || '';
+    const pacienteFiltro = pacienteId !== 'todos' ? analisandos.find(a => a.id === pacienteId)?.nome : null;
+
+    let txt = `📊 *RELATÓRIO FINANCEIRO CLÍNICO*\n`;
+    txt += `*${consultorio.nome || 'Consultório de Psicologia & Psicanálise'}*\n`;
+    txt += `👤 Profissional: ${profissional}${crp ? ` (${crp})` : ''}\n`;
+    txt += `🗓️ Período: *${labelPeriodo}*\n`;
+    if (pacienteFiltro) {
+      txt += `👤 Paciente: *${pacienteFiltro}*\n`;
+    }
+    txt += `━━━━━━━━━━━━━━━━━━━━\n`;
+    txt += `💰 *Faturamento Total:* ${formatarMoeda(metricas.totalFaturamento)}\n`;
+    txt += `✅ *Total Recebido (Pago):* ${formatarMoeda(metricas.totalPago)}\n`;
+    txt += `⏳ *A Vencer (No Prazo):* ${formatarMoeda(metricas.totalNoPrazo)}\n`;
+    if (metricas.totalAtrasado > 0) {
+      txt += `⚠️ *Em Atraso (Vencido):* ${formatarMoeda(metricas.totalAtrasado)}\n`;
+    }
+    txt += `📌 *Total em Aberto (A Receber):* ${formatarMoeda(metricas.totalPendente)}\n`;
+    txt += `📈 *Consultas Realizadas:* ${metricas.qtdAtendimentos}\n`;
+    txt += `🎯 *Ticket Médio:* ${formatarMoeda(metricas.ticketMedio)}\n`;
+    txt += `━━━━━━━━━━━━━━━━━━━━\n`;
+
+    if (!pacienteFiltro && resumoPorPaciente.length > 0) {
+      txt += `*Resumo por Paciente:*\n`;
+      resumoPorPaciente.slice(0, 8).forEach(p => {
+        txt += `• ${p.nome}: ${formatarMoeda(p.total)} (${p.sessoes} sessões | ${formatarMoeda(p.pago)} quitado)\n`;
+      });
+      if (resumoPorPaciente.length > 8) {
+        txt += `• ... e mais ${resumoPorPaciente.length - 8} pacientes.\n`;
+      }
+      txt += `━━━━━━━━━━━━━━━━━━━━\n`;
+    }
+
+    txt += `_Relatório gerado em ${formatarData(hojeStr)} via PSi 4.0 - Prontuário Clínico Inteligente._`;
+    return txt;
+  }, [perfil, contaUsuario, consultorio, labelPeriodo, pacienteId, analisandos, metricas, resumoPorPaciente, hojeStr]);
+
+  const enviarWhatsApp = () => {
+    let telefone = '';
+    if (pacienteId !== 'todos') {
+      const p = analisandos.find(a => a.id === pacienteId);
+      if (p?.whatsapp) telefone = p.whatsapp;
+    }
+    if (!telefone && perfil.whatsapp) {
+      telefone = perfil.whatsapp;
+    }
+    const numeroLimpo = telefone.replace(/\D/g, '');
+    const url = numeroLimpo
+      ? `https://wa.me/${numeroLimpo}?text=${encodeURIComponent(mensagemWhatsApp)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(mensagemWhatsApp)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const copiarMensagem = () => {
+    navigator.clipboard.writeText(mensagemWhatsApp);
+    setCopiado(true);
+    setTimeout(() => setCopiado(false), 2500);
+  };
+
+  const dispararImpressao = () => {
+    window.print();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-sm overflow-y-auto print:p-0 print:bg-white print:static">
+      <div className="relative w-full max-w-4xl bg-card border border-border rounded-3xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden print:max-h-none print:border-none print:shadow-none print:w-full print:rounded-none">
+        
+        {/* Cabeçalho de Controle (Ocultado na Impressão) */}
+        <div className="flex items-center justify-between p-5 border-b border-border bg-muted/20 print:hidden">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2.5 rounded-xl bg-primary/10 text-primary">
+              <FileText className="size-5" />
+            </div>
+            <div>
+              <h3 className="text-lg font-serif font-bold text-foreground flex items-center gap-2">
+                Relatório Financeiro Completo
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary/10 text-primary border border-primary/20">
+                  Conciliação & Auditoria
+                </span>
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Demonstrativo consolidado de faturamento, consultas pagas e valores a receber.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={enviarWhatsApp}
+              className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+              title="Compartilhar resumo financeiro via WhatsApp"
+            >
+              <Send className="size-3.5" />
+              <span>Enviar WhatsApp</span>
+            </button>
+
+            <button
+              onClick={dispararImpressao}
+              className="px-3.5 py-1.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+              title="Imprimir ou Salvar em PDF"
+            >
+              <Printer className="size-3.5" />
+              <span>Imprimir / Salvar PDF</span>
+            </button>
+
+            <button
+              onClick={onFechar}
+              className="p-1.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
+              title="Fechar"
+            >
+              <X className="size-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Barra de Filtros (Ocultada na Impressão) */}
+        <div className="p-4 bg-muted/10 border-b border-border/60 flex flex-wrap items-center gap-3 text-xs print:hidden">
+          <div className="flex items-center gap-1.5">
+            <Calendar className="size-4 text-muted-foreground" />
+            <span className="font-semibold text-foreground">Período:</span>
+            <select
+              value={filtroPeriodo}
+              onChange={e => setFiltroPeriodo(e.target.value as any)}
+              className="px-2.5 py-1 rounded-lg border border-border bg-card text-foreground font-medium"
+            >
+              <option value="mes_atual">Mês Atual ({mesAtualStr})</option>
+              <option value="mes_anterior">Mês Anterior ({mesAnteriorStr})</option>
+              <option value="ultimos_3">Últimos 3 Meses</option>
+              <option value="ano_atual">Ano Vigente ({anoAtualStr})</option>
+              <option value="todos">Todos os Períodos (Histórico Completo)</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <User className="size-4 text-muted-foreground" />
+            <span className="font-semibold text-foreground">Paciente:</span>
+            <select
+              value={pacienteId}
+              onChange={e => setPacienteId(e.target.value)}
+              className="px-2.5 py-1 rounded-lg border border-border bg-card text-foreground font-medium max-w-[200px]"
+            >
+              <option value="todos">Todos os Pacientes</option>
+              {analisandos.map(a => (
+                <option key={a.id} value={a.id}>{a.nome}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <Filter className="size-4 text-muted-foreground" />
+            <span className="font-semibold text-foreground">Status:</span>
+            <select
+              value={filtroStatus}
+              onChange={e => setFiltroStatus(e.target.value as any)}
+              className="px-2.5 py-1 rounded-lg border border-border bg-card text-foreground font-medium"
+            >
+              <option value="todos">Todos os Status</option>
+              <option value="pago">Apenas Pagos</option>
+              <option value="pendente">Apenas Pendentes</option>
+              <option value="atrasado">Em Atraso / Vencidos</option>
+            </select>
+          </div>
+
+          <div className="ml-auto">
+            <button
+              onClick={copiarMensagem}
+              className="px-2.5 py-1 rounded-lg border border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground font-medium transition-all flex items-center gap-1 cursor-pointer"
+            >
+              {copiado ? (
+                <>
+                  <Check className="size-3 text-emerald-500" />
+                  <span className="text-emerald-600 font-semibold">Copiado!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="size-3" />
+                  <span>Copiar Resumo</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Conteúdo Imprimível do Relatório */}
+        <div id="area-relatorio-financeiro" className="p-6 sm:p-8 space-y-6 overflow-y-auto flex-1 text-foreground print:p-0 print:overflow-visible">
+          
+          {/* Cabeçalho Profissional Clínico (Folha A4) */}
+          <div className="border-b-2 border-stone-800 pb-5">
+            <div className="flex justify-between items-start gap-4">
+              <div>
+                <h1 className="text-xl sm:text-2xl font-serif font-bold text-stone-900 tracking-tight">
+                  {consultorio.nome || 'Consultório de Psicoterapia & Atendimento Clínico'}
+                </h1>
+                <p className="text-xs font-semibold text-stone-700 mt-0.5">
+                  Demonstrativo Financeiro & Relatório de Honorários
+                </p>
+                <div className="text-[11px] text-stone-600 space-y-0.5 mt-2">
+                  <p><strong>Profissional Responsável:</strong> {perfil.nome || contaUsuario?.nomeCompleto || 'Dr. Roberto Martins'} {perfil.registroProfissional && `• ${perfil.registroProfissional}`}</p>
+                  {consultorio.endereco && <p><strong>Endereço:</strong> {consultorio.endereco} {consultorio.cidade && `• ${consultorio.cidade}`}</p>}
+                  {consultorio.segmento && <p><strong>Segmento:</strong> {consultorio.segmento}</p>}
+                  {consultorio.whatsapp && <p><strong>Contato:</strong> {formatarTelefone(consultorio.whatsapp)}</p>}
+                </div>
+              </div>
+
+              <div className="text-right shrink-0">
+                <span className="inline-block px-3 py-1 bg-stone-100 border border-stone-300 rounded-md text-[11px] font-bold text-stone-900 uppercase tracking-wider">
+                  {labelPeriodo}
+                </span>
+                <p className="text-[10px] text-stone-500 mt-1">
+                  Emissão: {formatarData(hojeStr)} às {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Cards de Métricas Consolidadas (Visualização em Grid Limpo) */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div className="p-4 rounded-xl border border-stone-200 bg-stone-50/50">
+              <span className="text-[10px] uppercase font-bold text-stone-500 tracking-wider block">Faturamento Total</span>
+              <p className="text-xl sm:text-2xl font-bold font-mono text-stone-900 mt-1">
+                {formatarMoeda(metricas.totalFaturamento)}
+              </p>
+              <span className="text-[10px] text-stone-500 mt-0.5 block">Total cobrado no período</span>
+            </div>
+
+            <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/40">
+              <span className="text-[10px] uppercase font-bold text-emerald-800 tracking-wider block">Total Recebido (Pago)</span>
+              <p className="text-xl sm:text-2xl font-bold font-mono text-emerald-700 mt-1">
+                {formatarMoeda(metricas.totalPago)}
+              </p>
+              <span className="text-[10px] text-emerald-600 mt-0.5 block">Valores quitados</span>
+            </div>
+
+            <div className="p-4 rounded-xl border border-amber-200 bg-amber-50/40">
+              <span className="text-[10px] uppercase font-bold text-amber-800 tracking-wider block">A Vencer (No Prazo)</span>
+              <p className="text-xl sm:text-2xl font-bold font-mono text-amber-700 mt-1">
+                {formatarMoeda(metricas.totalNoPrazo)}
+              </p>
+              <span className="text-[10px] text-amber-600 mt-0.5 block">Vencimentos futuros</span>
+            </div>
+
+            <div className="p-4 rounded-xl border border-rose-200 bg-rose-50/40">
+              <span className="text-[10px] uppercase font-bold text-rose-800 tracking-wider block">Em Atraso (Vencidos)</span>
+              <p className="text-xl sm:text-2xl font-bold font-mono text-rose-700 mt-1">
+                {formatarMoeda(metricas.totalAtrasado)}
+              </p>
+              <span className="text-[10px] text-rose-600 mt-0.5 block">Anteriores a hoje</span>
+            </div>
+
+            <div className="p-4 rounded-xl border border-amber-300 bg-amber-100/30 col-span-2 sm:col-span-1">
+              <span className="text-[10px] uppercase font-bold text-amber-900 tracking-wider block">Total a Receber</span>
+              <p className="text-xl sm:text-2xl font-bold font-mono text-amber-800 mt-1">
+                {formatarMoeda(metricas.totalPendente)}
+              </p>
+              <span className="text-[10px] text-amber-700 mt-0.5 block">No prazo + Vencidos</span>
+            </div>
+          </div>
+
+          {/* Indicadores Clínicos do Período */}
+          <div className="flex flex-wrap items-center justify-between p-3.5 rounded-xl border border-stone-200 bg-white text-xs gap-4">
+            <div className="flex items-center gap-2">
+              <Calendar className="size-4 text-stone-500" />
+              <span><strong>Consultas Realizadas:</strong> {metricas.qtdAtendimentos} {metricas.qtdAtendimentos === 1 ? 'sessão' : 'sessões'}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <TrendingUp className="size-4 text-stone-500" />
+              <span><strong>Ticket Médio por Consulta:</strong> {formatarMoeda(metricas.ticketMedio)}</span>
+            </div>
+            {resumoPorMeio.length > 0 && (
+              <div className="flex items-center gap-2">
+                <CreditCard className="size-4 text-stone-500" />
+                <span>
+                  <strong>Formas de Pagamento Recebidas:</strong>{' '}
+                  {resumoPorMeio.map(([meio, val]) => `${meio.toUpperCase()}: ${formatarMoeda(val)}`).join(' • ')}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Tabela de Detalhamento das Sessões Clínicas */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-stone-800">
+                Detalhamento dos Atendimentos & Sessões ({sessoesFiltradas.length})
+              </h4>
+              <span className="text-[11px] text-stone-500">Ordenado por data decrescente</span>
+            </div>
+
+            <div className="rounded-xl border border-stone-200 overflow-hidden bg-white">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-stone-100 text-stone-700 font-bold uppercase tracking-wider text-[10px] border-b border-stone-200">
+                  <tr>
+                    <th className="p-2.5">Data</th>
+                    <th className="p-2.5">Paciente</th>
+                    <th className="p-2.5">Modalidade / Serviço</th>
+                    <th className="p-2.5">Meio</th>
+                    <th className="p-2.5">Status</th>
+                    <th className="p-2.5 text-right">Valor Cobrado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-200">
+                  {sessoesFiltradas.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="p-4 text-center text-stone-500">
+                        Nenhuma sessão localizada para os filtros selecionados.
+                      </td>
+                    </tr>
+                  ) : (
+                    sessoesFiltradas.map(s => {
+                      const paciente = analisandos.find(a => a.id === s.analisandoId);
+                      const modalidade = modalidades.find(m => m.id === s.modalidadeId);
+                      const isPago = s.pagamentoStatus === 'pago';
+                      const isParcial = s.pagamentoStatus === 'parcial';
+                      const isAtrasado = !isPago && s.data < hojeStr;
+
+                      return (
+                        <tr key={s.id} className="hover:bg-stone-50 transition-colors">
+                          <td className="p-2.5 font-mono text-stone-800">{formatarData(s.data)}</td>
+                          <td className="p-2.5 font-semibold text-stone-900">{paciente?.nome || '—'}</td>
+                          <td className="p-2.5 text-stone-700">{modalidade?.nome || 'Sessão de Psicoterapia'}</td>
+                          <td className="p-2.5 font-mono uppercase text-[11px] text-stone-600">{s.meioPagamento || 'pix'}</td>
+                          <td className="p-2.5">
+                            {isPago ? (
+                              <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 text-[10px]">
+                                <CheckCircle2 className="size-3" /> Pago
+                              </span>
+                            ) : isParcial ? (
+                              <span className="inline-flex items-center gap-1 text-blue-700 font-semibold bg-blue-50 px-2 py-0.5 rounded border border-blue-200 text-[10px]">
+                                Parcial ({formatarMoeda(s.valorPago || 0)})
+                              </span>
+                            ) : isAtrasado ? (
+                              <span className="inline-flex items-center gap-1 text-rose-700 font-semibold bg-rose-50 px-2 py-0.5 rounded border border-rose-200 text-[10px]">
+                                <AlertTriangle className="size-3" /> Em Atraso
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded border border-amber-200 text-[10px]">
+                                <Clock className="size-3" /> Pendente
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-2.5 text-right font-mono font-bold text-stone-900">
+                            {formatarMoeda(s.valorCobrado || 0)}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Honorários e Mensalidades Avulsas */}
+          {honorariosFiltrados.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-stone-800">
+                  Honorários & Mensalidades Avulsas ({honorariosFiltrados.length})
+                </h4>
+              </div>
+
+              <div className="rounded-xl border border-stone-200 overflow-hidden bg-white">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-stone-100 text-stone-700 font-bold uppercase tracking-wider text-[10px] border-b border-stone-200">
+                    <tr>
+                      <th className="p-2.5">Vencimento</th>
+                      <th className="p-2.5">Paciente</th>
+                      <th className="p-2.5">Observação / Descrição</th>
+                      <th className="p-2.5">Status</th>
+                      <th className="p-2.5 text-right">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-200">
+                    {honorariosFiltrados.map(h => {
+                      const paciente = analisandos.find(a => a.id === h.analisandoId);
+                      const isPago = h.status === 'pago';
+                      const isAtrasado = h.status === 'atrasado' || (!isPago && h.vencimento < hojeStr);
+
+                      return (
+                        <tr key={h.id} className="hover:bg-stone-50 transition-colors">
+                          <td className="p-2.5 font-mono text-stone-800">{formatarData(h.vencimento)}</td>
+                          <td className="p-2.5 font-semibold text-stone-900">{paciente?.nome || '—'}</td>
+                          <td className="p-2.5 text-stone-700">{h.observacao || 'Honorários clínicos acordados'}</td>
+                          <td className="p-2.5">
+                            {isPago ? (
+                              <span className="text-emerald-700 font-semibold text-[10px]">Pago</span>
+                            ) : isAtrasado ? (
+                              <span className="text-rose-700 font-semibold text-[10px]">Vencido</span>
+                            ) : (
+                              <span className="text-amber-700 font-semibold text-[10px]">Pendente</span>
+                            )}
+                          </td>
+                          <td className="p-2.5 text-right font-mono font-bold text-stone-900">
+                            {formatarMoeda(h.valor || 0)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Resumo Consolidado por Paciente */}
+          {resumoPorPaciente.length > 0 && pacienteId === 'todos' && (
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-stone-800">
+                Consolidação por Paciente / Analisando
+              </h4>
+
+              <div className="rounded-xl border border-stone-200 overflow-hidden bg-white">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-stone-100 text-stone-700 font-bold uppercase tracking-wider text-[10px] border-b border-stone-200">
+                    <tr>
+                      <th className="p-2.5">Paciente</th>
+                      <th className="p-2.5 text-center">Atendimentos</th>
+                      <th className="p-2.5 text-right">Quitado</th>
+                      <th className="p-2.5 text-right">Pendente</th>
+                      <th className="p-2.5 text-right">Total Produzido</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-200">
+                    {resumoPorPaciente.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-stone-50 transition-colors">
+                        <td className="p-2.5 font-semibold text-stone-900">{item.nome}</td>
+                        <td className="p-2.5 text-center font-mono">{item.sessoes}</td>
+                        <td className="p-2.5 text-right font-mono text-emerald-700 font-semibold">{formatarMoeda(item.pago)}</td>
+                        <td className="p-2.5 text-right font-mono text-amber-700 font-semibold">{formatarMoeda(item.pendente)}</td>
+                        <td className="p-2.5 text-right font-mono font-bold text-stone-900">{formatarMoeda(item.total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Rodapé de Auditoria e Assinatura */}
+          <div className="pt-6 border-t border-stone-300 flex justify-between items-end text-xs text-stone-500">
+            <div>
+              <p className="flex items-center gap-1 font-semibold text-stone-700">
+                <ShieldCheck className="size-3.5 text-emerald-600" />
+                Dados conferidos em conformidade com o Código de Ética Profissional e CFP 01/2009.
+              </p>
+              <p className="text-[11px] mt-0.5">
+                Chave Criptográfica AES-256 ativa • Registro imutável de atendimentos
+              </p>
+            </div>
+
+            <div className="text-center pt-8 border-t border-stone-400 min-w-[240px]">
+              <p className="font-semibold text-stone-900">{perfil.nome || contaUsuario?.nomeCompleto || 'Dr. Roberto Martins'}</p>
+              <p className="text-[11px] text-stone-600">{perfil.registroProfissional || contaUsuario?.crp || 'CRP 06/123456'}</p>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+  );
+}

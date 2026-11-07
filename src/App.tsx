@@ -98,7 +98,8 @@ import {
   TrendingUp,
   BookOpen,
   HelpCircle,
-  ClipboardList
+  ClipboardList,
+  CheckCircle2
 } from 'lucide-react';
 import {
   supabase,
@@ -633,20 +634,30 @@ export default function App() {
 
     // Métricas financeiras unificadas sem duplicidade de faturamento
     const metricasFin = calcularMetricasFinanceiras(sessoes, honorarios, modalidades);
-    // O Faturamento Total reflete a totalidade dos atendimentos clínicos produzidos no consultório
     const totalFaturamento = metricasFin.totalCobrado;
     const receitaRecebida = metricasFin.receitaRecebida;
     const saldoPendente = metricasFin.saldoPendente;
+    const saldoNoPrazo = metricasFin.saldoNoPrazo;
     const saldoVencido = metricasFin.saldoVencido;
-
-    const ticketMedio = sessoes.length
-      ? totalFaturamento / sessoes.length
-      : 0;
 
     const hojeStr = new Date().toISOString().slice(0, 10);
     const retornosHoje = sessoes.filter(s => s.proximaSessaoData && s.proximaSessaoData.slice(0, 10) === hojeStr).length;
 
-    const honorariosPendentes = metricasFin.qtdVencidos;
+    // Honorários em aberto: valor e quantidades precisas
+    const honorariosEmAberto = honorarios.filter(h => h.status !== 'pago');
+    const valorHonorariosPendentes = honorariosEmAberto.reduce((acc, h) => {
+      const v = Number(h.valor) || 0;
+      if (h.status === 'parcial') {
+        return acc + (h.saldoDevedor !== undefined ? Number(h.saldoDevedor) : Math.max(0, v - (Number(h.valorPago) || 0)));
+      }
+      return acc + v;
+    }, 0);
+    const qtdHonorariosPendentes = honorariosEmAberto.length;
+    const qtdHonorariosVencidos = honorariosEmAberto.filter(h => h.status === 'atrasado' || (h.vencimento && h.vencimento.slice(0, 10) < hojeStr)).length;
+
+    const ticketMedio = sessoes.length
+      ? totalFaturamento / sessoes.length
+      : 0;
 
     const acompanhamentosCriticos = sessoes.filter(s => {
       const dias = s.proximaSessaoData ? diferencaDias(s.data, s.proximaSessaoData) : 7;
@@ -676,10 +687,14 @@ export default function App() {
       totalFaturamento,
       receitaRecebida,
       saldoPendente,
+      saldoNoPrazo,
       saldoVencido,
       ticketMedio,
       retornosHoje,
-      honorariosPendentes,
+      honorariosPendentes: qtdHonorariosPendentes,
+      valorHonorariosPendentes,
+      qtdHonorariosPendentes,
+      qtdHonorariosVencidos,
       acompanhamentosCriticos,
       volumeSessoesMes
     };
@@ -1174,6 +1189,7 @@ export default function App() {
             <Download className="size-4" />
           </button>
 
+
           <button
             onClick={() => setMenuCelularAberto(!menuCelularAberto)}
             className="size-8 rounded-lg border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-all flex items-center justify-center shrink-0 cursor-pointer"
@@ -1483,6 +1499,7 @@ export default function App() {
               <Download className="size-3.5" />
               <span>Backup Criptografado</span>
             </button>
+
           </div>
         </header>
 
@@ -1605,22 +1622,15 @@ export default function App() {
                 <Card className="p-4 bg-muted/20 border-border/40 hover:border-primary/20 transition-all flex justify-between items-start">
                   <div>
                     <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">
-                      Faturamento Total
+                      Sessões no Mês
                     </span>
-                    <span className="text-2xl font-bold block mt-1">{formatarMoeda(dashboardStats.totalFaturamento)}</span>
-                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground mt-0.5">
-                      {dashboardStats.totalFaturamento > 0 ? (
-                        <>
-                          <span className="text-emerald-600 dark:text-emerald-400 font-medium">{formatarMoeda(dashboardStats.receitaRecebida)} recebidos</span>
-                          {dashboardStats.saldoPendente > 0 && <span>• {formatarMoeda(dashboardStats.saldoPendente)} pendentes</span>}
-                        </>
-                      ) : (
-                        <span>Sessões registradas no setting</span>
-                      )}
-                    </div>
+                    <span className="text-2xl font-bold block mt-1">{dashboardStats.volumeSessoesMes}</span>
+                    <span className="text-[11px] text-muted-foreground mt-0.5 block">
+                      Atendimentos no mês vigente
+                    </span>
                   </div>
                   <div className="p-2 bg-primary/10 text-primary rounded-xl">
-                    <DollarSign className="size-5" />
+                    <Clock className="size-5" />
                   </div>
                 </Card>
 
@@ -1639,19 +1649,24 @@ export default function App() {
                   </div>
                 </Card>
 
-                <Card className="p-4 bg-muted/20 border-border/40 hover:border-primary/20 transition-all flex justify-between items-start">
+                <Card 
+                  onClick={() => setSecaoAtiva('honorarios')}
+                  className="p-4 bg-muted/20 border-border/40 hover:border-amber-500/30 transition-all flex justify-between items-start cursor-pointer hover:bg-muted/30 group"
+                  title="Clique para acessar o módulo de Honorários e Financeiro"
+                >
                   <div>
                     <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">
                       Honorários Pendentes
                     </span>
-                    <span className="text-2xl font-bold text-destructive block mt-1">
-                      {dashboardStats.honorariosPendentes}
+                    <span className="text-2xl font-bold text-amber-600 dark:text-amber-400 block mt-1">
+                      {formatarMoeda(dashboardStats.valorHonorariosPendentes)}
                     </span>
                     <span className="text-[11px] text-muted-foreground mt-0.5 block">
-                      Mensalidades em aberto
+                      {dashboardStats.qtdHonorariosPendentes} {dashboardStats.qtdHonorariosPendentes === 1 ? 'mensalidade em aberto' : 'mensalidades em aberto'}
+                      {dashboardStats.qtdHonorariosVencidos > 0 && ` (${dashboardStats.qtdHonorariosVencidos} em atraso)`}
                     </span>
                   </div>
-                  <div className="p-2 bg-destructive/10 text-destructive rounded-xl">
+                  <div className="p-2 bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-xl group-hover:scale-105 transition-transform">
                     <AlertTriangle className="size-5" />
                   </div>
                 </Card>
@@ -1666,7 +1681,7 @@ export default function App() {
                         Sessões Clínicas Realizadas por Mês
                       </h3>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        Últimos 6 meses • {dadosGraficoMensal.totalGeralPeriodo} {dadosGraficoMensal.totalGeralPeriodo === 1 ? 'sessão realizada' : 'sessões realizadas'} ({formatarMoeda(dadosGraficoMensal.faturamentoTotalPeriodo)})
+                        Últimos 6 meses • {dadosGraficoMensal.totalGeralPeriodo} {dadosGraficoMensal.totalGeralPeriodo === 1 ? 'sessão realizada' : 'sessões realizadas'}
                       </p>
                     </div>
                     <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 w-fit">
@@ -1686,7 +1701,7 @@ export default function App() {
                               {item.totalSessoes} {item.totalSessoes === 1 ? 'sessão' : 'sessões'}
                             </span>
                             <span className="text-[9px] text-muted-foreground">
-                              {formatarMoeda(item.faturamentoMes)}
+                              {item.totalSessoes === 1 ? '1 atendimento registrado' : `${item.totalSessoes} atendimentos registrados`}
                             </span>
                           </div>
 
@@ -2174,95 +2189,179 @@ export default function App() {
           {/* ======================================================== */}
           {/* 5. FREQUÊNCIA & AGENDAS (RETORNOS PREVISTOS) */}
           {/* ======================================================== */}
-          {secaoAtiva === 'previstos' && (
-            <div className="space-y-6">
-              <p className="text-sm text-muted-foreground">
-                Lista de analisandos com retorno de sessão programada, ideal para lembrete e agendamento preventivo.
-              </p>
+          {/* ======================================================== */}
+          {/* 5. FREQUÊNCIA & AGENDAS (RETORNOS PREVISTOS) */}
+          {/* ======================================================== */}
+          {secaoAtiva === 'previstos' && (() => {
+            // Ação de exclusão / conclusão de retorno
+            const excluirRetornoPrevisto = (sessaoId: string, nomePaciente: string) => {
+              if (window.confirm(`Deseja concluir e remover o retorno previsto de ${nomePaciente}?`)) {
+                // Remove a proximaSessaoData da sessão para concluir o ciclo
+                const atualizadas = sessoes.map(s => {
+                  if (s.id === sessaoId) {
+                    const { proximaSessaoData, ...resto } = s;
+                    return resto as SessaoClinica;
+                  }
+                  return s;
+                });
+                atualizarSessoes(atualizadas);
 
-              <Card className="overflow-hidden border-border">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted/40 text-xs uppercase text-muted-foreground border-b border-border">
-                      <tr>
-                        <th className="text-left px-4 py-3 font-semibold">Analisando</th>
-                        <th className="text-left px-4 py-3 font-semibold">WhatsApp</th>
-                        <th className="text-left px-4 py-3 font-semibold">Última Modalidade</th>
-                        <th className="text-left px-4 py-3 font-semibold">Data Prevista</th>
-                        <th className="text-left px-4 py-3 font-semibold">Ausente Há</th>
-                        <th className="text-left px-4 py-3 font-semibold">Status Setting</th>
-                        <th className="text-right px-4 py-3"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/60">
-                      {analisandos.filter(a => a.status !== 'inativo').map(a => {
-                        const sessoesPaciente = sessoes.filter(s => s.analisandoId === a.id);
-                        const sessoesOrdenadas = [...sessoesPaciente].sort((x, y) => y.data.localeCompare(x.data));
-                        const ultima = sessoesOrdenadas[0];
-                        if (!ultima) return null;
+                // Registra o status como concluído
+                const novosStatus = retornoStatus.filter(rs => rs.sessaoId !== sessaoId);
+                const atualizadosStatus = [...novosStatus, { sessaoId, status: 'concluido' as const }];
+                setRetornoStatus(atualizadosStatus);
+                localStorage.setItem('psi40_retornoStatus', JSON.stringify(atualizadosStatus));
+              }
+            };
 
-                        const modalidade = modalidades.find(m => m.id === ultima.modalidadeId);
-                        const dataPrevista = ultima.proximaSessaoData;
-                        if (!dataPrevista) return null;
+            // Filtra analisandos que possuem sessão com retorno previsto e que NÃO estejam concluídos
+            const listaRetornos = analisandos
+              .filter(a => a.status !== 'inativo')
+              .map(a => {
+                const sessoesPaciente = sessoes.filter(s => s.analisandoId === a.id);
+                const sessoesOrdenadas = [...sessoesPaciente].sort((x, y) => y.data.localeCompare(x.data));
+                const ultima = sessoesOrdenadas[0];
+                if (!ultima || !ultima.proximaSessaoData) return null;
 
-                        const diasAtraso = diferencaDias(dataPrevista);
-                        const statusAlerta = retornoStatus.find(rs => rs.sessaoId === ultima.id)?.status || 'pendente';
+                const statusAlerta = retornoStatus.find(rs => rs.sessaoId === ultima.id)?.status || 'pendente';
+                if (statusAlerta === 'concluido') return null; // Já concluído/excluído
 
-                        return (
-                          <tr key={a.id} className="hover:bg-muted/20 transition-colors">
-                            <td className="px-4 py-3 font-semibold text-foreground">{a.nome}</td>
-                            <td className="px-4 py-3 text-muted-foreground">{a.whatsapp || '—'}</td>
-                            <td className="px-4 py-3">{modalidade?.nome || '—'}</td>
-                            <td className="px-4 py-3 font-medium text-foreground">{formatarData(dataPrevista)}</td>
-                            <td className="px-4 py-3">
-                              {diasAtraso > 0 ? (
-                                <span className="text-destructive font-semibold">
-                                  {diasAtraso} {diasAtraso === 1 ? 'dia' : 'dias'} de atraso
-                                </span>
-                              ) : (
-                                <span className="text-emerald-500 font-semibold">No prazo</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              <select
-                                value={statusAlerta}
-                                onChange={e => {
-                                  const novosStatus = retornoStatus.filter(rs => rs.sessaoId !== ultima.id);
-                                  const novo = { sessaoId: ultima.id, status: e.target.value as any };
-                                  const atualizados = [...novosStatus, novo];
-                                  setRetornoStatus(atualizados);
-                                  localStorage.setItem('psi40_retornoStatus', JSON.stringify(atualizados));
-                                }}
-                                className="px-2.5 py-1 rounded-md border border-border text-xs bg-card text-foreground"
-                              >
-                                <option value="pendente">Pendente</option>
-                                <option value="enviado">Alerta Enviado</option>
-                                <option value="concluido">Agendado</option>
-                              </select>
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              <button
-                                onClick={() => setWhatsappAlvo({
-                                  analisando: a,
-                                  data: dataPrevista,
-                                  servico: modalidade?.nome,
-                                  valor: modalidade?.preco
-                                })}
-                                className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-semibold text-xs transition-colors inline-flex items-center gap-1.5"
-                              >
-                                <Send className="size-3.5" />
-                                <span>Avisar</span>
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                const modalidade = modalidades.find(m => m.id === ultima.modalidadeId);
+                const dataPrevista = ultima.proximaSessaoData;
+                const diasAtraso = diferencaDias(dataPrevista);
+
+                return {
+                  analisando: a,
+                  ultima,
+                  modalidade,
+                  dataPrevista,
+                  diasAtraso,
+                  statusAlerta
+                };
+              })
+              .filter(Boolean) as Array<{
+                analisando: Analisando;
+                ultima: SessaoClinica;
+                modalidade?: ModalidadeAtendimento;
+                dataPrevista: string;
+                diasAtraso: number;
+                statusAlerta: 'pendente' | 'enviado' | 'concluido';
+              }>;
+
+            return (
+              <div className="space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-xl font-serif font-bold text-foreground flex items-center gap-2">
+                      Retornos Previstos & Setting
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-primary/10 text-primary border border-primary/20">
+                        {listaRetornos.length} {listaRetornos.length === 1 ? 'retorno programado' : 'retornos programados'}
+                      </span>
+                    </h2>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      Lista de analisandos com retorno de sessão programada, ideal para lembrete, agendamento preventivo e controle de setting.
+                    </p>
+                  </div>
                 </div>
-              </Card>
-            </div>
-          )}
+
+                {listaRetornos.length === 0 ? (
+                  <Card className="p-10 text-center border-border">
+                    <div className="size-12 rounded-2xl bg-emerald-500/10 text-emerald-600 mx-auto flex items-center justify-center mb-3">
+                      <CheckCircle2 className="size-6" />
+                    </div>
+                    <h3 className="text-base font-bold text-foreground">Todos os retornos concluídos!</h3>
+                    <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
+                      Nenhum analisando possui retorno de sessão pendente no momento. Quando você registrar uma nova sessão com data de retorno prevista, ela aparecerá automaticamente aqui.
+                    </p>
+                  </Card>
+                ) : (
+                  <Card className="overflow-hidden border-border">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-muted/40 text-xs uppercase text-muted-foreground border-b border-border">
+                          <tr>
+                            <th className="text-left px-4 py-3 font-semibold">Analisando</th>
+                            <th className="text-left px-4 py-3 font-semibold">WhatsApp</th>
+                            <th className="text-left px-4 py-3 font-semibold">Última Modalidade</th>
+                            <th className="text-left px-4 py-3 font-semibold">Data Prevista</th>
+                            <th className="text-left px-4 py-3 font-semibold">Ausente Há</th>
+                            <th className="text-left px-4 py-3 font-semibold">Status Setting</th>
+                            <th className="text-right px-4 py-3 font-semibold">Ações</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/60">
+                          {listaRetornos.map(item => (
+                            <tr key={item.analisando.id} className="hover:bg-muted/20 transition-colors">
+                              <td className="px-4 py-3 font-semibold text-foreground">{item.analisando.nome}</td>
+                              <td className="px-4 py-3 text-muted-foreground">{item.analisando.whatsapp || '—'}</td>
+                              <td className="px-4 py-3">{item.modalidade?.nome || '—'}</td>
+                              <td className="px-4 py-3 font-medium text-foreground">{formatarData(item.dataPrevista)}</td>
+                              <td className="px-4 py-3">
+                                {item.diasAtraso > 0 ? (
+                                  <span className="text-destructive font-semibold">
+                                    {item.diasAtraso} {item.diasAtraso === 1 ? 'dia' : 'dias'} de atraso
+                                  </span>
+                                ) : (
+                                  <span className="text-emerald-500 font-semibold">No prazo</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3">
+                                <select
+                                  value={item.statusAlerta}
+                                  onChange={e => {
+                                    const val = e.target.value as any;
+                                    if (val === 'concluido') {
+                                      excluirRetornoPrevisto(item.ultima.id, item.analisando.nome);
+                                    } else {
+                                      const novosStatus = retornoStatus.filter(rs => rs.sessaoId !== item.ultima.id);
+                                      const atualizados = [...novosStatus, { sessaoId: item.ultima.id, status: val }];
+                                      setRetornoStatus(atualizados);
+                                      localStorage.setItem('psi40_retornoStatus', JSON.stringify(atualizados));
+                                    }
+                                  }}
+                                  className="px-2.5 py-1 rounded-md border border-border text-xs bg-card text-foreground cursor-pointer"
+                                >
+                                  <option value="pendente">Pendente</option>
+                                  <option value="enviado">Alerta Enviado</option>
+                                  <option value="concluido">Agendado (Concluir e Excluir)</option>
+                                </select>
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    onClick={() => setWhatsappAlvo({
+                                      analisando: item.analisando,
+                                      data: item.dataPrevista,
+                                      servico: item.modalidade?.nome,
+                                      valor: item.modalidade?.preco
+                                    })}
+                                    className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-semibold text-xs transition-colors inline-flex items-center gap-1.5 shadow-sm cursor-pointer"
+                                    title="Enviar mensagem pelo WhatsApp"
+                                  >
+                                    <Send className="size-3.5" />
+                                    <span>Avisar</span>
+                                  </button>
+
+                                  <button
+                                    onClick={() => excluirRetornoPrevisto(item.ultima.id, item.analisando.nome)}
+                                    className="px-2.5 py-1.5 bg-card hover:bg-destructive/10 text-destructive border border-border hover:border-destructive/30 rounded-lg font-semibold text-xs transition-colors inline-flex items-center gap-1 cursor-pointer"
+                                    title="Excluir retorno previsto (já concluído)"
+                                  >
+                                    <Trash2 className="size-3.5" />
+                                    <span>Excluir</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Card>
+                )}
+              </div>
+            );
+          })()}
 
           {/* ======================================================== */}
           {/* 6. ACOMPANHAMENTO CLÍNICO */}
@@ -3373,12 +3472,10 @@ export default function App() {
                   <span className="text-xs font-semibold text-muted-foreground uppercase">Honorários Pendentes</span>
                   <div className="flex items-baseline justify-between">
                     <span className="text-2xl font-bold text-amber-500">
-                      {formatarMoeda(
-                        honorarios.filter(h => h.status === 'pendente').reduce((acc, c) => acc + c.valor, 0)
-                      )}
+                      {formatarMoeda(dashboardStats.valorHonorariosPendentes)}
                     </span>
                     <span className="text-xs text-amber-500 font-semibold font-mono">
-                      {honorarios.filter(h => h.status === 'pendente').length} em aberto
+                      {dashboardStats.qtdHonorariosPendentes} em aberto
                     </span>
                   </div>
                 </Card>

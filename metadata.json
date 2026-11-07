@@ -1,6 +1,6 @@
 {
   "name": "PSi4.0",
-  "description": "Plataforma premium de CRM, prontuário e gestão de relacionamento para Psicanalistas.",
+  "description": "Prontuário inteligente, transcrição com IA e gestão de consultório para a Área Terapêutica (Terapeutas, Psicanalistas e Psicólogos).",
   "requestFramePermissions": [
     "microphone"
   ],

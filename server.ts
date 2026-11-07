@@ -659,16 +659,23 @@ function salvarUsuariosServidor(lista: any[]): void {
     }
   });
 
-  // Download direto do pacote estático pronto para deploy no Netlify
-  app.get('/landing-netlify.zip', (_req, res) => {
-    const zipPath = path.resolve(__dirname, 'public', 'landing-netlify.zip');
+  // Download direto do pacote estático pronto para deploy no Netlify ou GitHub (Apenas o Site)
+  app.get(['/site.zip', '/repositorio-site.zip', '/repositorio.zip', '/github.zip', '/landing-netlify.zip', '/site-psi40pro-netlify.zip', '/api/download-landing-zip', '/api/download-zip'], (_req, res) => {
+    const zipPath = path.resolve(__dirname, 'public', 'repositorio-site.zip');
     if (fs.existsSync(zipPath)) {
+      res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Content-Type', 'application/zip');
-      res.setHeader('Content-Disposition', 'attachment; filename="landing-netlify.zip"');
-      return res.sendFile(zipPath);
+      return res.download(zipPath, 'repositorio-site-psi40pro.zip', (err) => {
+        if (err && !res.headersSent) {
+          res.status(500).send('Erro ao baixar arquivo');
+        }
+      });
     }
     return res.status(404).send('Arquivo não encontrado');
   });
+
+  // Servir arquivos estáticos da pasta public (assets, landing.html, etc.)
+  app.use(express.static(path.resolve(__dirname, 'public')));
 
   const isProd = process.env.NODE_ENV === 'production';
   if (!isProd) {

@@ -267,6 +267,7 @@ export function calcularMetricasFinanceiras(
   let saldoPendente = 0;
   let saldoVencido = 0;
   let totalCobrado = 0;
+  let qtdPendentes = 0;
   let qtdVencidos = 0;
 
   // 1. Processa Sessões Clínicas
@@ -285,13 +286,15 @@ export function calcularMetricasFinanceiras(
       const saldo = arredondarMoeda(s.saldoDevedor !== undefined ? Number(s.saldoDevedor) : Math.max(0, valorCobrado - pago));
       receitaRecebida += pago;
       saldoPendente += saldo;
+      if (saldo > 0) qtdPendentes++;
       if (s.data < hojeStr && saldo > 0) {
         saldoVencido += saldo;
         qtdVencidos++;
       }
     } else {
-      // Pendente
+      // Pendente integral
       saldoPendente += valorCobrado;
+      if (valorCobrado > 0) qtdPendentes++;
       if (s.data < hojeStr && valorCobrado > 0) {
         saldoVencido += valorCobrado;
         qtdVencidos++;
@@ -315,6 +318,7 @@ export function calcularMetricasFinanceiras(
       const saldo = arredondarMoeda(h.saldoDevedor !== undefined ? h.saldoDevedor : Math.max(0, valorCobrado - pago));
       receitaRecebida += pago;
       saldoPendente += saldo;
+      if (saldo > 0) qtdPendentes++;
       if (h.vencimento < hojeStr && saldo > 0) {
         saldoVencido += saldo;
         qtdVencidos++;
@@ -322,6 +326,7 @@ export function calcularMetricasFinanceiras(
     } else {
       // Pendente ou atrasado
       saldoPendente += valorCobrado;
+      if (valorCobrado > 0) qtdPendentes++;
       if (h.vencimento < hojeStr && valorCobrado > 0) {
         saldoVencido += valorCobrado;
         qtdVencidos++;
@@ -329,11 +334,17 @@ export function calcularMetricasFinanceiras(
     }
   }
 
+  const saldoNoPrazo = arredondarMoeda(Math.max(0, saldoPendente - saldoVencido));
+  const qtdNoPrazo = Math.max(0, qtdPendentes - qtdVencidos);
+
   return {
     receitaRecebida: arredondarMoeda(receitaRecebida),
     saldoPendente: arredondarMoeda(saldoPendente),
+    saldoNoPrazo,
     saldoVencido: arredondarMoeda(saldoVencido),
     totalCobrado: arredondarMoeda(totalCobrado),
+    qtdPendentes,
+    qtdNoPrazo,
     qtdVencidos
   };
 }
