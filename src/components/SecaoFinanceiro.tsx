@@ -668,21 +668,21 @@ export default function SecaoFinanceiro({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         
         {/* Faturamento Total */}
-        <div className="p-5 rounded-2xl bg-card border-2 border-primary/30 shadow-sm flex items-center justify-between relative overflow-hidden">
+        <div className="p-4 sm:p-5 rounded-2xl bg-card border-2 border-primary/30 shadow-sm flex items-center justify-between relative overflow-hidden min-w-0">
           <div className="absolute top-0 right-0 w-20 h-20 bg-primary/5 rounded-full blur-xl -mr-4 -mt-4 pointer-events-none" />
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
+          <div className="min-w-0 flex-1 pr-2">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block truncate">
                 Faturamento Total
               </span>
-              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-primary/10 text-primary">
+              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-primary/10 text-primary shrink-0">
                 {filtroPeriodo === 'todos' ? 'Geral' : 'Período'}
               </span>
             </div>
-            <p className="text-2xl font-bold font-mono text-primary mt-1">
+            <p className="text-xl sm:text-2xl font-bold tracking-tight text-primary mt-1 truncate" title={formatarMoeda(metricas.totalFaturamento)}>
               {formatarMoeda(metricas.totalFaturamento)}
             </p>
-            <div className="flex items-center gap-1 text-[11px] text-muted-foreground mt-0.5">
+            <div className="flex items-center gap-1 text-[11px] text-muted-foreground mt-0.5 truncate">
               <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{formatarMoeda(metricas.totalPago)}</span>
               <span>•</span>
               <span className="text-amber-600 dark:text-amber-400 font-semibold">{formatarMoeda(metricas.totalPendente)}</span>
@@ -694,16 +694,16 @@ export default function SecaoFinanceiro({
         </div>
 
         {/* Total Recebido (Pago) */}
-        <div className="p-5 rounded-2xl bg-card border border-border shadow-sm flex items-center justify-between">
-          <div>
-            <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">
+        <div className="p-4 sm:p-5 rounded-2xl bg-card border border-border shadow-sm flex items-center justify-between min-w-0">
+          <div className="min-w-0 flex-1 pr-2">
+            <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block truncate">
               Total Recebido (Pago)
             </span>
-            <p className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1">
+            <p className="text-xl sm:text-2xl font-bold tracking-tight text-emerald-600 dark:text-emerald-400 mt-1 truncate" title={formatarMoeda(metricas.totalPago)}>
               {formatarMoeda(metricas.totalPago)}
             </p>
-            <span className="text-[11px] text-muted-foreground mt-0.5 block flex items-center gap-1">
-              <CheckCircle2 className="size-3 text-emerald-500" />
+            <span className="text-[11px] text-muted-foreground mt-0.5 block flex items-center gap-1 truncate">
+              <CheckCircle2 className="size-3 text-emerald-500 shrink-0" />
               Quitados no período
             </span>
           </div>
@@ -713,16 +713,16 @@ export default function SecaoFinanceiro({
         </div>
 
         {/* A Vencer (No Prazo) */}
-        <div className="p-5 rounded-2xl bg-card border border-border shadow-sm flex items-center justify-between">
-          <div>
-            <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">
+        <div className="p-4 sm:p-5 rounded-2xl bg-card border border-border shadow-sm flex items-center justify-between min-w-0">
+          <div className="min-w-0 flex-1 pr-2">
+            <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block truncate">
               A Vencer (No Prazo)
             </span>
-            <p className="text-2xl font-bold font-mono text-amber-600 dark:text-amber-400 mt-1">
+            <p className="text-xl sm:text-2xl font-bold tracking-tight text-amber-600 dark:text-amber-400 mt-1 truncate" title={formatarMoeda(metricas.totalNoPrazo)}>
               {formatarMoeda(metricas.totalNoPrazo)}
             </p>
-            <span className="text-[11px] text-muted-foreground mt-0.5 block flex items-center gap-1">
-              <Clock className="size-3 text-amber-500" />
+            <span className="text-[11px] text-muted-foreground mt-0.5 block flex items-center gap-1 truncate">
+              <Clock className="size-3 text-amber-500 shrink-0" />
               Vencimentos futuros
             </span>
           </div>
@@ -732,16 +732,16 @@ export default function SecaoFinanceiro({
         </div>
 
         {/* Em Atraso / Vencidos */}
-        <div className="p-5 rounded-2xl bg-card border border-border shadow-sm flex items-center justify-between">
-          <div>
-            <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">
+        <div className="p-4 sm:p-5 rounded-2xl bg-card border border-border shadow-sm flex items-center justify-between min-w-0">
+          <div className="min-w-0 flex-1 pr-2">
+            <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block truncate">
               Em Atraso (Vencidos)
             </span>
-            <p className="text-2xl font-bold font-mono text-rose-600 dark:text-rose-400 mt-1">
+            <p className="text-xl sm:text-2xl font-bold tracking-tight text-rose-600 dark:text-rose-400 mt-1 truncate" title={formatarMoeda(metricas.totalAtrasado)}>
               {formatarMoeda(metricas.totalAtrasado)}
             </p>
-            <span className="text-[11px] text-muted-foreground mt-0.5 block flex items-center gap-1">
-              <AlertTriangle className="size-3 text-rose-500" />
+            <span className="text-[11px] text-muted-foreground mt-0.5 block flex items-center gap-1 truncate">
+              <AlertTriangle className="size-3 text-rose-500 shrink-0" />
               Anteriores a hoje
             </span>
           </div>
@@ -751,16 +751,16 @@ export default function SecaoFinanceiro({
         </div>
 
         {/* Total a Receber em Aberto */}
-        <div className="p-5 rounded-2xl bg-card border border-border shadow-sm flex items-center justify-between">
-          <div>
-            <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">
+        <div className="p-4 sm:p-5 rounded-2xl bg-card border border-border shadow-sm flex items-center justify-between min-w-0">
+          <div className="min-w-0 flex-1 pr-2">
+            <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block truncate">
               Total a Receber (Em Aberto)
             </span>
-            <p className="text-2xl font-bold font-mono text-foreground mt-1">
+            <p className="text-xl sm:text-2xl font-bold tracking-tight text-foreground mt-1 truncate" title={formatarMoeda(metricas.totalPendente)}>
               {formatarMoeda(metricas.totalPendente)}
             </p>
-            <span className="text-[11px] text-muted-foreground mt-0.5 block flex items-center gap-1">
-              <TrendingUp className="size-3 text-primary" />
+            <span className="text-[11px] text-muted-foreground mt-0.5 block flex items-center gap-1 truncate">
+              <TrendingUp className="size-3 text-primary shrink-0" />
               {metricas.totalConsultasNoPeriodo} atendimentos no período
             </span>
           </div>

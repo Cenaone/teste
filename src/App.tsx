@@ -643,17 +643,10 @@ export default function App() {
     const hojeStr = new Date().toISOString().slice(0, 10);
     const retornosHoje = sessoes.filter(s => s.proximaSessaoData && s.proximaSessaoData.slice(0, 10) === hojeStr).length;
 
-    // Honorários em aberto: valor e quantidades precisas
-    const honorariosEmAberto = honorarios.filter(h => h.status !== 'pago');
-    const valorHonorariosPendentes = honorariosEmAberto.reduce((acc, h) => {
-      const v = Number(h.valor) || 0;
-      if (h.status === 'parcial') {
-        return acc + (h.saldoDevedor !== undefined ? Number(h.saldoDevedor) : Math.max(0, v - (Number(h.valorPago) || 0)));
-      }
-      return acc + v;
-    }, 0);
-    const qtdHonorariosPendentes = honorariosEmAberto.length;
-    const qtdHonorariosVencidos = honorariosEmAberto.filter(h => h.status === 'atrasado' || (h.vencimento && h.vencimento.slice(0, 10) < hojeStr)).length;
+    // Honorários & Cobranças em aberto: reconciliado rigorosamente com o financeiro (pendentes no prazo + atrasados)
+    const valorHonorariosPendentes = metricasFin.saldoPendente;
+    const qtdHonorariosPendentes = metricasFin.qtdPendentes;
+    const qtdHonorariosVencidos = metricasFin.qtdVencidos;
 
     const ticketMedio = sessoes.length
       ? totalFaturamento / sessoes.length
@@ -1662,7 +1655,7 @@ export default function App() {
                       {formatarMoeda(dashboardStats.valorHonorariosPendentes)}
                     </span>
                     <span className="text-[11px] text-muted-foreground mt-0.5 block">
-                      {dashboardStats.qtdHonorariosPendentes} {dashboardStats.qtdHonorariosPendentes === 1 ? 'mensalidade em aberto' : 'mensalidades em aberto'}
+                      {dashboardStats.qtdHonorariosPendentes} {dashboardStats.qtdHonorariosPendentes === 1 ? 'cobrança em aberto' : 'cobranças em aberto'}
                       {dashboardStats.qtdHonorariosVencidos > 0 && ` (${dashboardStats.qtdHonorariosVencidos} em atraso)`}
                     </span>
                   </div>

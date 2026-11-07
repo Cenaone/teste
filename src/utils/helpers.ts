@@ -255,11 +255,11 @@ export function calcularMetricasFinanceiras(
     }
   }
 
-  // Mapeia IDs de sessões que já possuem registro em honorários para não duplicar
-  const sessoesVinculadas = new Set<string>();
-  for (const h of honorarios) {
-    if (h.sessaoId) {
-      sessoesVinculadas.add(h.sessaoId);
+  // Mapeia IDs de sessões que já existem na base para evitar double-counting
+  const sessoesExistentes = new Set<string>();
+  for (const s of sessoes) {
+    if (s.id) {
+      sessoesExistentes.add(s.id);
     }
   }
 
@@ -278,6 +278,7 @@ export function calcularMetricasFinanceiras(
       !isNaN(valorOriginal) && valorOriginal > 0 ? valorOriginal : precoModalidade
     );
     totalCobrado += valorCobrado;
+    const isAtrasado = Boolean(s.data && s.data.slice(0, 10) < hojeStr);
 
     if (s.pagamentoStatus === 'pago') {
       receitaRecebida += valorCobrado;
@@ -286,50 +287,60 @@ export function calcularMetricasFinanceiras(
       const saldo = arredondarMoeda(s.saldoDevedor !== undefined ? Number(s.saldoDevedor) : Math.max(0, valorCobrado - pago));
       receitaRecebida += pago;
       saldoPendente += saldo;
-      if (saldo > 0) qtdPendentes++;
-      if (s.data < hojeStr && saldo > 0) {
-        saldoVencido += saldo;
-        qtdVencidos++;
+      if (saldo > 0) {
+        qtdPendentes++;
+        if (isAtrasado) {
+          saldoVencido += saldo;
+          qtdVencidos++;
+        }
       }
     } else {
       // Pendente integral
       saldoPendente += valorCobrado;
-      if (valorCobrado > 0) qtdPendentes++;
-      if (s.data < hojeStr && valorCobrado > 0) {
-        saldoVencido += valorCobrado;
-        qtdVencidos++;
+      if (valorCobrado > 0) {
+        qtdPendentes++;
+        if (isAtrasado) {
+          saldoVencido += valorCobrado;
+          qtdVencidos++;
+        }
       }
     }
   }
 
-  // 2. Processa Honorários Avulsos (Apenas os que NÃO possuem vínculo com sessões, evitando double-counting)
+  // 2. Processa Honorários Avulsos
   for (const h of honorarios) {
-    if (h.sessaoId && sessoesVinculadas.has(h.sessaoId)) {
-      continue; // Ignora para não contar duas vezes a mesma sessão
+    if (h.sessaoId && sessoesExistentes.has(h.sessaoId)) {
+      continue; // Ignora apenas se vinculado a uma sessão já contabilizada
     }
 
-    const valorCobrado = arredondarMoeda(h.valor || 0);
+    const valorCobrado = arredondarMoeda(Number(h.valor) || 0);
     totalCobrado += valorCobrado;
+    const isPago = h.status === 'pago';
+    const isAtrasado = h.status === 'atrasado' || Boolean(!isPago && h.vencimento && h.vencimento.slice(0, 10) < hojeStr);
 
-    if (h.status === 'pago') {
+    if (isPago) {
       receitaRecebida += valorCobrado;
     } else if (h.status === 'parcial') {
-      const pago = arredondarMoeda(h.valorPago || 0);
-      const saldo = arredondarMoeda(h.saldoDevedor !== undefined ? h.saldoDevedor : Math.max(0, valorCobrado - pago));
+      const pago = arredondarMoeda(Number(h.valorPago) || 0);
+      const saldo = arredondarMoeda(h.saldoDevedor !== undefined ? Number(h.saldoDevedor) : Math.max(0, valorCobrado - pago));
       receitaRecebida += pago;
       saldoPendente += saldo;
-      if (saldo > 0) qtdPendentes++;
-      if (h.vencimento < hojeStr && saldo > 0) {
-        saldoVencido += saldo;
-        qtdVencidos++;
+      if (saldo > 0) {
+        qtdPendentes++;
+        if (isAtrasado) {
+          saldoVencido += saldo;
+          qtdVencidos++;
+        }
       }
     } else {
       // Pendente ou atrasado
       saldoPendente += valorCobrado;
-      if (valorCobrado > 0) qtdPendentes++;
-      if (h.vencimento < hojeStr && valorCobrado > 0) {
-        saldoVencido += valorCobrado;
-        qtdVencidos++;
+      if (valorCobrado > 0) {
+        qtdPendentes++;
+        if (isAtrasado) {
+          saldoVencido += valorCobrado;
+          qtdVencidos++;
+        }
       }
     }
   }

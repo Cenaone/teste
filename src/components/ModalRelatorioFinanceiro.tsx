@@ -473,7 +473,7 @@ export default function ModalRelatorioFinanceiro({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-sm overflow-y-auto print:p-0 print:bg-white print:static">
-      <div className="relative w-full max-w-4xl bg-card border border-border rounded-3xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden print:max-h-none print:border-none print:shadow-none print:w-full print:rounded-none">
+      <div className="relative w-full max-w-6xl bg-card border border-border rounded-3xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden print:max-h-none print:border-none print:shadow-none print:w-full print:rounded-none">
         
         {/* Cabeçalho de Controle (Ocultado na Impressão) */}
         <div className="flex items-center justify-between p-5 border-b border-border bg-muted/20 print:hidden">
@@ -632,46 +632,46 @@ export default function ModalRelatorioFinanceiro({
             </div>
           </div>
 
-          {/* Cards de Métricas Consolidadas (Visualização em Grid Limpo) */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <div className="p-4 rounded-xl border border-stone-200 bg-stone-50/50">
-              <span className="text-[10px] uppercase font-bold text-stone-500 tracking-wider block">Faturamento Total</span>
-              <p className="text-xl sm:text-2xl font-bold font-mono text-stone-900 mt-1">
+          {/* Cards de Métricas Consolidadas (Visualização em Grid Limpo e Proporcional) */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div className="p-3.5 sm:p-4 rounded-xl border border-stone-200 bg-stone-50/50 min-w-0 overflow-hidden">
+              <span className="text-[10px] uppercase font-bold text-stone-500 tracking-wider block truncate">Faturamento Total</span>
+              <p className="text-base sm:text-lg font-bold tracking-tight text-stone-900 mt-1 truncate" title={formatarMoeda(metricas.totalFaturamento)}>
                 {formatarMoeda(metricas.totalFaturamento)}
               </p>
-              <span className="text-[10px] text-stone-500 mt-0.5 block">Total cobrado no período</span>
+              <span className="text-[10px] text-stone-500 mt-0.5 block truncate">Total cobrado no período</span>
             </div>
 
-            <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/40">
-              <span className="text-[10px] uppercase font-bold text-emerald-800 tracking-wider block">Total Recebido (Pago)</span>
-              <p className="text-xl sm:text-2xl font-bold font-mono text-emerald-700 mt-1">
+            <div className="p-3.5 sm:p-4 rounded-xl border border-emerald-200 bg-emerald-50/40 min-w-0 overflow-hidden">
+              <span className="text-[10px] uppercase font-bold text-emerald-800 tracking-wider block truncate">Total Recebido (Pago)</span>
+              <p className="text-base sm:text-lg font-bold tracking-tight text-emerald-700 mt-1 truncate" title={formatarMoeda(metricas.totalPago)}>
                 {formatarMoeda(metricas.totalPago)}
               </p>
-              <span className="text-[10px] text-emerald-600 mt-0.5 block">Valores quitados</span>
+              <span className="text-[10px] text-emerald-600 mt-0.5 block truncate">Valores quitados</span>
             </div>
 
-            <div className="p-4 rounded-xl border border-amber-200 bg-amber-50/40">
-              <span className="text-[10px] uppercase font-bold text-amber-800 tracking-wider block">A Vencer (No Prazo)</span>
-              <p className="text-xl sm:text-2xl font-bold font-mono text-amber-700 mt-1">
+            <div className="p-3.5 sm:p-4 rounded-xl border border-amber-200 bg-amber-50/40 min-w-0 overflow-hidden">
+              <span className="text-[10px] uppercase font-bold text-amber-800 tracking-wider block truncate">A Vencer (No Prazo)</span>
+              <p className="text-base sm:text-lg font-bold tracking-tight text-amber-700 mt-1 truncate" title={formatarMoeda(metricas.totalNoPrazo)}>
                 {formatarMoeda(metricas.totalNoPrazo)}
               </p>
-              <span className="text-[10px] text-amber-600 mt-0.5 block">Vencimentos futuros</span>
+              <span className="text-[10px] text-amber-600 mt-0.5 block truncate">Vencimentos futuros</span>
             </div>
 
-            <div className="p-4 rounded-xl border border-rose-200 bg-rose-50/40">
-              <span className="text-[10px] uppercase font-bold text-rose-800 tracking-wider block">Em Atraso (Vencidos)</span>
-              <p className="text-xl sm:text-2xl font-bold font-mono text-rose-700 mt-1">
+            <div className="p-3.5 sm:p-4 rounded-xl border border-rose-200 bg-rose-50/40 min-w-0 overflow-hidden">
+              <span className="text-[10px] uppercase font-bold text-rose-800 tracking-wider block truncate">Em Atraso (Vencidos)</span>
+              <p className="text-base sm:text-lg font-bold tracking-tight text-rose-700 mt-1 truncate" title={formatarMoeda(metricas.totalAtrasado)}>
                 {formatarMoeda(metricas.totalAtrasado)}
               </p>
-              <span className="text-[10px] text-rose-600 mt-0.5 block">Anteriores a hoje</span>
+              <span className="text-[10px] text-rose-600 mt-0.5 block truncate">Anteriores a hoje</span>
             </div>
 
-            <div className="p-4 rounded-xl border border-amber-300 bg-amber-100/30 col-span-2 sm:col-span-1">
-              <span className="text-[10px] uppercase font-bold text-amber-900 tracking-wider block">Total a Receber</span>
-              <p className="text-xl sm:text-2xl font-bold font-mono text-amber-800 mt-1">
+            <div className="p-3.5 sm:p-4 rounded-xl border border-amber-300 bg-amber-100/30 col-span-2 sm:col-span-1 min-w-0 overflow-hidden">
+              <span className="text-[10px] uppercase font-bold text-amber-900 tracking-wider block truncate">Total a Receber</span>
+              <p className="text-base sm:text-lg font-bold tracking-tight text-amber-800 mt-1 truncate" title={formatarMoeda(metricas.totalPendente)}>
                 {formatarMoeda(metricas.totalPendente)}
               </p>
-              <span className="text-[10px] text-amber-700 mt-0.5 block">No prazo + Vencidos</span>
+              <span className="text-[10px] text-amber-700 mt-0.5 block truncate">No prazo + Vencidos</span>
             </div>
           </div>
 
@@ -820,10 +820,10 @@ export default function ModalRelatorioFinanceiro({
                               </span>
                             )}
                           </td>
-                          <td className="p-2.5 text-right font-mono font-bold text-stone-900 whitespace-nowrap">
+                          <td className="p-2.5 text-right font-semibold text-stone-900 whitespace-nowrap">
                             {formatarMoeda(item.valor)}
                           </td>
-                          <td className="p-2.5 text-right font-mono text-emerald-700 font-semibold whitespace-nowrap">
+                          <td className="p-2.5 text-right font-semibold text-emerald-700 whitespace-nowrap">
                             {formatarMoeda(item.valorPago)}
                           </td>
                         </tr>
@@ -836,10 +836,10 @@ export default function ModalRelatorioFinanceiro({
                         <td colSpan={5} className="p-2.5 uppercase tracking-wider text-[11px] text-stone-700">
                           Subtotal da Tabela ({itensPlanilha.length} lançamentos):
                         </td>
-                        <td className="p-2.5 text-right font-mono text-stone-900 whitespace-nowrap">
+                        <td className="p-2.5 text-right font-bold text-stone-900 whitespace-nowrap">
                           {formatarMoeda(itensPlanilha.reduce((acc, curr) => acc + curr.valor, 0))}
                         </td>
-                        <td className="p-2.5 text-right font-mono text-emerald-700 whitespace-nowrap">
+                        <td className="p-2.5 text-right font-bold text-emerald-700 whitespace-nowrap">
                           {formatarMoeda(itensPlanilha.reduce((acc, curr) => acc + curr.valorPago, 0))}
                         </td>
                       </tr>
