@@ -48,6 +48,7 @@ import GravadorSessao from './components/GravadorSessao';
 import SecaoNovaSessao from './components/SecaoNovaSessao';
 import SecaoFinanceiro from './components/SecaoFinanceiro';
 import ModalCadastroPaciente from './components/ModalCadastroPaciente';
+import { AgendaClinica } from './components/AgendaClinica';
 import TelaAutenticacao from './components/TelaAutenticacao';
 import TelaRedefinirSenha from './components/TelaRedefinirSenha';
 import { Card, Badge } from './components/ui-compact';
@@ -305,10 +306,6 @@ export default function App() {
   const [modeloForm, setModeloForm] = useState<ModeloMensagem | null>(null);
   const [mostrarFormTransmissao, setMostrarFormTransmissao] = useState(false);
   const [transmissaoForm, setTransmissaoForm] = useState<TransmissaoInformativa | null>(null);
-
-  // Agenda states
-  const [agendaVisualizacao, setAgendaVisualizacao] = useState<'lista' | 'semana'>('semana');
-  const [agendaFiltroStatus, setAgendaFiltroStatus] = useState<string>('todos');
 
   // Menu Celular
   const [menuCelularAberto, setMenuCelularAberto] = useState(false);
@@ -3104,316 +3101,44 @@ export default function App() {
           {/* A. AGENDA CLÍNICA */}
           {/* ======================================================== */}
           {secaoAtiva === 'agenda' && (
-            <div className="space-y-6 animate-in fade-in duration-200">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
-                <div>
-                  <h2 className="text-xl font-bold text-foreground">Agenda Clínica de Sessões</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Gerencie seus horários semanais de análise e supervisão de forma integrada.
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setAgendaVisualizacao(agendaVisualizacao === 'semana' ? 'lista' : 'semana')}
-                    className="px-4 py-2 text-xs font-semibold border border-border bg-card hover:bg-muted text-foreground rounded-xl transition-all"
-                  >
-                    Visualizar em {agendaVisualizacao === 'semana' ? 'Lista' : 'Grade Semanal'}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setAgendamentoForm({
-                        id: `ag_${Date.now()}`,
-                        analisandoId: '',
-                        modalidadeId: modalidades[0]?.id || '',
-                        data: new Date().toISOString().split('T')[0],
-                        hora: '09:00',
-                        status: 'confirmado',
-                        observacao: ''
-                      });
-                      setMostrarFormAgendamento(true);
-                    }}
-                    className="px-4 py-2 text-xs font-semibold text-white gradient-emerald rounded-xl shadow-md hover:opacity-95 transition-all flex items-center gap-1.5"
-                  >
-                    <Plus className="size-4" />
-                    <span>Novo Agendamento</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Filters */}
-              <div className="flex flex-wrap gap-3 items-center justify-between p-4 bg-muted/30 border border-border/60 rounded-2xl">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase">Filtrar por Status:</span>
-                  <div className="flex gap-1">
-                    {['todos', 'confirmado', 'pendente', 'realizado', 'cancelado'].map(st => (
-                      <button
-                        key={st}
-                        onClick={() => setAgendaFiltroStatus(st)}
-                        className={`px-3 py-1 text-xs capitalize font-medium rounded-lg transition-all ${
-                          agendaFiltroStatus === st
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-card text-muted-foreground hover:bg-muted border border-border/40'
-                        }`}
-                      >
-                        {st}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="text-xs text-muted-foreground font-medium">
-                  {agendamentos.length} agendamentos no total
-                </div>
-              </div>
-
-              {/* Content Grid */}
-              {agendaVisualizacao === 'semana' ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-                  {/* Dynamic days of current week */}
-                  {(() => {
-                    const hoje = new Date();
-                    const diaSemanaHoje = hoje.getDay();
-                    const segunda = new Date(hoje);
-                    const diff = diaSemanaHoje === 0 ? -6 : 1 - diaSemanaHoje;
-                    segunda.setDate(hoje.getDate() + diff);
-
-                    const dias = [];
-                    for (let i = 0; i < 6; i++) {
-                      const dia = new Date(segunda);
-                      dia.setDate(segunda.getDate() + i);
-                      dias.push({
-                        nome: ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'][i],
-                        dataStr: dia.toISOString().split('T')[0],
-                        diaMes: dia.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short' })
-                      });
-                    }
-
-                    return dias.map(d => {
-                      const agendamentosDoDia = agendamentos.filter(a => a.data === d.dataStr && (agendaFiltroStatus === 'todos' || a.status === agendaFiltroStatus));
-                      const isHoje = d.dataStr === hoje.toISOString().split('T')[0];
-
-                      return (
-                        <Card key={d.dataStr} className={`p-4 border flex flex-col min-h-[320px] ${isHoje ? 'border-primary/50 bg-primary/5 ring-1 ring-primary/20' : 'border-border'}`}>
-                          <div className="flex items-center justify-between border-b border-border/60 pb-2 mb-3">
-                            <div>
-                              <h4 className="font-bold text-xs text-foreground uppercase tracking-wider">{d.nome}</h4>
-                              <p className="text-xs text-muted-foreground mt-0.5">{d.diaMes}</p>
-                            </div>
-                            {isHoje && <span className="px-2 py-0.5 text-[9px] font-bold uppercase rounded bg-primary text-primary-foreground">Hoje</span>}
-                          </div>
-
-                          <div className="flex-1 space-y-2 overflow-y-auto max-h-[380px] pr-1">
-                            {agendamentosDoDia.length === 0 ? (
-                              <div className="text-center py-8 text-[11px] text-muted-foreground font-mono">Sem sessões</div>
-                            ) : (
-                              agendamentosDoDia.sort((x, y) => x.hora.localeCompare(y.hora)).map(a => {
-                                const paciente = analisandos.find(p => p.id === a.analisandoId);
-                                const modalidade = modalidades.find(m => m.id === a.modalidadeId);
-                                const corStatus = a.status === 'confirmado' ? 'bg-sky-500/10 border-sky-500/20 text-sky-500' :
-                                                 a.status === 'pendente' ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' :
-                                                 a.status === 'realizado' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' :
-                                                 'bg-destructive/10 border-destructive/20 text-destructive';
-
-                                return (
-                                  <div key={a.id} className="p-2.5 rounded-xl border border-border/80 bg-card hover:shadow-sm transition-all group relative">
-                                    <div className="flex items-center justify-between mb-1.5">
-                                      <span className="font-mono text-[10px] font-bold text-primary">{a.hora}</span>
-                                      <span className={`px-1.5 py-0.5 text-[9px] rounded-md font-semibold capitalize border ${corStatus}`}>
-                                        {a.status}
-                                      </span>
-                                    </div>
-                                    <h5 className="font-bold text-xs text-foreground line-clamp-1">{paciente?.nome || 'Inexistente'}</h5>
-                                    <p className="text-[10px] text-muted-foreground mt-0.5">{modalidade?.nome || '—'}</p>
-                                    {a.observacao && (
-                                      <p className="text-[9px] text-muted-foreground italic mt-1.5 border-t border-border/40 pt-1 line-clamp-2">
-                                        "{a.observacao}"
-                                      </p>
-                                    )}
-
-                                    {/* Action overlays on hover */}
-                                    <div className="absolute inset-0 bg-background/95 backdrop-blur-sm rounded-xl p-2 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-1.5 transition-all duration-150">
-                                      {a.status !== 'realizado' ? (
-                                        <button
-                                          onClick={() => {
-                                            setSessaoOrigemAgendamentoId(a.id);
-                                            setSessaoOrigemPacienteId(a.analisandoId);
-                                            setSecaoAtiva('nova_sessao');
-                                          }}
-                                          title="Iniciar Atendimento e Registrar Sessão"
-                                          className="size-7 rounded-lg bg-emerald-500 text-white flex items-center justify-center hover:opacity-90 transition-opacity"
-                                        >
-                                          <Play className="size-3.5" />
-                                        </button>
-                                      ) : (
-                                        <button
-                                          onClick={() => {
-                                            if (paciente) setProntuarioSelecionado(paciente);
-                                          }}
-                                          title="Ver Atendimento no Prontuário"
-                                          className="size-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center hover:opacity-90 transition-opacity"
-                                        >
-                                          <FileText className="size-3.5" />
-                                        </button>
-                                      )}
-                                      <button
-                                        onClick={() => {
-                                          if (!paciente) return;
-                                          const msgText = `Olá ${paciente.nome}, passando para confirmar nosso horário de análise agendado para ${formatarData(a.data)} às ${a.hora}. Até lá!`;
-                                          abrirWhatsApp(paciente.whatsapp || '', msgText);
-                                        }}
-                                        title="Confirmar via WhatsApp"
-                                        className="size-7 rounded-lg bg-blue-500 text-white flex items-center justify-center hover:opacity-90 transition-opacity"
-                                      >
-                                        <Send className="size-3.5" />
-                                      </button>
-                                      <button
-                                        onClick={() => {
-                                          setAgendamentoForm(a);
-                                          setMostrarFormAgendamento(true);
-                                        }}
-                                        title="Editar"
-                                        className="size-7 rounded-lg bg-zinc-700 text-white flex items-center justify-center hover:opacity-90 transition-opacity"
-                                      >
-                                        <Pencil className="size-3.5" />
-                                      </button>
-                                      <button
-                                        onClick={() => {
-                                          if (confirm('Tem certeza que deseja excluir este agendamento?')) {
-                                            atualizarAgendamentos(agendamentos.filter(x => x.id !== a.id));
-                                          }
-                                        }}
-                                        title="Excluir"
-                                        className="size-7 rounded-lg bg-destructive text-white flex items-center justify-center hover:opacity-90 transition-opacity"
-                                      >
-                                        <Trash2 className="size-3.5" />
-                                      </button>
-                                    </div>
-                                  </div>
-                                );
-                              })
-                            )}
-                          </div>
-                        </Card>
-                      );
-                    });
-                  })()}
-                </div>
-              ) : (
-                /* List View */
-                <Card className="overflow-hidden border-border">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead className="bg-muted/40 text-xs uppercase text-muted-foreground border-b border-border">
-                        <tr>
-                          <th className="text-left px-4 py-3 font-semibold">Data & Hora</th>
-                          <th className="text-left px-4 py-3 font-semibold">Analisando</th>
-                          <th className="text-left px-4 py-3 font-semibold">Modalidade</th>
-                          <th className="text-left px-4 py-3 font-semibold">Observações</th>
-                          <th className="text-left px-4 py-3 font-semibold">Status</th>
-                          <th className="text-right px-4 py-3">Ações</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border/60">
-                        {agendamentos.length === 0 ? (
-                          <tr>
-                            <td colSpan={6} className="text-center py-12 text-muted-foreground">
-                              Nenhum agendamento registrado na lista.
-                            </td>
-                          </tr>
-                        ) : (
-                          agendamentos
-                            .filter(a => agendaFiltroStatus === 'todos' || a.status === agendaFiltroStatus)
-                            .sort((x, y) => `${x.data} ${x.hora}`.localeCompare(`${y.data} ${y.hora}`))
-                            .map(a => {
-                              const paciente = analisandos.find(p => p.id === a.analisandoId);
-                              const modalidade = modalidades.find(m => m.id === a.modalidadeId);
-                              const corStatus = a.status === 'confirmado' ? 'bg-sky-500/10 border-sky-500/20 text-sky-500' :
-                                               a.status === 'pendente' ? 'bg-amber-500/10 border-amber-500/20 text-amber-500' :
-                                               a.status === 'realizado' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' :
-                                               'bg-destructive/10 border-destructive/20 text-destructive';
-
-                              return (
-                                <tr key={a.id} className="hover:bg-muted/20 transition-colors">
-                                  <td className="px-4 py-3 whitespace-nowrap">
-                                    <span className="font-semibold text-foreground">{formatarData(a.data)}</span>
-                                    <span className="ml-2 px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono text-xs">{a.hora}</span>
-                                  </td>
-                                  <td className="px-4 py-3 font-semibold text-foreground">{paciente?.nome || '—'}</td>
-                                  <td className="px-4 py-3">{modalidade?.nome || '—'}</td>
-                                  <td className="px-4 py-3 text-xs italic text-muted-foreground">
-                                    {a.observacao ? `"${a.observacao}"` : '—'}
-                                  </td>
-                                  <td className="px-4 py-3">
-                                    <span className={`px-2 py-0.5 text-xs rounded-full font-medium capitalize border ${corStatus}`}>
-                                      {a.status}
-                                    </span>
-                                  </td>
-                                  <td className="px-4 py-3 text-right">
-                                    <div className="flex justify-end gap-1.5">
-                                      {a.status !== 'realizado' ? (
-                                        <button
-                                          onClick={() => {
-                                            setSessaoOrigemAgendamentoId(a.id);
-                                            setSessaoOrigemPacienteId(a.analisandoId);
-                                            setSecaoAtiva('nova_sessao');
-                                          }}
-                                          title="Iniciar Atendimento e Registrar Sessão"
-                                          className="p-1.5 rounded-lg border border-border bg-card hover:bg-emerald-500/10 hover:text-emerald-500 text-muted-foreground transition-colors"
-                                        >
-                                          <Play className="size-4" />
-                                        </button>
-                                      ) : (
-                                        <button
-                                          onClick={() => {
-                                            if (paciente) setProntuarioSelecionado(paciente);
-                                          }}
-                                          title="Ver Prontuário / Sessão"
-                                          className="p-1.5 rounded-lg border border-border bg-card hover:bg-emerald-500/10 hover:text-emerald-500 text-muted-foreground transition-colors"
-                                        >
-                                          <FileText className="size-4" />
-                                        </button>
-                                      )}
-                                      <button
-                                        onClick={() => {
-                                          if (!paciente) return;
-                                          const msgText = `Olá ${paciente.nome}, passando para confirmar nosso horário de análise agendado para ${formatarData(a.data)} às ${a.hora}. Até lá!`;
-                                          abrirWhatsApp(paciente.whatsapp || '', msgText);
-                                        }}
-                                        title="WhatsApp"
-                                        className="p-1.5 rounded-lg border border-border bg-card hover:bg-blue-500/10 hover:text-blue-500 text-muted-foreground transition-colors"
-                                      >
-                                        <Send className="size-4" />
-                                      </button>
-                                      <button
-                                        onClick={() => {
-                                          setAgendamentoForm(a);
-                                          setMostrarFormAgendamento(true);
-                                        }}
-                                        className="p-1.5 rounded-lg border border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                                      >
-                                        <Pencil className="size-4" />
-                                      </button>
-                                      <button
-                                        onClick={() => {
-                                          if (confirm('Tem certeza que deseja excluir este agendamento?')) {
-                                            atualizarAgendamentos(agendamentos.filter(x => x.id !== a.id));
-                                          }
-                                        }}
-                                        className="p-1.5 rounded-lg border border-border bg-card hover:bg-destructive/10 hover:text-destructive text-muted-foreground transition-colors"
-                                      >
-                                        <Trash2 className="size-4" />
-                                      </button>
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </Card>
-              )}
-            </div>
+            <AgendaClinica
+              agendamentos={agendamentos}
+              analisandos={analisandos}
+              modalidades={modalidades}
+              onAtualizarAgendamentos={atualizarAgendamentos}
+              onNovoAgendamento={(dataStr) => {
+                setAgendamentoForm({
+                  id: `ag_${Date.now()}`,
+                  analisandoId: '',
+                  modalidadeId: modalidades[0]?.id || '',
+                  data: dataStr || new Date().toISOString().split('T')[0],
+                  hora: '09:00',
+                  status: 'confirmado',
+                  observacao: ''
+                });
+                setMostrarFormAgendamento(true);
+              }}
+              onEditarAgendamento={(ag) => {
+                setAgendamentoForm(ag);
+                setMostrarFormAgendamento(true);
+              }}
+              onExcluirAgendamento={(id) => {
+                if (confirm('Tem certeza que deseja excluir este agendamento?')) {
+                  atualizarAgendamentos(agendamentos.filter(x => x.id !== id));
+                }
+              }}
+              onIniciarSessao={(agId, analisandoId) => {
+                setSessaoOrigemAgendamentoId(agId);
+                setSessaoOrigemPacienteId(analisandoId);
+                setSecaoAtiva('nova_sessao');
+              }}
+              onAbrirProntuario={(paciente) => {
+                setProntuarioSelecionado(paciente);
+              }}
+              onEnviarWhatsApp={(whatsapp, mensagem) => {
+                abrirWhatsApp(whatsapp, mensagem);
+              }}
+            />
           )}
 
           {/* ======================================================== */}
