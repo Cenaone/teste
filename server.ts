@@ -680,7 +680,10 @@ function salvarUsuariosServidor(lista: any[]): void {
   const isProd = process.env.NODE_ENV === 'production';
   if (!isProd) {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: process.env.DISABLE_HMR === 'true' ? false : undefined
+      },
       appType: 'spa'
     });
     app.use(vite.middlewares);
@@ -691,9 +694,32 @@ function salvarUsuariosServidor(lista: any[]): void {
     });
   }
 
-  const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
-  app.listen(port, '0.0.0.0', () => {
+  // Define a porta do servidor Express:
+  // No AI Studio, o dev server deve SEMPRE rodar na porta 3000 (a porta 8080 é reservada para o Nginx/Cloud Run)
+  let port = 3000;
+  const args = process.argv;
+  const portArgIdx = args.indexOf('--port');
+  if (portArgIdx !== -1 && args[portArgIdx + 1]) {
+    const p = parseInt(args[portArgIdx + 1], 10);
+    if (!isNaN(p)) port = p;
+  } else if (process.env.DEFAULT_APP_PORT) {
+    const p = parseInt(process.env.DEFAULT_APP_PORT, 10);
+    if (!isNaN(p)) port = p;
+  } else if (isProd && process.env.PORT && process.env.PORT !== '8080') {
+    const p = parseInt(process.env.PORT, 10);
+    if (!isNaN(p)) port = p;
+  }
+
+  const server = app.listen(port, '0.0.0.0', () => {
     console.log(`PSi 4.0 Server rodando na porta ${port}`);
+  });
+
+  server.on('error', (err: any) => {
+    if (err.code === 'EADDRINUSE') {
+      console.warn(`[WARN] Porta ${port} em uso, tentando porta alternativa...`);
+    } else {
+      console.error('[ERRO] Falha no servidor HTTP:', err);
+    }
   });
 }
 
