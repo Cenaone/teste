@@ -88,8 +88,10 @@ export function criarHandler(deps: Dependencies) {
       const status = Number(erro?.status || erro?.code);
       const isTimeout = erro?.name === 'AbortError' ||
         erro?.code === 20 ||
+        status === 504 ||
         String(erro?.message || '').toLowerCase().includes('aborted') ||
-        String(erro?.message || '').toLowerCase().includes('timeout');
+        String(erro?.message || '').toLowerCase().includes('timeout') ||
+        String(erro?.message || '').toLowerCase().includes('deadline');
 
       if (isTimeout) {
         return responder(504, { ok: false, erro: 'Tempo limite de transcrição excedido (timeout). Tente novamente.' }, 'TIMEOUT');
@@ -143,18 +145,26 @@ const handler = criarHandler({
             { text: 'Transcreva fielmente o diálogo deste áudio em português do Brasil, com pontuação e parágrafos. Não invente falas, não faça análises e retorne somente a transcrição. Se não houver fala compreensível, retorne texto vazio.' }
           ] }
         });
-        return result.text || '';
+        const texto = (result.text || '').trim();
+        if (texto) {
+          return texto;
+        }
       } catch (err: any) {
         ultimoErro = err;
         const code = Number(err?.status || err?.code);
-        // Tenta o próximo modelo caso o atual retorne indisponibilidade/sobrecarga (503)
-        if (code === 503 || String(err?.message || '').toLowerCase().includes('demand')) {
-          continue;
+        console.warn(`[transcricao_api] Modelo ${modelo} falhou (status ${code}):`, err?.message || err);
+        // Se a chave for recusada ou sem escopo, não adianta tentar outros modelos
+        if (code === 401 || code === 403) {
+          throw err;
         }
-        throw err;
+        // Continua para o próximo modelo resiliente
+        continue;
       }
     }
-    throw ultimoErro;
+    if (ultimoErro) {
+      throw ultimoErro;
+    }
+    return '';
   }
 });
 export default handler;

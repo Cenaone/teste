@@ -342,8 +342,8 @@ export default function GravadorSessao({
    * Não corta bytes brutos de WebM/MP4: decodifica e sintetiza arquivos WAV decodificáveis individualmente.
    */
   const segmentarAudioEmTrechos = async (blob: Blob, segundosPorTrecho: number = 90): Promise<Blob[]> => {
-    // Se o áudio é pequeno (<= 2.5 MB), envia diretamente como trecho único
-    if (blob.size <= 2.5 * 1024 * 1024) {
+    // Se o áudio já for WAV e menor que 2.5 MB, pode ser enviado diretamente
+    if (blob.type === 'audio/wav' && blob.size <= 2.5 * 1024 * 1024) {
       return [blob];
     }
 
@@ -358,8 +358,10 @@ export default function GravadorSessao({
       const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
       const totalSegundos = audioBuffer.duration;
 
-      if (totalSegundos <= segundosPorTrecho && blob.size <= 3 * 1024 * 1024) {
-        return [blob];
+      // Se o áudio for menor ou igual à duração de um trecho, converte para WAV único 16kHz com cabeçalho RIFF perfeito
+      if (totalSegundos <= segundosPorTrecho) {
+        const trechoUnicoWav = extrairTrechoWav(audioBuffer, 0, totalSegundos);
+        return [trechoUnicoWav];
       }
 
       const trechos: Blob[] = [];
@@ -373,7 +375,7 @@ export default function GravadorSessao({
 
       return trechos.length > 0 ? trechos : [blob];
     } catch (err) {
-      console.warn('[Segmentação Web Audio falhou, fallback para blob original]:', err);
+      console.warn('[Processamento Web Audio para WAV falhou, fallback para blob original]:', err);
       return [blob];
     } finally {
       audioCtx.close().catch(() => {});
