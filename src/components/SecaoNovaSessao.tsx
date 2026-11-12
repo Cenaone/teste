@@ -41,6 +41,7 @@ interface SecaoNovaSessaoProps {
   agendamentoInicialId?: string | null;
   pacienteInicialId?: string | null;
   contaUsuario?: UsuarioConta | null;
+  nomeTerapeuta?: string;
   onSalvarSessao: (novaSessao: SessaoClinica, agendamentoRetorno?: AgendamentoClinico) => void;
   onNavegarSessoes: () => void;
   onCadastrarPaciente?: () => void;
@@ -56,6 +57,7 @@ export default function SecaoNovaSessao({
   agendamentoInicialId,
   pacienteInicialId,
   contaUsuario,
+  nomeTerapeuta,
   onSalvarSessao,
   onNavegarSessoes,
   onCadastrarPaciente
@@ -495,6 +497,7 @@ export default function SecaoNovaSessao({
           </div>
 
           <GravadorSessao
+            nomeTerapeuta={nomeTerapeuta || contaUsuario?.nomeCompleto || 'Terapeuta'}
             nomePaciente={analisandoSelecionado?.nome || 'Paciente'}
             textoAtual={notasSessao}
             onInserirTexto={(novoTexto) => {

@@ -20,12 +20,17 @@ import {
   FileAudio,
   Video,
   HelpCircle,
-  Headphones
+  Headphones,
+  User,
+  MessagesSquare,
+  FileText,
+  CheckCircle2
 } from 'lucide-react';
 import { Card } from './ui-compact';
 import { getSupabase } from '../lib/supabase';
 
 interface GravadorSessaoProps {
+  nomeTerapeuta?: string;
   nomePaciente?: string;
   onInserirTexto: (texto: string) => void;
   textoAtual?: string;
@@ -36,6 +41,7 @@ type EstadoGravador = 'ocioso' | 'solicitando' | 'gravando' | 'pausado' | 'proce
 export type ModoCapturaAudio = 'presencial' | 'teleconsulta' | 'google_meet';
 
 export default function GravadorSessao({
+  nomeTerapeuta = 'Terapeuta',
   nomePaciente = 'Paciente',
   onInserirTexto,
   textoAtual = '',
@@ -51,6 +57,8 @@ export default function GravadorSessao({
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [copiado, setCopiado] = useState(false);
+  const [copiadoDialogo, setCopiadoDialogo] = useState(false);
+  const [abaVisualizacao, setAbaVisualizacao] = useState<'dialogo' | 'texto'>('dialogo');
   const [suportaFalaAoVivo, setSuportaFalaAoVivo] = useState(false);
   const [estaOuvindoFala, setEstaOuvindoFala] = useState(false);
   const [statusPermissaoMic, setStatusPermissaoMic] = useState<'concedida' | 'solicitando' | 'negada' | 'desconhecido'>('desconhecido');
@@ -268,44 +276,125 @@ export default function GravadorSessao({
   };
 
   /**
-   * Extrai um segmento do AudioBuffer e serializa em um Blob de formato WAV padrão 16-bit PCM mono (16kHz).
-   * Garante que cada trecho seja um arquivo de áudio autônomo, válido e decodificável pelo Gemini e reprodutores.
+   * Estrutura de dados de cada intervenção identificada no diálogo clínico.
    */
-  const extrairTrechoWav = (audioBuffer: AudioBuffer, startSec: number, endSec: number): Blob => {
+  interface ItemDialogo {
+    id: string;
+    orador: 'terapeuta' | 'paciente' | 'outro';
+    nome: string;
+    texto: string;
+  }
+
+  const parsearLinhasDialogo = (texto: string, nomeT: string, nomeP: string): ItemDialogo[] => {
+    if (!texto.trim()) return [];
+    const linhas = texto.split('\n').map(l => l.trim()).filter(Boolean);
+    const items: ItemDialogo[] = [];
+
+    const tNorm = (nomeT || 'terapeuta').toLowerCase();
+    const pNorm = (nomeP || 'paciente').toLowerCase();
+
+    linhas.forEach((linha, idx) => {
+      // Reconhece padrões como "[Dr. Daniel Machado]: fala" ou "Dr. Daniel Machado: fala" ou "[Terapeuta]: fala"
+      const match = linha.match(/^\[?([^\]:]{2,50})\]?:\s*(.+)$/);
+      if (match) {
+        const oradorRaw = match[1].trim();
+        const fala = match[2].trim();
+        const oNorm = oradorRaw.toLowerCase();
+
+        let orador: 'terapeuta' | 'paciente' | 'outro' = 'outro';
+        if (
+          oNorm.includes(tNorm) || 
+          tNorm.includes(oNorm) || 
+          oNorm.includes('terapeuta') || 
+          oNorm.includes('psicólogo') || 
+          oNorm.includes('analista')
+        ) {
+          orador = 'terapeuta';
+        } else if (
+          oNorm.includes(pNorm) || 
+          pNorm.includes(oNorm) || 
+          oNorm.includes('paciente') || 
+          oNorm.includes('analisando') || 
+          oNorm.includes('cliente')
+        ) {
+          orador = 'paciente';
+        }
+
+        items.push({
+          id: `dlg-${idx}`,
+          orador,
+          nome: orador === 'terapeuta' ? (nomeT || 'Terapeuta') : (orador === 'paciente' ? (nomeP || 'Paciente') : oradorRaw),
+          texto: fala
+        });
+      } else {
+        items.push({
+          id: `dlg-${idx}`,
+          orador: 'outro',
+          nome: 'Anotação Clínica',
+          texto: linha
+        });
+      }
+    });
+
+    return items;
+  };
+
+  /**
+   * Extrai um segmento do AudioBuffer e serializa em um Blob de formato WAV padrão 16-bit PCM (16kHz).
+   * Suporta preservação estéreo de 2 canais para isolamento absoluto:
+   * Canal 0 (L) = Microfone do Terapeuta
+   * Canal 1 (R) = Áudio da Janela da Chamada / Teleconsulta (Paciente)
+   */
+  const extrairTrechoWav = (
+    audioBuffer: AudioBuffer,
+    startSec: number,
+    endSec: number,
+    preservarEstereo: boolean = false
+  ): Blob => {
     const targetSampleRate = 16000; // Taxa de amostragem padrão para IA e fala clínica
     const startSample = Math.floor(startSec * audioBuffer.sampleRate);
     const endSample = Math.min(Math.floor(endSec * audioBuffer.sampleRate), audioBuffer.length);
     const lengthInOriginal = Math.max(0, endSample - startSample);
 
-    // Mixagem para Mono para economia de banda sem perda de fidelidade vocal
-    const numChannels = audioBuffer.numberOfChannels;
-    const originalMono = new Float32Array(lengthInOriginal);
-    for (let c = 0; c < numChannels; c++) {
-      const channelData = audioBuffer.getChannelData(c).subarray(startSample, endSample);
-      for (let i = 0; i < lengthInOriginal; i++) {
-        originalMono[i] += channelData[i] / numChannels;
+    const canais = (preservarEstereo && audioBuffer.numberOfChannels >= 2) ? 2 : 1;
+    const ratio = targetSampleRate / audioBuffer.sampleRate;
+    const newLength = Math.max(1, Math.round(lengthInOriginal * ratio));
+
+    const canaisReamostrados: Float32Array[] = [];
+
+    for (let c = 0; c < canais; c++) {
+      let channelSamples: Float32Array;
+      if (canais === 1 && audioBuffer.numberOfChannels > 1) {
+        // Downmix para mono com conservação de ganho
+        channelSamples = new Float32Array(lengthInOriginal);
+        for (let oc = 0; oc < audioBuffer.numberOfChannels; oc++) {
+          const ocData = audioBuffer.getChannelData(oc).subarray(startSample, endSample);
+          for (let i = 0; i < lengthInOriginal; i++) {
+            channelSamples[i] += ocData[i] / audioBuffer.numberOfChannels;
+          }
+        }
+      } else {
+        channelSamples = audioBuffer.getChannelData(c).subarray(startSample, endSample);
+      }
+
+      if (audioBuffer.sampleRate === targetSampleRate) {
+        canaisReamostrados.push(channelSamples);
+      } else {
+        const resampled = new Float32Array(newLength);
+        for (let i = 0; i < newLength; i++) {
+          const origIndex = i / ratio;
+          const indexFloor = Math.floor(origIndex);
+          const indexCeil = Math.min(indexFloor + 1, lengthInOriginal - 1);
+          const frac = origIndex - indexFloor;
+          resampled[i] = channelSamples[indexFloor] * (1 - frac) + channelSamples[indexCeil] * frac;
+        }
+        canaisReamostrados.push(resampled);
       }
     }
 
-    // Reamostragem para 16kHz via interpolação linear
-    let finalSamples: Float32Array;
-    if (audioBuffer.sampleRate === targetSampleRate) {
-      finalSamples = originalMono;
-    } else {
-      const ratio = targetSampleRate / audioBuffer.sampleRate;
-      const newLength = Math.max(1, Math.round(lengthInOriginal * ratio));
-      finalSamples = new Float32Array(newLength);
-      for (let i = 0; i < newLength; i++) {
-        const origIndex = i / ratio;
-        const indexFloor = Math.floor(origIndex);
-        const indexCeil = Math.min(indexFloor + 1, lengthInOriginal - 1);
-        const frac = origIndex - indexFloor;
-        finalSamples[i] = originalMono[indexFloor] * (1 - frac) + originalMono[indexCeil] * frac;
-      }
-    }
-
-    const numSamples = finalSamples.length;
-    const dataByteLength = numSamples * 2; // 16-bit PCM = 2 bytes por amostra
+    const numSamplesPerChannel = canaisReamostrados[0].length;
+    const totalSamples = numSamplesPerChannel * canais;
+    const dataByteLength = totalSamples * 2; // 16-bit PCM = 2 bytes por amostra
     const buffer = new ArrayBuffer(44 + dataByteLength);
     const view = new DataView(buffer);
 
@@ -317,33 +406,36 @@ export default function GravadorSessao({
     view.setUint32(12, 0x666d7420, false); // "fmt "
     view.setUint32(16, 16, true); // subchunk1Size (16 para PCM)
     view.setUint16(20, 1, true); // áudio format PCM = 1
-    view.setUint16(22, 1, true); // mono = 1
+    view.setUint16(22, canais, true); // 1 = mono, 2 = estéreo
     view.setUint32(24, targetSampleRate, true); // sampleRate (16000)
-    view.setUint32(28, targetSampleRate * 2, true); // byteRate (16000 * 1 * 2)
-    view.setUint16(32, 2, true); // blockAlign (1 * 2)
+    view.setUint32(28, targetSampleRate * canais * 2, true); // byteRate
+    view.setUint16(32, canais * 2, true); // blockAlign
     view.setUint16(34, 16, true); // bitsPerSample = 16
     // Subchunk data
     view.setUint32(36, 0x64617461, false); // "data"
     view.setUint32(40, dataByteLength, true); // data size
 
     let offset = 44;
-    for (let i = 0; i < numSamples; i++) {
-      const s = Math.max(-1, Math.min(1, finalSamples[i]));
-      const intSample = s < 0 ? s * 0x8000 : s * 0x7FFF;
-      view.setInt16(offset, intSample, true);
-      offset += 2;
+    for (let i = 0; i < numSamplesPerChannel; i++) {
+      for (let c = 0; c < canais; c++) {
+        const s = Math.max(-1, Math.min(1, canaisReamostrados[c][i] || 0));
+        const intSample = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        view.setInt16(offset, intSample, true);
+        offset += 2;
+      }
     }
 
     return new Blob([buffer], { type: 'audio/wav' });
   };
 
   /**
-   * Segmenta áudios longos (de até 45 minutos) em trechos válidos de 90 segundos (~2.75 MB por trecho).
-   * Não corta bytes brutos de WebM/MP4: decodifica e sintetiza arquivos WAV decodificáveis individualmente.
+   * Segmenta áudios longos (de até 45 minutos) em trechos válidos e decodificáveis.
+   * Utiliza 40s para 2 canais estéreo (~2.56 MB) ou 80s para mono (~2.56 MB), respeitando o limite do payload.
    */
-  const segmentarAudioEmTrechos = async (blob: Blob, segundosPorTrecho: number = 90): Promise<Blob[]> => {
-    // Se o áudio é pequeno (<= 2.5 MB), envia diretamente como trecho único
-    if (blob.size <= 2.5 * 1024 * 1024) {
+  const segmentarAudioEmTrechos = async (blob: Blob, canaisSeparados: boolean = false): Promise<Blob[]> => {
+    const segundosPorTrecho = canaisSeparados ? 40 : 80;
+
+    if (blob.size <= 2.5 * 1024 * 1024 && !canaisSeparados) {
       return [blob];
     }
 
@@ -358,15 +450,15 @@ export default function GravadorSessao({
       const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
       const totalSegundos = audioBuffer.duration;
 
-      if (totalSegundos <= segundosPorTrecho && blob.size <= 3 * 1024 * 1024) {
-        return [blob];
+      if (totalSegundos <= segundosPorTrecho && blob.size <= 2.8 * 1024 * 1024 && (!canaisSeparados || audioBuffer.numberOfChannels >= 2)) {
+        return [extrairTrechoWav(audioBuffer, 0, totalSegundos, canaisSeparados)];
       }
 
       const trechos: Blob[] = [];
       let inicioSec = 0;
       while (inicioSec < totalSegundos) {
         const fimSec = Math.min(inicioSec + segundosPorTrecho, totalSegundos);
-        const trechoWav = extrairTrechoWav(audioBuffer, inicioSec, fimSec);
+        const trechoWav = extrairTrechoWav(audioBuffer, inicioSec, fimSec, canaisSeparados);
         trechos.push(trechoWav);
         inicioSec = fimSec;
       }
@@ -401,10 +493,12 @@ export default function GravadorSessao({
       }
       const token = sessao.session.access_token;
 
+      const isCanaisSeparados = modoCaptura === 'teleconsulta' || modoCaptura === 'google_meet';
+
       // 2. Prepara os trechos caso não esteja retomando
       if (!retomar || trechosArmazenadosRef.current.length === 0) {
         setProgressoTrechos({ atual: 1, total: 1 });
-        const trechos = await segmentarAudioEmTrechos(blob, 90);
+        const trechos = await segmentarAudioEmTrechos(blob, isCanaisSeparados);
         trechosArmazenadosRef.current = trechos;
         trechosResultadosRef.current = {};
       }
@@ -435,7 +529,11 @@ export default function GravadorSessao({
           },
           body: JSON.stringify({
             audioBase64: base64,
-            mimeType: mime
+            mimeType: mime,
+            nomeTerapeuta: nomeTerapeuta || 'Terapeuta',
+            nomePaciente: nomePaciente || 'Paciente',
+            modoCaptura: modoCaptura,
+            canaisSeparados: isCanaisSeparados
           })
         });
 
@@ -622,18 +720,33 @@ export default function GravadorSessao({
 
         displayStreamRef.current = displayStream;
 
-        // Mixa Microfone (Terapeuta) + Chamada Online (Paciente) via Web Audio API
+        // Mixa Microfone (Terapeuta) + Chamada Online (Paciente) com isolamento físico de canais via Web Audio API:
+        // Canal 0 (L) = Microfone da Máquina Local (Terapeuta)
+        // Canal 1 (R) = Áudio da Janela da Chamada / Teleconsulta (Paciente)
         const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
         if (AudioCtxClass) {
           const audioCtx = new AudioCtxClass();
           audioContextRef.current = audioCtx;
           const destination = audioCtx.createMediaStreamDestination();
+          destination.channelCount = 2;
+          destination.channelCountMode = 'explicit';
 
           const micSource = audioCtx.createMediaStreamSource(micStream);
-          micSource.connect(destination);
+          const micGain = audioCtx.createGain();
+          micGain.channelCount = 1;
+          micGain.channelCountMode = 'clamped';
+          micSource.connect(micGain);
 
           const callSource = audioCtx.createMediaStreamSource(displayStream);
-          callSource.connect(destination);
+          const callGain = audioCtx.createGain();
+          callGain.channelCount = 1;
+          callGain.channelCountMode = 'clamped';
+          callSource.connect(callGain);
+
+          const merger = audioCtx.createChannelMerger(2);
+          micGain.connect(merger, 0, 0); // Canal 0 (Esquerdo / L) -> Terapeuta
+          callGain.connect(merger, 0, 1); // Canal 1 (Direito / R) -> Paciente
+          merger.connect(destination);
 
           stream = destination.stream;
         } else {
@@ -1336,78 +1449,219 @@ export default function GravadorSessao({
         </div>
       )}
 
-      {/* Caixa de Exibição da Transcrição Real */}
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center gap-1.5">
-              <Sparkles className="size-3.5 text-primary" />
-              Transcrição Textual da Sessão
-              {transcricaoTexto.trim() && (
-                <span className="text-[11px] font-normal text-muted-foreground lowercase">
-                  ({transcricaoTexto.length} caracteres)
-                </span>
-              )}
-            </label>
-            {origemTranscricao === 'ia_gemini' && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-                <Sparkles className="size-3" /> Transcrição Clínica por IA (Gemini)
-              </span>
-            )}
-            {origemTranscricao === 'rascunho_navegador' && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300">
-                <Radio className="size-3" /> Rascunho Local do Navegador
-              </span>
-            )}
-          </div>
+      {/* Caixa de Exibição da Transcrição com Identificação de Oradores */}
+      {(() => {
+        const itensDialogo = parsearLinhasDialogo(transcricaoTexto, nomeTerapeuta, nomePaciente);
+        const temDialogoFormatado = itensDialogo.length > 0 && itensDialogo.some(i => i.orador === 'terapeuta' || i.orador === 'paciente');
 
-          <div className="flex items-center gap-2">
-            {origemTranscricao === 'rascunho_navegador' && audioBlob && estado !== 'processando' && (
-              <button
-                type="button"
-                onClick={() => processarTranscricaoServidor(audioBlob, undefined, false)}
-                className="text-xs font-semibold text-primary hover:underline flex items-center gap-1 cursor-pointer"
-              >
-                <Sparkles className="size-3.5" />
-                <span>Processar com IA Gemini</span>
-              </button>
-            )}
+        const copiarTextoCompleto = async () => {
+          if (!transcricaoTexto.trim()) return;
+          try {
+            await navigator.clipboard.writeText(transcricaoTexto.trim());
+            setCopiadoDialogo(true);
+            setTimeout(() => setCopiadoDialogo(false), 2000);
+          } catch (_) {}
+        };
+
+        return (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="text-xs font-bold text-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  <Sparkles className="size-3.5 text-primary" />
+                  Transcrição da Sessão com Identificação de Oradores
+                  {transcricaoTexto.trim() && (
+                    <span className="text-[11px] font-normal text-muted-foreground lowercase">
+                      ({transcricaoTexto.length} caracteres)
+                    </span>
+                  )}
+                </label>
+                {origemTranscricao === 'ia_gemini' && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                    <Sparkles className="size-3" /> Transcrição Clínica por IA (Gemini)
+                  </span>
+                )}
+                {origemTranscricao === 'rascunho_navegador' && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                    <Radio className="size-3" /> Rascunho Local do Navegador
+                  </span>
+                )}
+              </div>
+
+              {/* Botões de Ação Superior */}
+              <div className="flex flex-wrap items-center gap-2">
+                {origemTranscricao === 'rascunho_navegador' && audioBlob && estado !== 'processando' && (
+                  <button
+                    type="button"
+                    onClick={() => processarTranscricaoServidor(audioBlob, undefined, false)}
+                    className="text-xs font-semibold text-primary hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Sparkles className="size-3.5" />
+                    <span>Processar com IA Gemini</span>
+                  </button>
+                )}
+
+                {transcricaoTexto.trim() && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={copiarTextoCompleto}
+                      className="px-2.5 py-1.5 rounded-lg border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground flex items-center gap-1.5 cursor-pointer transition-colors"
+                      title="Copiar diálogo com a identificação dos oradores para a área de transferência"
+                    >
+                      {copiadoDialogo ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
+                      <span>{copiadoDialogo ? 'Copiado!' : 'Copiar Transcrição'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleInserirNasNotas}
+                      className="px-2.5 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:opacity-90 flex items-center gap-1.5 cursor-pointer shadow-xs transition-opacity"
+                    >
+                      {copiado ? <Check className="size-3.5" /> : <Plus className="size-3.5" />}
+                      <span>{copiado ? 'Inserido no Prontuário!' : 'Inserir nas Anotações da Sessão'}</span>
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Painel com Guia de Oradores quando há transcrição ou em modo teleconsulta */}
             {transcricaoTexto.trim() && (
-              <button
-                type="button"
-                onClick={handleInserirNasNotas}
-                className="text-xs font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer"
-              >
-                {copiado ? <Check className="size-3.5 text-emerald-600" /> : <Plus className="size-3.5" />}
-                <span>{copiado ? 'Inserido no Prontuário!' : 'Inserir nas Anotações da Sessão'}</span>
-              </button>
+              <div className="p-2.5 rounded-xl bg-muted/40 border border-border/70 flex flex-wrap items-center justify-between gap-2.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mr-1">
+                    Canais de Áudio & Oradores:
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30">
+                    <Mic className="size-3 text-emerald-600" />
+                    <span>Terapeuta: <strong>{nomeTerapeuta}</strong> (Microfone Local)</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/30">
+                    <Video className="size-3 text-sky-600" />
+                    <span>Paciente: <strong>{nomePaciente}</strong> (Janela Teleconsulta)</span>
+                  </span>
+                </div>
+
+                {/* Alternador de Visualização (Balões de Diálogo vs Texto Bruto) */}
+                <div className="inline-flex rounded-lg border border-border bg-background p-0.5 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setAbaVisualizacao('dialogo')}
+                    className={`px-3 py-1 rounded-md font-semibold flex items-center gap-1.5 cursor-pointer transition-all ${
+                      abaVisualizacao === 'dialogo'
+                        ? 'bg-primary text-primary-foreground shadow-xs'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <MessagesSquare className="size-3.5" />
+                    <span>Visualização em Diálogo</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAbaVisualizacao('texto')}
+                    className={`px-3 py-1 rounded-md font-semibold flex items-center gap-1.5 cursor-pointer transition-all ${
+                      abaVisualizacao === 'texto'
+                        ? 'bg-primary text-primary-foreground shadow-xs'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <FileText className="size-3.5" />
+                    <span>Texto Completo / Edição</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Visualização 1: Balões de Diálogo com Oradores Identificados */}
+            {abaVisualizacao === 'dialogo' && transcricaoTexto.trim() && (
+              <div className="rounded-xl border border-border bg-card p-4 space-y-3 max-h-[480px] overflow-y-auto">
+                {itensDialogo.map((item) => {
+                  const isTerapeuta = item.orador === 'terapeuta';
+                  const isPaciente = item.orador === 'paciente';
+
+                  return (
+                    <div
+                      key={item.id}
+                      className={`p-3.5 rounded-xl border transition-all ${
+                        isTerapeuta
+                          ? 'bg-emerald-500/5 dark:bg-emerald-500/10 border-emerald-500/30 mr-4 sm:mr-10'
+                          : isPaciente
+                          ? 'bg-sky-500/5 dark:bg-sky-500/10 border-sky-500/30 ml-4 sm:ml-10'
+                          : 'bg-muted/40 border-border/80'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-bold shadow-2xs ${
+                              isTerapeuta
+                                ? 'bg-emerald-600 text-white'
+                                : isPaciente
+                                ? 'bg-sky-600 text-white'
+                                : 'bg-muted text-foreground'
+                            }`}
+                          >
+                            {isTerapeuta ? <Mic className="size-3" /> : isPaciente ? <Video className="size-3" /> : <User className="size-3" />}
+                            <span>{item.nome}</span>
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {isTerapeuta ? 'Microfone da Máquina Local' : isPaciente ? 'Áudio da Janela da Chamada' : 'Anotação'}
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(`[${item.nome}]: ${item.texto}`);
+                            } catch (_) {}
+                          }}
+                          className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1 cursor-pointer"
+                          title="Copiar esta fala"
+                        >
+                          <Copy className="size-3" />
+                          <span>Copiar</span>
+                        </button>
+                      </div>
+
+                      <p className="text-xs text-foreground/95 leading-relaxed font-sans pl-1 whitespace-pre-wrap">
+                        {item.texto}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Visualização 2: Editor de Texto Completo Livre */}
+            {(abaVisualizacao === 'texto' || !transcricaoTexto.trim()) && (
+              <div className="relative">
+                <textarea
+                  rows={6}
+                  readOnly={estado === 'gravando'}
+                  value={transcricaoTexto}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setTranscricaoTexto(val);
+                    transcricaoTextoRef.current = val;
+                    textoFinalAcumuladoRef.current = val;
+                    onInserirTexto(val);
+                  }}
+                  placeholder={
+                    estado === 'gravando'
+                      ? 'Gravando... As falas da sessão estão sendo captadas e separadas por canais (Microfone local = Terapeuta / Janela da chamada = Paciente)...'
+                      : 'A transcrição estruturada com os nomes do terapeuta e paciente aparecerá aqui. Você pode editar o texto livremente antes de salvá-lo nas anotações clínicas.'
+                  }
+                  className={`w-full rounded-xl border border-border p-3.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring leading-relaxed resize-y font-mono transition-colors ${
+                    estado === 'gravando' ? 'bg-primary/5 border-primary/30' : 'bg-background'
+                  }`}
+                />
+              </div>
             )}
           </div>
-        </div>
-
-        <div className="relative">
-          <textarea
-            rows={5}
-            readOnly={estado === 'gravando'}
-            value={transcricaoTexto}
-            onChange={e => {
-              const val = e.target.value;
-              setTranscricaoTexto(val);
-              transcricaoTextoRef.current = val;
-              textoFinalAcumuladoRef.current = val;
-              onInserirTexto(val);
-            }}
-            placeholder={
-              estado === 'gravando'
-                ? 'Gravando... As falas da sessão estão sendo captadas e o áudio preservado com máxima fidelidade...'
-                : 'A transcrição automática da gravação de áudio aparecerá aqui. Você poderá editar o texto livremente antes de salvá-lo no prontuário do paciente.'
-            }
-            className={`w-full rounded-xl border border-border p-3.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring leading-relaxed resize-y font-mono transition-colors ${
-              estado === 'gravando' ? 'bg-primary/5 border-primary/30' : 'bg-background'
-            }`}
-          />
-        </div>
-      </div>
+        );
+      })()}
     </Card>
   );
 }
