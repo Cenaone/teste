@@ -2219,7 +2219,7 @@ export default function App() {
             };
 
             // Filtra analisandos que possuem sessão com retorno previsto e que NÃO estejam concluídos
-            const listaRetornos = analisandos
+            const listaRetornos = (analisandos
               .filter(a => a.status !== 'inativo')
               .map(a => {
                 const sessoesPaciente = sessoes.filter(s => s.analisandoId === a.id);
@@ -2250,7 +2250,8 @@ export default function App() {
                 dataPrevista: string;
                 diasAtraso: number;
                 statusAlerta: 'pendente' | 'enviado' | 'concluido';
-              }>;
+              }>)
+              .sort((a, b) => a.dataPrevista.localeCompare(b.dataPrevista));
 
             return (
               <div className="space-y-6">
@@ -2284,10 +2285,15 @@ export default function App() {
                       <table className="w-full text-sm">
                         <thead className="bg-muted/40 text-xs uppercase text-muted-foreground border-b border-border">
                           <tr>
+                            <th className="text-left px-4 py-3 font-semibold">
+                              <div className="flex items-center gap-1.5">
+                                <Calendar className="size-3.5 text-primary" />
+                                <span>Data Prevista</span>
+                              </div>
+                            </th>
                             <th className="text-left px-4 py-3 font-semibold">Analisando</th>
                             <th className="text-left px-4 py-3 font-semibold">WhatsApp</th>
                             <th className="text-left px-4 py-3 font-semibold">Última Modalidade</th>
-                            <th className="text-left px-4 py-3 font-semibold">Data Prevista</th>
                             <th className="text-left px-4 py-3 font-semibold">Ausente Há</th>
                             <th className="text-left px-4 py-3 font-semibold">Status Setting</th>
                             <th className="text-right px-4 py-3 font-semibold">Ações</th>
@@ -2296,10 +2302,14 @@ export default function App() {
                         <tbody className="divide-y divide-border/60">
                           {listaRetornos.map(item => (
                             <tr key={item.analisando.id} className="hover:bg-muted/20 transition-colors">
-                              <td className="px-4 py-3 font-semibold text-foreground">{item.analisando.nome}</td>
-                              <td className="px-4 py-3 text-muted-foreground">{item.analisando.whatsapp || '—'}</td>
-                              <td className="px-4 py-3">{item.modalidade?.nome || '—'}</td>
-                              <td className="px-4 py-3 font-medium text-foreground">{formatarData(item.dataPrevista)}</td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-foreground">{formatarData(item.dataPrevista)}</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 font-semibold text-foreground whitespace-nowrap">{item.analisando.nome}</td>
+                              <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{item.analisando.whatsapp || '—'}</td>
+                              <td className="px-4 py-3 whitespace-nowrap">{item.modalidade?.nome || '—'}</td>
                               <td className="px-4 py-3">
                                 {item.diasAtraso > 0 ? (
                                   <span className="text-destructive font-semibold">
