@@ -1783,7 +1783,6 @@ export default function App() {
               agendamentoInicialId={sessaoOrigemAgendamentoId}
               pacienteInicialId={sessaoOrigemPacienteId}
               contaUsuario={contaUsuario}
-              nomeTerapeuta={perfil.nome || contaUsuario?.nomeCompleto || 'Terapeuta'}
               onSalvarSessao={(novaSessao, agendamentoRetorno) => {
                 const novasSessoes = [novaSessao, ...sessoes];
                 atualizarSessoes(novasSessoes);
@@ -3604,7 +3603,6 @@ export default function App() {
                 
                 {/* Gravador & Transcritor de Áudio da Sessão */}
                 <GravadorSessao
-                  nomeTerapeuta={perfil.nome || contaUsuario?.nomeCompleto || 'Terapeuta'}
                   nomePaciente={analisandos.find(a => a.id === sessaoForm.analisandoId)?.nome || 'Paciente'}
                   textoAtual={sessaoForm.notasSessao || ''}
                   onInserirTexto={(novoTexto) => {

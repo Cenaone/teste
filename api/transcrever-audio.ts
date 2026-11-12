@@ -5,17 +5,10 @@ import { createClient } from '@supabase/supabase-js';
 export const maxDuration = 60;
 const MAX_AUDIO = 3 * 1024 * 1024;
 
-export interface OpcoesTranscricao {
-  nomeTerapeuta?: string;
-  nomePaciente?: string;
-  modoCaptura?: string;
-  canaisSeparados?: boolean;
-}
-
 type Request = IncomingMessage & { body?: any };
 type Dependencies = {
   autenticar: (token: string) => Promise<boolean>;
-  transcrever: (audio: string, mime: string, opcoes?: OpcoesTranscricao) => Promise<string>;
+  transcrever: (audio: string, mime: string) => Promise<string>;
 };
 
 export function criarHandler(deps: Dependencies) {
@@ -79,14 +72,7 @@ export function criarHandler(deps: Dependencies) {
         return responder(413, { ok: false, erro: 'O trecho de áudio excede 3 MB para transcrição nesta rota. Utilize processamento em trechos.' }, 'PAYLOAD_EXCEDIDO');
       }
 
-      const opcoes: OpcoesTranscricao = {
-        nomeTerapeuta: typeof body?.nomeTerapeuta === 'string' ? body.nomeTerapeuta.trim() : undefined,
-        nomePaciente: typeof body?.nomePaciente === 'string' ? body.nomePaciente.trim() : undefined,
-        modoCaptura: typeof body?.modoCaptura === 'string' ? body.modoCaptura.trim() : undefined,
-        canaisSeparados: Boolean(body?.canaisSeparados)
-      };
-
-      const transcricao = (await deps.transcrever(audio, formatos[mime], opcoes)).trim();
+      const transcricao = (await deps.transcrever(audio, formatos[mime])).trim();
       if (!transcricao) {
         return responder(422, { ok: false, erro: 'Não foi obtida uma transcrição. Tente novamente com fala audível.' }, 'TRANSCRICAO_VAZIA');
       }
@@ -94,8 +80,7 @@ export function criarHandler(deps: Dependencies) {
       console.info('[transcricao_api]', {
         etapa: 'concluido',
         duracaoMs: Date.now() - t0,
-        status: 200,
-        canaisSeparados: opcoes.canaisSeparados
+        status: 200
       });
 
       return responder(200, { ok: true, transcricao });
@@ -135,45 +120,14 @@ const handler = criarHandler({
     const { data, error } = await supabase.auth.getUser(token);
     return !error && Boolean(data.user);
   },
-  async transcrever(audio, mime, opcoes) {
+  async transcrever(audio, mime) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error('CONFIGURACAO_AUSENTE');
     const ai = new GoogleGenAI({ apiKey, httpOptions: { timeout: 30000 } });
 
-    const nomeTerapeuta = opcoes?.nomeTerapeuta || 'Terapeuta';
-    const nomePaciente = opcoes?.nomePaciente || 'Paciente';
-    const canaisSeparados = Boolean(opcoes?.canaisSeparados);
-
-    let promptInstrucao = '';
-    if (canaisSeparados) {
-      promptInstrucao = `Você é um assistente especializado em transcrição de sessões clínicas psicológicas.
-Este áudio possui isolamento de oradores por canais estéreo:
-- CANAL 1 (Esquerdo / L): Som captado pelo microfone local da máquina, correspondente exclusivamente à voz do TERAPEUTA [${nomeTerapeuta}].
-- CANAL 2 (Direito / R): Som captado pelo compartilhamento da janela da chamada/teleconsulta, correspondente exclusivamente à voz do PACIENTE [${nomePaciente}].
-
-Transcreva o diálogo completo da sessão clínica em ordem cronológica de forma estruturada.
-Formate rigorosamente cada fala iniciando com o orador:
-[${nomeTerapeuta}]: texto da intervenção do terapeuta
-[${nomePaciente}]: texto da fala do paciente
-
-Regras estritas:
-1. Atribua com precisão cirúrgica cada fala ao orador com base no canal de origem (Canal L = ${nomeTerapeuta}, Canal R = ${nomePaciente}).
-2. Não invente falas que não existam no áudio.
-3. Não adicione análises, introduções ou notas de rodapé; retorne exclusivamente o diálogo transcrito.
-4. Mantenha português do Brasil claro com pontuação e parágrafos correspondentes a cada intervenção.
-5. Se não houver fala audível compreensível no áudio, retorne texto vazio.`;
-    } else {
-      promptInstrucao = `Transcreva fielmente o diálogo desta sessão clínica psicológica em português do Brasil com pontuação e parágrafos.
-Identifique cronologicamente as falas dos oradores no padrão:
-[${nomeTerapeuta}]: fala do terapeuta
-[${nomePaciente}]: fala do paciente
-Não invente falas, não faça diagnósticos ou comentários e retorne somente as falas transcritas. Se não houver fala compreensível, retorne texto vazio.`;
-    }
-
     // Modelos ordenados por velocidade e resiliência para transcrição de áudio
     const modelos = [
       process.env.GEMINI_TRANSCRIPTION_MODEL,
-      'gemini-2.5-flash',
       'gemini-3.5-flash',
       'gemini-3.5-transcribe',
       'gemini-3.8-flash'
@@ -186,7 +140,7 @@ Não invente falas, não faça diagnósticos ou comentários e retorne somente a
           model: modelo,
           contents: { parts: [
             { inlineData: { data: audio, mimeType: mime } },
-            { text: promptInstrucao }
+            { text: 'Transcreva fielmente o diálogo deste áudio em português do Brasil, com pontuação e parágrafos. Não invente falas, não faça análises e retorne somente a transcrição. Se não houver fala compreensível, retorne texto vazio.' }
           ] }
         });
         return result.text || '';

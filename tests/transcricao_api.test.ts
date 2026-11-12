@@ -69,41 +69,4 @@ test('processa múltiplos trechos sequenciais e permite recuperar trecho com fal
   assert.equal(resultados.join('\n\n'), 'Trecho um transcrito.\n\nTrecho dois transcrito.');
 });
 
-test('repassa opcoes de identificacao de oradores e canais separados', async () => {
-  let opcoesRecebidas: any = null;
-  const handler = criarHandler({
-    autenticar: async () => true,
-    transcrever: async (_audio, _mime, opcoes) => {
-      opcoesRecebidas = opcoes;
-      return `[${opcoes?.nomeTerapeuta}]: Olá.\n[${opcoes?.nomePaciente}]: Olá Dr.`;
-    }
-  });
-
-  let status = 0;
-  let resposta: any;
-  const req = {
-    method: 'POST',
-    headers: { authorization: 'Bearer token-teste' },
-    body: {
-      audioBase64: 'YXVkaW8=',
-      mimeType: 'audio/wav',
-      nomeTerapeuta: 'Dr. Daniel Machado',
-      nomePaciente: 'Mariana de Souza Santos',
-      modoCaptura: 'teleconsulta',
-      canaisSeparados: true
-    }
-  };
-  const res = {
-    setHeader() {},
-    set statusCode(valor: number) { status = valor; },
-    end(texto: string) { resposta = JSON.parse(texto); }
-  };
-  await handler(req as any, res as any);
-  assert.equal(status, 200);
-  assert.equal(resposta.ok, true);
-  assert.equal(opcoesRecebidas.nomeTerapeuta, 'Dr. Daniel Machado');
-  assert.equal(opcoesRecebidas.nomePaciente, 'Mariana de Souza Santos');
-  assert.equal(opcoesRecebidas.canaisSeparados, true);
-  assert.match(resposta.transcricao, /Dr\. Daniel Machado/);
-});
 
