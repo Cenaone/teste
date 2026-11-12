@@ -74,6 +74,7 @@ export default function SecaoFinanceiro({
   const [filtroPeriodo, setFiltroPeriodo] = useState<'mes_atual' | 'mes_anterior' | 'ultimos_3' | 'ano_atual' | 'todos'>('mes_atual');
   const [buscaPaciente, setBuscaPaciente] = useState('');
   const [pacienteSelecionadoId, setPacienteSelecionadoId] = useState<string>('todos');
+  const [ordemData, setOrdemData] = useState<'vencimento_asc' | 'vencimento_desc' | 'valor_desc' | 'valor_asc' | 'paciente'>('vencimento_asc');
 
   // Estado para emissão de recibo e relatório financeiro
   const [modalReciboAberto, setModalReciboAberto] = useState(false);
@@ -407,8 +408,23 @@ export default function SecaoFinanceiro({
       }
     }
 
-    return lista.sort((a, b) => (b.data || '').localeCompare(a.data || ''));
-  }, [abaVisualizacao, sessoesFiltradas, honorariosFiltrados, analisandos, modalidades, hoje]);
+    if (ordemData === 'vencimento_asc') {
+      return lista.sort((a, b) => (a.data || '').localeCompare(b.data || ''));
+    }
+    if (ordemData === 'vencimento_desc') {
+      return lista.sort((a, b) => (b.data || '').localeCompare(a.data || ''));
+    }
+    if (ordemData === 'valor_desc') {
+      return lista.sort((a, b) => b.valor - a.valor);
+    }
+    if (ordemData === 'valor_asc') {
+      return lista.sort((a, b) => a.valor - b.valor);
+    }
+    if (ordemData === 'paciente') {
+      return lista.sort((a, b) => a.pacienteNome.localeCompare(b.pacienteNome));
+    }
+    return lista.sort((a, b) => (a.data || '').localeCompare(b.data || ''));
+  }, [abaVisualizacao, sessoesFiltradas, honorariosFiltrados, analisandos, modalidades, hoje, ordemData]);
 
   // Resumo contextual para a grade ativa
   const resumoGradeTab = useMemo(() => {
@@ -904,6 +920,24 @@ export default function SecaoFinanceiro({
                   <option key={a.id} value={a.id}>{a.nome}</option>
                 ))}
               </select>
+
+              {/* Seletor de Ordenação por Data de Vencimento */}
+              <div className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-2.5 py-1.5 text-xs shadow-2xs">
+                <ArrowUpDown className="size-3.5 text-primary shrink-0" />
+                <span className="text-muted-foreground font-medium hidden xl:inline">Ordem:</span>
+                <select
+                  value={ordemData}
+                  onChange={e => setOrdemData(e.target.value as any)}
+                  className="bg-transparent text-xs font-semibold text-foreground focus:outline-none cursor-pointer"
+                  title="Ordenar lançamentos no painel financeiro"
+                >
+                  <option value="vencimento_asc">📅 Data de Vencimento (Próximos / Vencidos primeiro)</option>
+                  <option value="vencimento_desc">📅 Data de Vencimento (Mais recentes primeiro)</option>
+                  <option value="valor_desc">💰 Maior Valor (R$)</option>
+                  <option value="valor_asc">💰 Menor Valor (R$)</option>
+                  <option value="paciente">👤 Paciente (A-Z)</option>
+                </select>
+              </div>
             </div>
 
           </div>
@@ -952,7 +986,26 @@ export default function SecaoFinanceiro({
                   <thead className="bg-muted/40 uppercase text-[11px] font-semibold text-muted-foreground border-b border-border">
                     <tr>
                       <th className="px-4 py-3">Paciente</th>
-                      <th className="px-4 py-3">Data & Hora</th>
+                      <th 
+                        onClick={() => setOrdemData(prev => prev === 'vencimento_asc' ? 'vencimento_desc' : 'vencimento_asc')}
+                        className="px-4 py-3 cursor-pointer hover:bg-muted/70 transition-colors select-none group"
+                        title="Clique para alternar a ordenação por Data de Vencimento"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>Data / Vencimento</span>
+                          <ArrowUpDown className={`size-3 transition-colors ${ordemData.startsWith('vencimento') ? 'text-primary' : 'text-muted-foreground/50 group-hover:text-foreground'}`} />
+                          {ordemData === 'vencimento_asc' && (
+                            <span className="text-[9px] font-bold text-primary bg-primary/10 px-1 py-0.2 rounded border border-primary/20">
+                              próximos
+                            </span>
+                          )}
+                          {ordemData === 'vencimento_desc' && (
+                            <span className="text-[9px] font-bold text-primary bg-primary/10 px-1 py-0.2 rounded border border-primary/20">
+                              recentes
+                            </span>
+                          )}
+                        </div>
+                      </th>
                       <th className="px-4 py-3">Modalidade</th>
                       <th className="px-4 py-3 text-right">Valor</th>
                       <th className="px-4 py-3 text-center">Status</th>

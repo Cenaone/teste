@@ -47,6 +47,78 @@ export function formatarDataHora(dataIso: string | undefined): string {
   return `${data.toLocaleDateString('pt-BR')} às ${data.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
 }
 
+/**
+ * Extrai dia, mês, ano e idade de nascimento com segurança total de fuso horário.
+ * Evita o clássico problema em que 'YYYY-MM-DD' é interpretado como UTC e retrocede 1 dia em UTC-3.
+ */
+export function extrairDadosAniversario(nascimentoIso?: string): {
+  dia: number;
+  mes: number;
+  ano: number;
+  idade: number;
+  formatadoExtenso: string;
+  diaMesExtenso: string;
+  fazAniversarioMesAtual: boolean;
+  eHoje: boolean;
+} | null {
+  if (!nascimentoIso) return null;
+  const str = String(nascimentoIso).trim();
+  let ano = 0;
+  let mes = 0;
+  let dia = 0;
+
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+    const partes = str.slice(0, 10).split('-');
+    ano = parseInt(partes[0], 10);
+    mes = parseInt(partes[1], 10); // 1 a 12
+    dia = parseInt(partes[2], 10);
+  } else if (/^\d{2}\/\d{2}\/\d{4}/.test(str)) {
+    const partes = str.slice(0, 10).split('/');
+    dia = parseInt(partes[0], 10);
+    mes = parseInt(partes[1], 10);
+    ano = parseInt(partes[2], 10);
+  } else {
+    const d = new Date(str);
+    if (isNaN(d.getTime())) return null;
+    ano = d.getUTCFullYear();
+    mes = d.getUTCMonth() + 1;
+    dia = d.getUTCDate();
+  }
+
+  if (!dia || !mes || isNaN(dia) || isNaN(mes)) return null;
+
+  const mesesExtenso = [
+    'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+    'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'
+  ];
+  const nomeMes = mesesExtenso[mes - 1] || '';
+
+  const hoje = new Date();
+  const diaHoje = hoje.getDate();
+  const mesHoje = hoje.getMonth() + 1;
+  const anoHoje = hoje.getFullYear();
+
+  let idade = anoHoje - ano;
+  if (mesHoje < mes || (mesHoje === mes && diaHoje < dia)) {
+    idade--;
+  }
+  if (idade < 0) idade = 0;
+
+  const fazAniversarioMesAtual = mes === mesHoje;
+  const eHoje = mes === mesHoje && dia === diaHoje;
+
+  return {
+    dia,
+    mes,
+    ano,
+    idade,
+    formatadoExtenso: `dia ${dia} de ${nomeMes}`,
+    diaMesExtenso: `${dia} de ${nomeMes}`,
+    fazAniversarioMesAtual,
+    eHoje
+  };
+}
+
 export function adicionarDias(dataIso: string, dias: number): string {
   const data = new Date(dataIso);
   data.setDate(data.getDate() + dias);

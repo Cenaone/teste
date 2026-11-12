@@ -40,7 +40,8 @@ import {
   formatarCPF,
   calcularMetricasFinanceiras,
   verificarConflitoHorario,
-  arredondarMoeda
+  arredondarMoeda,
+  extrairDadosAniversario
 } from './utils/helpers';
 import ProntuarioModal from './components/ProntuarioModal';
 import WhatsAppModal from './components/WhatsAppModal';
@@ -638,7 +639,9 @@ export default function App() {
     const saldoVencido = metricasFin.saldoVencido;
 
     const hojeStr = new Date().toISOString().slice(0, 10);
+    const agendadosHojeNaAgenda = agendamentos.filter(a => a.data === hojeStr && a.status !== 'cancelado').length;
     const retornosHoje = sessoes.filter(s => s.proximaSessaoData && s.proximaSessaoData.slice(0, 10) === hojeStr).length;
+    const sessoesHojeTotal = Math.max(agendadosHojeNaAgenda, retornosHoje);
 
     // Honorários & Cobranças em aberto: reconciliado rigorosamente com o financeiro (pendentes no prazo + atrasados)
     const valorHonorariosPendentes = metricasFin.saldoPendente;
@@ -681,6 +684,7 @@ export default function App() {
       saldoVencido,
       ticketMedio,
       retornosHoje,
+      sessoesHojeTotal,
       honorariosPendentes: qtdHonorariosPendentes,
       valorHonorariosPendentes,
       qtdHonorariosPendentes,
@@ -688,7 +692,7 @@ export default function App() {
       acompanhamentosCriticos,
       volumeSessoesMes
     };
-  }, [analisandos, sessoes, honorarios, modalidades]);
+  }, [analisandos, sessoes, honorarios, modalidades, agendamentos]);
 
   // Gráfico dinâmico de Sessões Clínicas Mês a Mês computado estritamente a partir das sessões
   const dadosGraficoMensal = useMemo(() => {
@@ -1436,14 +1440,20 @@ export default function App() {
 
           <div className="flex items-center gap-3">
             {/* Setting stats in banner */}
-            <div className="hidden lg:flex items-center gap-4 text-xs text-muted-foreground">
-              <div className="flex items-center gap-1.5">
+            <div className="hidden lg:flex items-center gap-3 text-xs">
+              <div 
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-medium"
+                title="Pacientes com vínculo clínico ativo no consultório"
+              >
                 <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
                 <span>{dashboardStats.ativos} pacientes ativos</span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-amber-500" />
-                <span>{dashboardStats.retornosHoje} agendados hoje</span>
+              <div 
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-700 dark:text-blue-300 font-medium"
+                title="Atendimentos clínicos programados na agenda para a data de hoje (independente do status). Diferente do status 'pendente de confirmação', que indica confirmação aguardada."
+              >
+                <Calendar className="size-3.5 text-blue-500" />
+                <span>{dashboardStats.sessoesHojeTotal} no cronograma de hoje</span>
               </div>
             </div>
 
@@ -1624,17 +1634,21 @@ export default function App() {
                   </div>
                 </Card>
 
-                <Card className="p-4 bg-muted/20 border-border/40 hover:border-primary/20 transition-all flex justify-between items-start">
+                <Card 
+                  onClick={() => setSecaoAtiva('agenda')}
+                  className="p-4 bg-muted/20 border-border/40 hover:border-blue-500/30 transition-all flex justify-between items-start cursor-pointer hover:bg-muted/30 group"
+                  title="Clique para abrir a Agenda Clínica e ver os atendimentos de hoje"
+                >
                   <div>
-                    <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">
-                      Sessões Previstas Hoje
+                    <span className="text-[10px] uppercase font-bold text-blue-600 dark:text-blue-400 tracking-wider block">
+                      Cronograma do Dia (Hoje)
                     </span>
-                    <span className="text-2xl font-bold block mt-1">{dashboardStats.retornosHoje}</span>
+                    <span className="text-2xl font-bold text-foreground block mt-1">{dashboardStats.sessoesHojeTotal}</span>
                     <span className="text-[11px] text-muted-foreground mt-0.5 block">
-                      Frequência programada
+                      Atendimentos marcados hoje (data atual)
                     </span>
                   </div>
-                  <div className="p-2 bg-primary/10 text-primary rounded-xl">
+                  <div className="p-2 bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-xl group-hover:scale-105 transition-transform">
                     <Calendar className="size-5" />
                   </div>
                 </Card>
@@ -2420,33 +2434,59 @@ export default function App() {
               </p>
 
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {analisandos.filter(a => a.nascimento).map(a => {
-                  const dataNascto = new Date(a.nascimento);
-                  const hoje = new Date();
-                  const mesAniv = dataNascto.getMonth() + 1;
-                  const mesAtual = hoje.getMonth() + 1;
+                {(() => {
+                  const aniversariantesMes = analisandos
+                    .map(a => ({
+                      analisando: a,
+                      info: extrairDadosAniversario(a.nascimento)
+                    }))
+                    .filter((item): item is { analisando: Analisando; info: NonNullable<ReturnType<typeof extrairDadosAniversario>> } => 
+                      Boolean(item.info && item.info.fazAniversarioMesAtual)
+                    )
+                    .sort((x, y) => x.info.dia - y.info.dia);
 
-                  if (mesAniv !== mesAtual) return null;
+                  if (aniversariantesMes.length === 0) {
+                    return (
+                      <div className="col-span-full p-8 text-center bg-card rounded-2xl border border-border">
+                        <Gift className="size-8 mx-auto text-muted-foreground/50 mb-2" />
+                        <p className="text-sm font-semibold text-foreground">Nenhum aniversariante neste mês</p>
+                        <p className="text-xs text-muted-foreground mt-1">Os pacientes cadastrados com data de nascimento no mês corrente aparecerão aqui automaticamente.</p>
+                      </div>
+                    );
+                  }
 
-                  return (
-                    <Card key={a.id} className="p-5 flex justify-between items-center hover:shadow-md transition-shadow">
-                      <div>
-                        <h3 className="font-bold text-foreground text-sm">{a.nome}</h3>
+                  return aniversariantesMes.map(({ analisando: a, info }) => (
+                    <Card key={a.id} className={`p-5 flex justify-between items-center hover:shadow-md transition-shadow ${info.eHoje ? 'ring-2 ring-primary bg-primary/5' : ''}`}>
+                      <div className="min-w-0 pr-3">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-bold text-foreground text-sm truncate">{a.nome}</h3>
+                          {info.eHoje && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary text-primary-foreground animate-pulse">
+                              Hoje! 🎉
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-muted-foreground mt-1">
-                          Faz aniversário dia {dataNascto.getDate()} de {dataNascto.toLocaleString('pt-BR', { month: 'long' })}
+                          Faz aniversário <strong className="text-foreground font-semibold">{info.formatadoExtenso}</strong>
+                          {info.idade > 0 && <span className="ml-1 text-[11px]">({info.idade} anos)</span>}
                         </p>
+                        {a.whatsapp && (
+                          <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">
+                            {formatarTelefone(a.whatsapp)}
+                          </p>
+                        )}
                       </div>
 
                       <button
                         onClick={() => setWhatsappAlvo({ analisando: a, servico: 'aniversário' })}
-                        className="p-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full shadow-md transition-colors"
-                        title="Enviar parabéns"
+                        className="p-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full shadow-md transition-colors shrink-0"
+                        title={`Enviar parabéns para ${a.nome} via WhatsApp`}
                       >
                         <Gift className="size-4" />
                       </button>
                     </Card>
-                  );
-                })}
+                  ));
+                })()}
               </div>
             </div>
           )}

@@ -20,7 +20,8 @@ import {
   formatarTelefone, 
   formatarCEP, 
   limparDigitos, 
-  consultarViaCEP 
+  consultarViaCEP,
+  extrairDadosAniversario
 } from '../utils/helpers';
 
 interface ModalCadastroPacienteProps {
@@ -395,8 +396,17 @@ export default function ModalCadastroPaciente({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase">
-                    Data de Nascimento
+                  <label className="text-xs font-semibold text-muted-foreground uppercase flex items-center justify-between">
+                    <span>Data de Nascimento</span>
+                    {nascimento && (() => {
+                      const info = extrairDadosAniversario(nascimento);
+                      if (!info) return null;
+                      return (
+                        <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 normal-case">
+                          Aniversário: {info.diaMesExtenso} ({info.idade} anos)
+                        </span>
+                      );
+                    })()}
                   </label>
                   <input
                     type="date"
@@ -404,6 +414,15 @@ export default function ModalCadastroPaciente({
                     onChange={e => setNascimento(e.target.value)}
                     className="w-full h-10 px-3 rounded-xl border border-border bg-background text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   />
+                  {nascimento && (() => {
+                    const info = extrairDadosAniversario(nascimento);
+                    if (!info) return null;
+                    return (
+                      <span className="text-[10px] text-muted-foreground block">
+                        Confirmado: paciente fará aniversário no <strong>{info.formatadoExtenso}</strong>.
+                      </span>
+                    );
+                  })()}
                 </div>
 
                 <div className="space-y-1.5">

@@ -61,6 +61,7 @@ export default function ModalRelatorioFinanceiro({
   const [pacienteId, setPacienteId] = useState<string>('todos');
   const [filtroStatus, setFiltroStatus] = useState<'todos' | 'pago' | 'pendente' | 'atrasado'>('todos');
   const [tipoVisualizacaoTabela, setTipoVisualizacaoTabela] = useState<'todos' | 'honorarios' | 'sessoes'>('todos');
+  const [ordemData, setOrdemData] = useState<'vencimento_asc' | 'vencimento_desc' | 'valor_desc' | 'valor_asc' | 'paciente'>('vencimento_asc');
   const [copiado, setCopiado] = useState(false);
 
   // Datas de referência
@@ -372,8 +373,23 @@ export default function ModalRelatorioFinanceiro({
       }
     }
 
-    return lista.sort((a, b) => b.data.localeCompare(a.data));
-  }, [sessoesFiltradas, honorariosFiltrados, tipoVisualizacaoTabela, analisandos, modalidades, hojeStr]);
+    if (ordemData === 'vencimento_asc') {
+      return lista.sort((a, b) => a.data.localeCompare(b.data));
+    }
+    if (ordemData === 'vencimento_desc') {
+      return lista.sort((a, b) => b.data.localeCompare(a.data));
+    }
+    if (ordemData === 'valor_desc') {
+      return lista.sort((a, b) => b.valor - a.valor);
+    }
+    if (ordemData === 'valor_asc') {
+      return lista.sort((a, b) => a.valor - b.valor);
+    }
+    if (ordemData === 'paciente') {
+      return lista.sort((a, b) => a.pacienteNome.localeCompare(b.pacienteNome));
+    }
+    return lista.sort((a, b) => a.data.localeCompare(b.data));
+  }, [sessoesFiltradas, honorariosFiltrados, tipoVisualizacaoTabela, analisandos, modalidades, hojeStr, ordemData]);
 
   const exportarPlanilhaCSV = () => {
     if (itensPlanilha.length === 0) {
@@ -713,41 +729,59 @@ export default function ModalRelatorioFinanceiro({
                 </p>
               </div>
 
-              {/* Botões de Alternância Rápida: Todos / Honorários / Sessões */}
-              <div className="flex items-center bg-stone-100 p-0.5 rounded-lg border border-stone-200 text-xs self-start sm:self-auto">
-                <button
-                  type="button"
-                  onClick={() => setTipoVisualizacaoTabela('todos')}
-                  className={`px-2.5 py-1 rounded-md font-medium transition-all ${
-                    tipoVisualizacaoTabela === 'todos'
-                      ? 'bg-white text-stone-900 shadow-sm font-semibold'
-                      : 'text-stone-600 hover:text-stone-900'
-                  }`}
-                >
-                  Todos ({sessoesFiltradas.length + honorariosFiltrados.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTipoVisualizacaoTabela('honorarios')}
-                  className={`px-2.5 py-1 rounded-md font-medium transition-all ${
-                    tipoVisualizacaoTabela === 'honorarios'
-                      ? 'bg-white text-stone-900 shadow-sm font-semibold'
-                      : 'text-stone-600 hover:text-stone-900'
-                  }`}
-                >
-                  Honorários ({honorariosFiltrados.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTipoVisualizacaoTabela('sessoes')}
-                  className={`px-2.5 py-1 rounded-md font-medium transition-all ${
-                    tipoVisualizacaoTabela === 'sessoes'
-                      ? 'bg-white text-stone-900 shadow-sm font-semibold'
-                      : 'text-stone-600 hover:text-stone-900'
-                  }`}
-                >
-                  Consultas ({sessoesFiltradas.length})
-                </button>
+              {/* Botões de Alternância Rápida & Seletor de Ordenação */}
+              <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                <div className="flex items-center bg-stone-100 p-0.5 rounded-lg border border-stone-200 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setTipoVisualizacaoTabela('todos')}
+                    className={`px-2.5 py-1 rounded-md font-medium transition-all ${
+                      tipoVisualizacaoTabela === 'todos'
+                        ? 'bg-white text-stone-900 shadow-sm font-semibold'
+                        : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    Todos ({sessoesFiltradas.length + honorariosFiltrados.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTipoVisualizacaoTabela('honorarios')}
+                    className={`px-2.5 py-1 rounded-md font-medium transition-all ${
+                      tipoVisualizacaoTabela === 'honorarios'
+                        ? 'bg-white text-stone-900 shadow-sm font-semibold'
+                        : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    Honorários ({honorariosFiltrados.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTipoVisualizacaoTabela('sessoes')}
+                    className={`px-2.5 py-1 rounded-md font-medium transition-all ${
+                      tipoVisualizacaoTabela === 'sessoes'
+                        ? 'bg-white text-stone-900 shadow-sm font-semibold'
+                        : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    Consultas ({sessoesFiltradas.length})
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-1.5 bg-stone-100 px-2 py-1 rounded-lg border border-stone-200 text-xs">
+                  <ArrowUpDown className="size-3 text-stone-600 shrink-0" />
+                  <select
+                    value={ordemData}
+                    onChange={e => setOrdemData(e.target.value as any)}
+                    className="bg-transparent text-xs font-semibold text-stone-800 focus:outline-none cursor-pointer"
+                    title="Classificar lançamentos por data de vencimento ou outros critérios"
+                  >
+                    <option value="vencimento_asc">📅 Vencimento (Próximos primeiro)</option>
+                    <option value="vencimento_desc">📅 Vencimento (Mais recentes primeiro)</option>
+                    <option value="valor_desc">💰 Maior Valor</option>
+                    <option value="valor_asc">💰 Menor Valor</option>
+                    <option value="paciente">👤 Paciente (A-Z)</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -756,7 +790,18 @@ export default function ModalRelatorioFinanceiro({
                 <table className="w-full text-left text-xs">
                   <thead className="bg-stone-100 text-stone-700 font-bold uppercase tracking-wider text-[10px] border-b border-stone-200">
                     <tr>
-                      <th className="p-2.5">Data / Venc.</th>
+                      <th 
+                        onClick={() => setOrdemData(prev => prev === 'vencimento_asc' ? 'vencimento_desc' : 'vencimento_asc')}
+                        className="p-2.5 cursor-pointer hover:bg-stone-200 transition-colors select-none group"
+                        title="Clique para alternar ordenação por data de vencimento"
+                      >
+                        <div className="flex items-center gap-1">
+                          <span>Data / Venc.</span>
+                          <ArrowUpDown className={`size-3 ${ordemData.startsWith('vencimento') ? 'text-emerald-700 font-bold' : 'text-stone-400 group-hover:text-stone-700'}`} />
+                          {ordemData === 'vencimento_asc' && <span className="text-[9px] text-emerald-700 lowercase">(próximos)</span>}
+                          {ordemData === 'vencimento_desc' && <span className="text-[9px] text-emerald-700 lowercase">(recentes)</span>}
+                        </div>
+                      </th>
                       <th className="p-2.5">Paciente</th>
                       <th className="p-2.5">Origem & Descrição</th>
                       <th className="p-2.5">Meio</th>
