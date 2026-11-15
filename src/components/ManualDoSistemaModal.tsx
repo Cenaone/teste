@@ -63,13 +63,13 @@ const MANUAL_SECTIONS: ManualSection[] = [
     content: [
       'O motor de segurança utiliza o padrão Web Crypto API nativo dos navegadores modernos.',
       'Algoritmo: AES-GCM com chave de 256 bits derivada via PBKDF2 (100.000 iterações com salt criptográfico único).',
-      'Bloqueio automático: O cofre bloqueia automaticamente a memória após 15 minutos de inatividade para evitar acesso inadvertido caso você se afaste do consultório.',
+      'Sessão Contínua Ativa: O sistema permanece ativo durante toda a sessão de atendimento (sem bloqueio por inatividade), preservando gravações e anotações mesmo quando você alterna para outras abas do navegador.',
       'Soberania Total: Você pode exportar backups criptografados com 1 clique para guardar em um pendrive ou disco seguro.'
     ],
     steps: [
-      '1. Ao entrar no sistema com seu e-mail e senha, o cofre solicitará sua senha mestra.',
-      '2. Digite sua senha mestra para desbloquear o acesso aos prontuários em memória RAM.',
-      '3. Caso deseje pausar os atendimentos, clique no botão "Bloquear Cofre" no topo do painel.'
+      '1. Ao entrar no sistema com seu e-mail e senha, o cofre é desbloqueado automaticamente para o seu atendimento.',
+      '2. A chave criptográfica permanece ativa na memória RAM enquanto você estiver logado, sem interrupções durante sessões ou gravações.',
+      '3. Ao encerrar seu expediente, utilize o botão "Sair da Conta" no menu lateral para limpar a sessão.'
     ],
     tips: [
       'Nunca compartilhe a senha do seu cofre.',

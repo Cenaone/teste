@@ -1,27 +1,26 @@
 import React, { useState } from 'react';
-import { Lock, Key, ShieldCheck, AlertCircle, ShieldAlert, Sparkles, RefreshCw } from 'lucide-react';
+import { Lock, Key, ShieldCheck, AlertCircle, ShieldAlert, LogOut } from 'lucide-react';
 import { Card } from './ui-compact';
-import { isMasterAdminEmail } from '../lib/supabase';
 
 interface CofreDesbloqueioModalProps {
   estaConfigurado: boolean;
   onDesbloquear: (senha: string) => Promise<{ ok: boolean; erro?: string }>;
   onCriarSenhaCofre: (senha: string) => Promise<{ ok: boolean; erro?: string }>;
   emailUsuario: string;
+  onLogout?: () => void;
 }
 
 export default function CofreDesbloqueioModal({
   estaConfigurado,
   onDesbloquear,
   onCriarSenhaCofre,
-  emailUsuario
+  emailUsuario,
+  onLogout
 }: CofreDesbloqueioModalProps) {
-  const isContaPadrao = isMasterAdminEmail(emailUsuario);
-  const [senha, setSenha] = useState(isContaPadrao ? 'Daniel12345' : '');
-  const [confirmarSenha, setConfirmarSenha] = useState(isContaPadrao ? 'Daniel12345' : '');
+  const [senha, setSenha] = useState('');
+  const [confirmarSenha, setConfirmarSenha] = useState('');
   const [erro, setErro] = useState('');
   const [processando, setProcessando] = useState(false);
-  const [mostrarOpcaoRedefinir, setMostrarOpcaoRedefinir] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,25 +46,8 @@ export default function CofreDesbloqueioModal({
       const res = await onDesbloquear(senha);
       setProcessando(false);
       if (!res.ok) {
-        setErro(res.erro || 'Senha do cofre incorreta.');
-        setMostrarOpcaoRedefinir(true);
+        setErro(res.erro || 'Senha do cofre incorreta. Acesso aos prontuários bloqueado.');
       }
-    }
-  };
-
-  const handleReinicializarCofre = async () => {
-    setProcessando(true);
-    setErro('');
-    const s = senha.trim() || (isContaPadrao ? 'Daniel12345' : '');
-    if (!s || s.length < 8) {
-      setErro('Digite uma senha de no mínimo 8 caracteres para redefinir o cofre.');
-      setProcessando(false);
-      return;
-    }
-    const res = await onCriarSenhaCofre(s);
-    setProcessando(false);
-    if (!res.ok) {
-      setErro(res.erro || 'Falha ao redefinir o cofre com a senha.');
     }
   };
 
@@ -80,7 +62,9 @@ export default function CofreDesbloqueioModal({
             {estaConfigurado ? 'Desbloquear Cofre Local Clínico' : 'Definir Senha do Cofre Local'}
           </h2>
           <p className="text-xs text-muted-foreground">
-            Protegido por criptografia clínica Web Crypto AES-GCM 256-bit
+            {estaConfigurado
+              ? 'Digite sua senha para liberar o acesso criptografado aos prontuários nesta sessão.'
+              : 'Protegido por criptografia clínica Web Crypto AES-GCM 256-bit'}
           </p>
         </div>
 
@@ -114,26 +98,6 @@ export default function CofreDesbloqueioModal({
           <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs flex items-start gap-2 text-left">
             <AlertCircle className="size-4 shrink-0 mt-0.5" />
             <span>{erro}</span>
-          </div>
-        )}
-
-        {mostrarOpcaoRedefinir && (
-          <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs space-y-2 text-left">
-            <div className="font-semibold text-amber-900 dark:text-amber-300">
-              Deseja redefinir a chave deste cofre local?
-            </div>
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Caso seu cofre local tenha sido inicializado anteriormente com outra chave neste navegador, você pode sincronizá-lo agora com a senha digitada.
-            </p>
-            <button
-              type="button"
-              disabled={processando}
-              onClick={handleReinicializarCofre}
-              className="w-full py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
-            >
-              <RefreshCw className="size-3.5" />
-              <span>Sincronizar Cofre com a Senha Atual</span>
-            </button>
           </div>
         )}
 
@@ -186,6 +150,19 @@ export default function CofreDesbloqueioModal({
             )}
           </button>
         </form>
+
+        {onLogout && (
+          <div className="pt-2 border-t border-border/40 text-center">
+            <button
+              type="button"
+              onClick={onLogout}
+              className="text-xs text-muted-foreground hover:text-foreground font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <LogOut className="size-3.5" />
+              <span>Sair da Conta ({emailUsuario})</span>
+            </button>
+          </div>
+        )}
       </Card>
     </div>
   );

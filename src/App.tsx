@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Analisando,
   ModalidadeAtendimento,
@@ -256,8 +256,24 @@ export default function App() {
     return localStorage.getItem(`${PREFIXO_LOCAL}paleta`) || 'dourado';
   });
 
-  // Active Panel Section State
-  const [secaoAtiva, setSecaoAtiva] = useState('dashboard');
+  // Active Panel Section State (preservada na sessão para retornar à mesma tela após bloqueio ou recarregamento)
+  const [secaoAtiva, setSecaoAtiva] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const salva = sessionStorage.getItem('psi40_secao_ativa');
+        if (salva) return salva;
+      } catch (_) {}
+    }
+    return 'dashboard';
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && secaoAtiva) {
+      try {
+        sessionStorage.setItem('psi40_secao_ativa', secaoAtiva);
+      } catch (_) {}
+    }
+  }, [secaoAtiva]);
   const podeGerenciarAcessos = Boolean(
     contaUsuario?.isAdmin ||
     contaUsuario?.role === 'admin' ||
@@ -329,29 +345,7 @@ export default function App() {
     setMostrarTour(true);
   };
 
-  // Inatividade para bloqueio automático do cofre (15 minutos)
-  const timerInatividadeRef = useRef<any>(null);
-
-  const redefinirTimerInatividade = () => {
-    if (timerInatividadeRef.current) clearTimeout(timerInatividadeRef.current);
-    timerInatividadeRef.current = setTimeout(() => {
-      if (cofreDesbloqueado) {
-        setChaveiroCofre(null);
-        setCofreDesbloqueado(false);
-        setSolicitandoDesbloqueio(true);
-      }
-    }, 15 * 60 * 1000);
-  };
-
-  useEffect(() => {
-    const eventos = ['mousedown', 'keydown', 'touchstart', 'scroll'];
-    const handler = () => redefinirTimerInatividade();
-    eventos.forEach(ev => window.addEventListener(ev, handler));
-    return () => {
-      eventos.forEach(ev => window.removeEventListener(ev, handler));
-      if (timerInatividadeRef.current) clearTimeout(timerInatividadeRef.current);
-    };
-  }, [cofreDesbloqueado]);
+  // Bloqueio automático por inatividade desativado para preservar sessões terapêuticas contínuas (45–60+ min) e gravações em segundo plano.
 
   // Consulta cota de armazenamento na montagem
   useEffect(() => {
@@ -380,6 +374,13 @@ export default function App() {
 
     const checarStatusLicenca = async () => {
       try {
+        const { data: sessaoData } = await supabase.auth.getSession();
+        const sessao = sessaoData?.session;
+        if (!sessao?.access_token) return;
+        // Evita falso negativo durante renovação automática de JWT após longos períodos em outra aba
+        if (sessao.expires_at && sessao.expires_at * 1000 < Date.now() + 15000) {
+          await supabase.auth.refreshSession().catch(() => {});
+        }
         const { data, error } = await supabase.rpc('usuario_tem_acesso');
         if (!error && typeof data === 'boolean') {
           if (!data && contaUsuario.status === 'ativo') {
@@ -429,7 +430,6 @@ export default function App() {
             setCofreConfigurado(true);
             setCofreDesbloqueado(true);
             setSolicitandoDesbloqueio(false);
-            redefinirTimerInatividade();
             return;
           }
         } else {
@@ -542,13 +542,20 @@ export default function App() {
       setConsultorio(dadosCofre.consultorio || CONSULTORIO_PADRAO);
       setAgendamentos(dadosCofre.agendamentos || []);
 
+      // Restaura a seção anterior se houver registro na sessão
+      try {
+        const secaoSalva = sessionStorage.getItem('psi40_secao_ativa');
+        if (secaoSalva && secoesDisponiveis.some(s => s.id === secaoSalva)) {
+          setSecaoAtiva(secaoSalva);
+        }
+      } catch (_) {}
+
       setCofreDesbloqueado(true);
       setSolicitandoDesbloqueio(false);
-      redefinirTimerInatividade();
 
       return { ok: true };
     } catch (err: any) {
-      return { ok: false, erro: err.message };
+      return { ok: false, erro: err.message || 'Falha ao desbloquear o cofre.' };
     }
   };
 
@@ -997,14 +1004,29 @@ export default function App() {
         setTimeout(async () => {
           const usuarioServer = await obterUsuarioAutenticadoSupabase();
           if (revisao !== revisaoAuth) return;
-          setContaUsuario(usuarioServer);
-          setUsuarioAutenticado(Boolean(usuarioServer));
+          if (usuarioServer) {
+            setContaUsuario(usuarioServer);
+            setUsuarioAutenticado(true);
+          }
         }, 0);
       } else if (event === 'SIGNED_OUT') {
         setUsuarioAutenticado(false);
         setContaUsuario(null);
         setChaveiroCofre(null);
         setCofreDesbloqueado(false);
+        setSolicitandoDesbloqueio(false);
+        setAnalisandos([]);
+        setSessoes([]);
+        setHonorarios([]);
+        setAgendamentos([]);
+        setTransmissoes([]);
+        setProntuarioSelecionado(null);
+        setMostrarFormAnalisando(false);
+        setMostrarFormSessao(false);
+        setMostrarFormAgendamento(false);
+        try {
+          sessionStorage.removeItem('psi40_secao_ativa');
+        } catch (_) {}
       }
     });
 
@@ -1014,24 +1036,43 @@ export default function App() {
     };
   }, []);
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     try {
       await fazerLogoutSupabase();
     } catch (err) {
       console.warn('Erro ao deslogar do Supabase:', err);
     }
-    // Limpeza de chaves em memória e bloqueio do cofre
+    // Limpeza rigorosa de chaves em memória, bloqueio e dados clínicos
     setChaveiroCofre(null);
     setCofreDesbloqueado(false);
+    setSolicitandoDesbloqueio(false);
     setContaUsuario(null);
     setUsuarioAutenticado(false);
     setSecaoAtiva('dashboard');
+    setAnalisandos([]);
+    setSessoes([]);
+    setHonorarios([]);
+    setAgendamentos([]);
+    setTransmissoes([]);
     setProntuarioSelecionado(null);
     setMostrarFormAnalisando(false);
     setMostrarFormSessao(false);
     setMostrarFormAgendamento(false);
-    if (timerInatividadeRef.current) clearTimeout(timerInatividadeRef.current);
-  };
+    try {
+      sessionStorage.removeItem('psi40_secao_ativa');
+    } catch (_) {}
+  }, []);
+
+  // Monitora logout em outras abas para limpar chaves em memória e bloquear o cofre
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key && e.key.includes('-auth-token') && !e.newValue) {
+        handleLogout();
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [handleLogout]);
 
   if (!usuarioAutenticado || !contaUsuario || emFluxoRecuperacao) {
     return (
@@ -1104,13 +1145,7 @@ export default function App() {
 
             <button
               type="button"
-              onClick={async () => {
-                await fazerLogoutSupabase();
-                setContaUsuario(null);
-                setUsuarioAutenticado(false);
-                setChaveiroCofre(null);
-                setCofreDesbloqueado(false);
-              }}
+              onClick={handleLogout}
               className="w-full py-2 text-xs font-semibold text-muted-foreground hover:text-foreground border border-border hover:bg-muted rounded-xl transition-colors cursor-pointer"
             >
               Sair da Conta
@@ -1129,6 +1164,7 @@ export default function App() {
         onDesbloquear={handleDesbloquearCofre}
         onCriarSenhaCofre={handleCriarSenhaCofre}
         emailUsuario={contaUsuario.email}
+        onLogout={handleLogout}
       />
     );
   }
@@ -1587,18 +1623,6 @@ export default function App() {
                   <span className="text-xs font-medium text-muted-foreground bg-muted/40 px-3 py-1.5 rounded-xl border border-border">
                     Conta: <strong>{contaUsuario.email}</strong>
                   </span>
-                  <button
-                    onClick={() => {
-                      setChaveiroCofre(null);
-                      setCofreDesbloqueado(false);
-                      setSolicitandoDesbloqueio(true);
-                    }}
-                    className="text-xs px-3 py-1.5 border border-border hover:bg-muted rounded-xl text-foreground font-semibold flex items-center gap-1.5 cursor-pointer"
-                    title="Bloquear cofre imediatamente"
-                  >
-                    <Lock className="size-3.5 text-amber-500" />
-                    <span>Bloquear Cofre</span>
-                  </button>
                 </div>
               </div>
 
