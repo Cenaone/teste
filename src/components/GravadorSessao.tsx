@@ -47,21 +47,13 @@ export type ModoCapturaAudio = 'presencial' | 'teleconsulta' | 'google_meet';
 export type MotorTranscricao = 'local_vosk' | 'ia_gemini';
 type OrigemTranscricao = 'ia_gemini' | 'local_vosk' | 'rascunho_navegador' | null;
 
-const STORAGE_MOTOR_TRANSCRICAO = 'psi4_motor_transcricao';
-
 export default function GravadorSessao({
   nomePaciente = 'Paciente',
   onInserirTexto,
   textoAtual = '',
   onAudioGravado
 }: GravadorSessaoProps) {
-  const [motorTranscricao, setMotorTranscricao] = useState<MotorTranscricao>(() => {
-    try {
-      const salvo = localStorage.getItem(STORAGE_MOTOR_TRANSCRICAO);
-      if (salvo === 'ia_gemini' || salvo === 'local_vosk') return salvo;
-    } catch (_) {}
-    return 'local_vosk';
-  });
+  const [motorTranscricao, setMotorTranscricao] = useState<MotorTranscricao>('local_vosk');
   const [estado, setEstado] = useState<EstadoGravador>('ocioso');
   const [tempoSegundos, setTempoSegundos] = useState(0);
   const [transcricaoTexto, setTranscricaoTexto] = useState('');
@@ -106,9 +98,6 @@ export default function GravadorSessao({
   const alterarMotorTranscricao = (novoMotor: MotorTranscricao) => {
     setMotorTranscricao(novoMotor);
     motorTranscricaoRef.current = novoMotor;
-    try {
-      localStorage.setItem(STORAGE_MOTOR_TRANSCRICAO, novoMotor);
-    } catch (_) {}
     setErroMensagem(null);
   };
 
@@ -959,8 +948,26 @@ export default function GravadorSessao({
             if (sessaoVosk) {
               try { sessaoVosk.descartar(); } catch (_) {}
             }
-            // Modelo Antigo: Dispara a transcrição clínica oficial por IA Gemini no servidor
-            await processarTranscricaoServidor(blob, url, false);
+            // Não aciona a IA automaticamente ao parar: preserva o áudio e só envia para a nuvem se o usuário clicar
+            const rascunho = rascunhoVozNavegadorRef.current.trim();
+            if (rascunho) {
+              setTranscricaoTexto(rascunho);
+              transcricaoTextoRef.current = rascunho;
+              textoFinalAcumuladoRef.current = rascunho;
+              setOrigemTranscricao('rascunho_navegador');
+            } else {
+              setOrigemTranscricao(null);
+            }
+            setProgressoTrechos(null);
+            setErroMensagem(null);
+            setEstado('concluido');
+            estadoRef.current = 'concluido';
+            if (onAudioGravado) {
+              onAudioGravado(blob, url, rascunho);
+            }
+            if (rascunho) {
+              onInserirTexto(rascunho);
+            }
           }
         } else {
           if (sessaoVosk) {
@@ -1172,7 +1179,12 @@ export default function GravadorSessao({
     if (motorTranscricaoRef.current === 'local_vosk') {
       await processarTranscricaoLocalArquivo(file, url);
     } else {
-      await processarTranscricaoServidor(file, url);
+      // No modo Nuvem (IA), apenas carrega o áudio no player e aguarda clique explícito do usuário
+      setProgressoTrechos(null);
+      setErroMensagem(null);
+      setOrigemTranscricao(null);
+      setEstado('concluido');
+      estadoRef.current = 'concluido';
     }
 
     // Reseta o input para permitir selecionar o mesmo arquivo novamente se desejar
@@ -1268,7 +1280,7 @@ export default function GravadorSessao({
             {estado === 'gravando' && `Gravando (${formatarTempo(tempoSegundos)})`}
             {estado === 'pausado' && `Pausado (${formatarTempo(tempoSegundos)})`}
             {estado === 'processando' && (progressoTrechos && progressoTrechos.total > 1 ? `Transcrevendo (${progressoTrechos.atual}/${progressoTrechos.total})` : motorTranscricao === 'local_vosk' ? 'Finalizando Local...' : 'Transcrevendo com IA...')}
-            {estado === 'concluido' && (origemTranscricao === 'ia_gemini' ? 'Transcrição IA Concluída' : origemTranscricao === 'local_vosk' ? 'Transcrição Local Concluída' : origemTranscricao === 'rascunho_navegador' ? 'Rascunho Local' : 'Gravação & Transcrição Concluídas')}
+            {estado === 'concluido' && (origemTranscricao === 'ia_gemini' ? 'Transcrição IA Concluída' : origemTranscricao === 'local_vosk' ? 'Transcrição Local Concluída' : origemTranscricao === 'rascunho_navegador' ? 'Áudio Gravado (Aguardando Transcrição)' : 'Áudio Pronto (Clique para Transcrever)')}
             {estado === 'falha' && 'Transcrição Pendente'}
           </span>
         </div>
@@ -1331,8 +1343,8 @@ export default function GravadorSessao({
 
         <p className="text-[11px] text-muted-foreground leading-relaxed">
           {motorTranscricao === 'local_vosk'
-            ? 'Transcrição automática em tempo real processada localmente no navegador (Presencial, Teleconsulta com fones e Áudio Importado), garantindo privacidade. Após concluir, você pode organizar a pontuação se desejar.'
-            : 'Transcrição clínica em nuvem com pontuação e parágrafos automáticos. Armazenamento isolado e confidencial sob tutela do profissional responsável.'}
+            ? 'Transcrição automática em tempo real processada localmente no navegador (Presencial, Teleconsulta com fones e Áudio Importado), garantindo privacidade. A IA em nuvem não é acionada automaticamente.'
+            : 'Modo manual de IA em nuvem: o áudio é apenas gravado/importado e a transcrição em nuvem só é executada quando você clicar explicitamente no botão de transcrever.'}
         </p>
 
         {statusMotorLocal && (
@@ -1343,14 +1355,27 @@ export default function GravadorSessao({
         )}
       </div>
 
-      {/* Rascunho de voz ao vivo do navegador durante a gravação (Modo Nuvem) */}
+      {/* Aviso de áudio pronto aguardando comando manual quando não foi acionada a IA */}
+      {estado === 'concluido' && audioBlob && origemTranscricao !== 'ia_gemini' && origemTranscricao !== 'local_vosk' && (
+        <div className="p-3 rounded-xl bg-primary/5 border border-primary/20 text-xs text-foreground flex items-start gap-2">
+          <Info className="size-4 text-primary shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <span className="font-bold block">Áudio pronto! Nenhuma transcrição por IA foi executada automaticamente.</span>
+            <p className="text-[11px] text-muted-foreground">
+              Clique em <strong>Retranscrever Offline (Local)</strong> ou em <strong>Processar em Nuvem (IA)</strong> abaixo apenas se desejar transcrever este áudio.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Rascunho de voz ao vivo do navegador durante a gravação (Modo Nuvem Manual) */}
       {motorTranscricao === 'ia_gemini' && estado === 'gravando' && rascunhoVozNavegador.trim() && (
         <div className="p-3 rounded-xl bg-muted/40 border border-border/60 space-y-1.5">
           <div className="flex items-center gap-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
             <Radio className="size-3 text-emerald-500 animate-pulse" />
             <span>Rascunho de voz em tempo real (Navegador)</span>
             <span className="text-[10px] lowercase text-muted-foreground/80 font-normal">
-              (ao finalizar, a IA Gemini processará a transcrição clínica oficial do áudio)
+              (ao finalizar, o áudio ficará pronto para você clicar e transcrever somente se desejar)
             </span>
           </div>
           <p className="text-xs text-foreground/90 font-mono italic line-clamp-3 bg-background/60 p-2 rounded-lg border border-border/40">
@@ -1420,7 +1445,6 @@ export default function GravadorSessao({
                 <button
                   type="button"
                   onClick={() => {
-                    alterarMotorTranscricao('ia_gemini');
                     processarTranscricaoServidor(audioBlob, undefined, false);
                   }}
                   className="px-3 py-1.5 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 text-xs font-bold text-primary flex items-center gap-1.5 cursor-pointer"
@@ -1710,7 +1734,6 @@ export default function GravadorSessao({
                 <button
                   type="button"
                   onClick={() => {
-                    alterarMotorTranscricao('ia_gemini');
                     processarTranscricaoServidor(audioBlob, undefined, false);
                   }}
                   className="px-4 py-2 rounded-xl border border-primary/30 bg-primary/5 hover:bg-primary/10 text-xs font-bold text-primary transition-colors flex items-center gap-1.5 cursor-pointer"

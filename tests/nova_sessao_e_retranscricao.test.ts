@@ -33,7 +33,17 @@ test('GravadorSessao disponibiliza retranscrição offline e em nuvem sempre que
   assert.ok(ocorrenciasOffline.length >= 2, 'Deve exibir botão Retranscrever Offline (Local) no banner de erro e na barra de ações');
 
   assert.match(conteudo, /alterarMotorTranscricao\('local_vosk'\);\s*processarTranscricaoLocalArquivo\(audioBlob\);/);
-  assert.match(conteudo, /alterarMotorTranscricao\('ia_gemini'\);\s*processarTranscricaoServidor\(audioBlob,\s*undefined,\s*false\);/);
+  assert.match(conteudo, /processarTranscricaoServidor\(audioBlob,\s*undefined,\s*false\);/);
+
+  // IA em nuvem deve iniciar em local_vosk e NÃO pode chamar processarTranscricaoServidor automaticamente no onstop ou handleUploadAudioArquivo
+  assert.match(conteudo, /useState<MotorTranscricao>\('local_vosk'\)/);
+  const blocoOnStop = conteudo.match(/mediaRecorder\.onstop = async \(\) => \{[\s\S]*?mediaRecorder\.start\(1000\);/)?.[0] || '';
+  assert.ok(blocoOnStop.length > 0);
+  assert.doesNotMatch(blocoOnStop, /processarTranscricaoServidor/);
+
+  const blocoUpload = conteudo.match(/const handleUploadAudioArquivo = async[\s\S]*?const handleInserirNasNotas/)?.[0] || '';
+  assert.ok(blocoUpload.length > 0);
+  assert.doesNotMatch(blocoUpload, /processarTranscricaoServidor/);
 });
 
 test('GravadorSessao e transcricaoLocalVosk não expõem textos internos de teste ou preços', () => {
