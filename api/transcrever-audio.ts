@@ -9,6 +9,7 @@ type Request = IncomingMessage & { body?: any };
 type Dependencies = {
   autenticar: (token: string) => Promise<boolean>;
   transcrever: (audio: string, mime: string) => Promise<string>;
+  pontuarTexto?: (texto: string) => Promise<string>;
 };
 
 export function criarHandler(deps: Dependencies) {
@@ -51,6 +52,21 @@ export function criarHandler(deps: Dependencies) {
         }
       }
 
+      if (body?.acao === 'pontuar_texto') {
+        const textoBruto = typeof body?.texto === 'string' ? body.texto.trim() : '';
+        if (!textoBruto || textoBruto.length > 150000) {
+          return responder(400, { ok: false, erro: 'Texto inválido ou muito longo para pontuação.' }, 'TEXTO_INVALIDO');
+        }
+        if (!deps.pontuarTexto) {
+          return responder(501, { ok: false, erro: 'Pontuação de texto não configurada.' }, 'RECURSO_INDISPONIVEL');
+        }
+        const textoOrganizado = (await deps.pontuarTexto(textoBruto)).trim();
+        if (!textoOrganizado) {
+          return responder(422, { ok: false, erro: 'Não foi possível organizar o texto informado.' }, 'TRANSCRICAO_VAZIA');
+        }
+        return responder(200, { ok: true, transcricao: textoOrganizado });
+      }
+
       const audio = body?.audioBase64;
       const mime = typeof body?.mimeType === 'string' ? body.mimeType.split(';')[0].toLowerCase() : '';
       const formatos: Record<string, string> = {
@@ -85,13 +101,20 @@ export function criarHandler(deps: Dependencies) {
 
       return responder(200, { ok: true, transcricao });
     } catch (erro: any) {
-      const status = Number(erro?.status || erro?.code);
+      const status = Number(erro?.status || erro?.code || erro?.error?.code);
+      const mensagemErro = String(erro?.message || '');
+      const msgLower = mensagemErro.toLowerCase();
       const isTimeout = erro?.name === 'AbortError' ||
         erro?.code === 20 ||
         status === 504 ||
-        String(erro?.message || '').toLowerCase().includes('aborted') ||
-        String(erro?.message || '').toLowerCase().includes('timeout') ||
-        String(erro?.message || '').toLowerCase().includes('deadline');
+        msgLower.includes('aborted') ||
+        msgLower.includes('timeout') ||
+        msgLower.includes('deadline');
+      const isKeyInvalid = status === 401 ||
+        status === 403 ||
+        mensagemErro.includes('API_KEY_INVALID') ||
+        mensagemErro.includes('PERMISSION_DENIED') ||
+        msgLower.includes('api key not valid');
 
       if (isTimeout) {
         return responder(504, { ok: false, erro: 'Tempo limite de transcrição excedido (timeout). Tente novamente.' }, 'TIMEOUT');
@@ -100,14 +123,18 @@ export function criarHandler(deps: Dependencies) {
         return responder(503, { ok: false, erro: 'Configure SUPABASE_URL e SUPABASE_ANON_KEY na Vercel para validar a sessão.' }, 'CONFIG_SUPABASE_AUSENTE');
       }
       if (erro?.message === 'CONFIGURACAO_AUSENTE') {
-        return responder(503, { ok: false, erro: 'Serviço de transcrição não configurado. Configure GEMINI_API_KEY na Vercel e publique novamente.' }, 'CONFIG_GEMINI_AUSENTE');
+        return responder(503, { ok: false, erro: 'Serviço de transcrição não configurado. Configure GEMINI_API_KEY nas variáveis de ambiente e publique novamente.' }, 'CONFIG_GEMINI_AUSENTE');
       }
-      if (status === 429) {
+      if (status === 429 || mensagemErro.includes('RESOURCE_EXHAUSTED')) {
         return responder(429, { ok: false, erro: 'Limite do serviço de transcrição atingido. Tente novamente mais tarde.' }, 'QUOTA_EXCEDIDA');
       }
-      if (status === 401 || status === 403) {
-        return responder(502, { ok: false, erro: 'A chave do serviço de transcrição foi recusada. Verifique a configuração na Vercel.' }, 'CHAVE_RECUSADA');
+      if (isKeyInvalid) {
+        return responder(502, { ok: false, erro: 'A chave do serviço de transcrição foi recusada ou é inválida. Verifique GEMINI_API_KEY nas configurações.' }, 'CHAVE_RECUSADA');
       }
+      if (status === 404 || mensagemErro.includes('NOT_FOUND')) {
+        return responder(502, { ok: false, erro: 'O modelo de transcrição configurado não está disponível para esta chave. Verifique GEMINI_TRANSCRIPTION_MODEL ou a permissão da chave.' }, 'MODELO_INDISPONIVEL');
+      }
+      console.error('[transcricao_api] Falha do provedor:', { status: Number.isFinite(status) ? status : undefined, mensagem: mensagemErro.slice(0, 200) });
       return responder(502, { ok: false, erro: 'O serviço de transcrição não respondeu corretamente. O áudio continua disponível para tentar novamente ou baixar.' }, 'ERRO_PROVEDOR');
     }
   };
@@ -125,15 +152,23 @@ const handler = criarHandler({
   async transcrever(audio, mime) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error('CONFIGURACAO_AUSENTE');
-    const ai = new GoogleGenAI({ apiKey, httpOptions: { timeout: 30000 } });
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        timeout: 25000,
+        headers: {
+          'User-Agent': 'aistudio-build',
+        }
+      }
+    });
 
-    // Modelos ordenados por velocidade e resiliência para transcrição de áudio
-    const modelos = [
+    // Modelos ativos oficiais ordenados por adequação para transcrição de áudio pré-gravado
+    const modelos = [...new Set([
       process.env.GEMINI_TRANSCRIPTION_MODEL,
-      'gemini-3.5-flash',
       'gemini-3.5-transcribe',
-      'gemini-3.8-flash'
-    ].filter(Boolean) as string[];
+      'gemini-4-hydrogen',
+      'gemini-3.1-flash-lite'
+    ].filter(Boolean) as string[])];
 
     let ultimoErro: any = null;
     for (const modelo of modelos) {
@@ -145,19 +180,16 @@ const handler = criarHandler({
             { text: 'Transcreva fielmente o diálogo deste áudio em português do Brasil, com pontuação e parágrafos. Não invente falas, não faça análises e retorne somente a transcrição. Se não houver fala compreensível, retorne texto vazio.' }
           ] }
         });
-        const texto = (result.text || '').trim();
-        if (texto) {
-          return texto;
-        }
+        return (result.text || '').trim();
       } catch (err: any) {
         ultimoErro = err;
-        const code = Number(err?.status || err?.code);
-        console.warn(`[transcricao_api] Modelo ${modelo} falhou (status ${code}):`, err?.message || err);
-        // Se a chave for recusada ou sem escopo, não adianta tentar outros modelos
-        if (code === 401 || code === 403) {
+        const code = Number(err?.status || err?.code || err?.error?.code);
+        const msg = String(err?.message || '');
+        console.warn(`[transcricao_api] Modelo ${modelo} falhou (status ${code}):`, msg || err);
+        // Se a chave for recusada ou inválida, não adianta tentar outros modelos
+        if (code === 401 || code === 403 || msg.includes('API_KEY_INVALID') || msg.includes('PERMISSION_DENIED')) {
           throw err;
         }
-        // Continua para o próximo modelo resiliente
         continue;
       }
     }
@@ -165,6 +197,40 @@ const handler = criarHandler({
       throw ultimoErro;
     }
     return '';
+  },
+  async pontuarTexto(textoBruto) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new Error('CONFIGURACAO_AUSENTE');
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        timeout: 25000,
+        headers: {
+          'User-Agent': 'aistudio-build',
+        }
+      }
+    });
+
+    const modelos = ['gemini-3.1-flash-lite', 'gemini-4-hydrogen'];
+    let ultimoErro: any = null;
+    for (const modelo of modelos) {
+      try {
+        const result = await ai.models.generateContent({
+          model: modelo,
+          contents: `Você é um revisor de transcrição clínica em português do Brasil. O texto abaixo foi transcrito automaticamente sem pontuação. Apenas adicione pontuação, letras maiúsculas, acentuação corrigida quando óbvia e quebras de parágrafo naturais, SEM inventar palavras, SEM resumir e SEM fazer análises clínicas. Retorne somente o texto revisado:\n\n${textoBruto}`
+        });
+        return (result.text || '').trim();
+      } catch (err: any) {
+        ultimoErro = err;
+        const code = Number(err?.status || err?.code || err?.error?.code);
+        const msg = String(err?.message || '');
+        if (code === 401 || code === 403 || msg.includes('API_KEY_INVALID') || msg.includes('PERMISSION_DENIED')) {
+          throw err;
+        }
+      }
+    }
+    if (ultimoErro) throw ultimoErro;
+    return textoBruto;
   }
 });
 export default handler;

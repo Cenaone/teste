@@ -20,10 +20,20 @@ import {
   FileAudio,
   Video,
   HelpCircle,
-  Headphones
+  Headphones,
+  RotateCcw,
+  Cpu,
+  Wand2
 } from 'lucide-react';
 import { Card } from './ui-compact';
 import { getSupabase } from '../lib/supabase';
+import {
+  criarReconhecedorAoVivoVosk,
+  modeloVoskEstaCarregado,
+  obterModeloVoskLocal,
+  transcreverAudioArquivoLocalVosk,
+  type SessaoAoVivoVosk
+} from '../lib/transcricaoLocalVosk';
 
 interface GravadorSessaoProps {
   nomePaciente?: string;
@@ -34,6 +44,10 @@ interface GravadorSessaoProps {
 
 type EstadoGravador = 'ocioso' | 'solicitando' | 'gravando' | 'pausado' | 'processando' | 'concluido' | 'falha';
 export type ModoCapturaAudio = 'presencial' | 'teleconsulta' | 'google_meet';
+export type MotorTranscricao = 'local_vosk' | 'ia_gemini';
+type OrigemTranscricao = 'ia_gemini' | 'local_vosk' | 'rascunho_navegador' | null;
+
+const STORAGE_MOTOR_TRANSCRICAO = 'psi4_motor_transcricao';
 
 export default function GravadorSessao({
   nomePaciente = 'Paciente',
@@ -41,12 +55,22 @@ export default function GravadorSessao({
   textoAtual = '',
   onAudioGravado
 }: GravadorSessaoProps) {
+  const [motorTranscricao, setMotorTranscricao] = useState<MotorTranscricao>(() => {
+    try {
+      const salvo = localStorage.getItem(STORAGE_MOTOR_TRANSCRICAO);
+      if (salvo === 'ia_gemini' || salvo === 'local_vosk') return salvo;
+    } catch (_) {}
+    return 'local_vosk';
+  });
   const [estado, setEstado] = useState<EstadoGravador>('ocioso');
   const [tempoSegundos, setTempoSegundos] = useState(0);
   const [transcricaoTexto, setTranscricaoTexto] = useState('');
   const [rascunhoVozNavegador, setRascunhoVozNavegador] = useState('');
-  const [origemTranscricao, setOrigemTranscricao] = useState<'ia_gemini' | 'rascunho_navegador' | null>(null);
+  const [origemTranscricao, setOrigemTranscricao] = useState<OrigemTranscricao>(null);
   const [progressoTrechos, setProgressoTrechos] = useState<{ atual: number; total: number } | null>(null);
+  const [statusMotorLocal, setStatusMotorLocal] = useState<string | null>(null);
+  const [modeloLocalPronto, setModeloLocalPronto] = useState<boolean>(() => modeloVoskEstaCarregado());
+  const [pontuandoTexto, setPontuandoTexto] = useState(false);
   const [erroMensagem, setErroMensagem] = useState<string | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
@@ -73,6 +97,20 @@ export default function GravadorSessao({
   const trechosResultadosRef = useRef<Record<number, string>>({});
   const tentativaMicRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const voskSessaoRef = useRef<SessaoAoVivoVosk | null>(null);
+  const voskTextoAoVivoRef = useRef('');
+  const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const silentGainRef = useRef<GainNode | null>(null);
+  const motorTranscricaoRef = useRef<MotorTranscricao>(motorTranscricao);
+
+  const alterarMotorTranscricao = (novoMotor: MotorTranscricao) => {
+    setMotorTranscricao(novoMotor);
+    motorTranscricaoRef.current = novoMotor;
+    try {
+      localStorage.setItem(STORAGE_MOTOR_TRANSCRICAO, novoMotor);
+    } catch (_) {}
+    setErroMensagem(null);
+  };
 
   // Sincroniza ref com estado
   useEffect(() => {
@@ -83,6 +121,10 @@ export default function GravadorSessao({
   useEffect(() => {
     estadoRef.current = estado;
   }, [estado]);
+
+  useEffect(() => {
+    motorTranscricaoRef.current = motorTranscricao;
+  }, [motorTranscricao]);
 
   // Verifica suporte da API de Fala contínua e status de permissão de microfone
   useEffect(() => {
@@ -167,6 +209,28 @@ export default function GravadorSessao({
         displayStreamRef.current.getTracks().forEach(track => track.stop());
       } catch (_) {}
       displayStreamRef.current = null;
+    }
+
+    if (scriptProcessorRef.current) {
+      try {
+        scriptProcessorRef.current.onaudioprocess = null;
+        scriptProcessorRef.current.disconnect();
+      } catch (_) {}
+      scriptProcessorRef.current = null;
+    }
+
+    if (silentGainRef.current) {
+      try {
+        silentGainRef.current.disconnect();
+      } catch (_) {}
+      silentGainRef.current = null;
+    }
+
+    if (voskSessaoRef.current) {
+      try {
+        voskSessaoRef.current.descartar();
+      } catch (_) {}
+      voskSessaoRef.current = null;
     }
 
     if (audioContextRef.current) {
@@ -495,6 +559,111 @@ export default function GravadorSessao({
     }
   };
 
+  // Processa áudio localmente via Vosk WASM no navegador
+  const processarTranscricaoLocalArquivo = async (blob: Blob, urlFornecida?: string) => {
+    const finalUrl = urlFornecida || audioUrl || URL.createObjectURL(blob);
+    if (!audioUrl && finalUrl) {
+      setAudioUrl(finalUrl);
+    }
+    setAudioBlob(blob);
+    setEstado('processando');
+    estadoRef.current = 'processando';
+    setErroMensagem(null);
+    setProgressoTrechos({ atual: 1, total: 1 });
+
+    try {
+      const textoLocal = await transcreverAudioArquivoLocalVosk(blob, {
+        onStatus: (st) => setStatusMotorLocal(st),
+        onProgresso: (atual, total) => setProgressoTrechos({ atual, total }),
+        onTextoParcial: (textoVisual) => {
+          if (textoVisual) {
+            setTranscricaoTexto(textoVisual);
+            transcricaoTextoRef.current = textoVisual;
+          }
+        }
+      });
+
+      setModeloLocalPronto(modeloVoskEstaCarregado());
+      setStatusMotorLocal(null);
+      setProgressoTrechos(null);
+
+      if (!textoLocal) {
+        setEstado('falha');
+        estadoRef.current = 'falha';
+        setErroMensagem('Não foi identificada fala audível pelo motor local. O áudio continua disponível para ouvir, baixar ou processar via transcrição em nuvem.');
+        return;
+      }
+
+      setTranscricaoTexto(textoLocal);
+      transcricaoTextoRef.current = textoLocal;
+      textoFinalAcumuladoRef.current = textoLocal;
+      setOrigemTranscricao('local_vosk');
+      setEstado('concluido');
+      estadoRef.current = 'concluido';
+      setErroMensagem(null);
+
+      if (onAudioGravado) {
+        onAudioGravado(blob, finalUrl, textoLocal);
+      }
+      onInserirTexto(textoLocal);
+    } catch (err: any) {
+      console.warn('[Erro transcrição local Vosk]:', err);
+      setStatusMotorLocal(null);
+      setProgressoTrechos(null);
+      setEstado('falha');
+      estadoRef.current = 'falha';
+      setErroMensagem(
+        err?.message || 'Falha no motor de transcrição local. Você pode tentar novamente ou alternar para a transcrição em nuvem.'
+      );
+    }
+  };
+
+  // Envia apenas o texto transcrito localmente para organizar pontuação e parágrafos
+  const handlePontuarTextoComGemini = async () => {
+    const textoAtualCaixa = transcricaoTexto.trim();
+    if (!textoAtualCaixa || pontuandoTexto) return;
+    setPontuandoTexto(true);
+    setErroMensagem(null);
+
+    try {
+      const supabase = getSupabase();
+      const { data: sessao, error: erroSessao } = await supabase.auth.getSession();
+      if (erroSessao || !sessao.session?.access_token) {
+        throw new Error('Sessão expirada ou não autenticada. Entre novamente para organizar o texto.');
+      }
+
+      const response = await fetch('/api/transcrever-audio', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${sessao.session.access_token}`
+        },
+        body: JSON.stringify({
+          acao: 'pontuar_texto',
+          texto: textoAtualCaixa
+        })
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.ok || !data.transcricao) {
+        throw new Error(data?.erro || 'Não foi possível pontuar o texto.');
+      }
+
+      const textoPontuado = String(data.transcricao).trim();
+      setTranscricaoTexto(textoPontuado);
+      transcricaoTextoRef.current = textoPontuado;
+      textoFinalAcumuladoRef.current = textoPontuado;
+      onInserirTexto(textoPontuado);
+      if (audioBlob && audioUrl && onAudioGravado) {
+        onAudioGravado(audioBlob, audioUrl, textoPontuado);
+      }
+    } catch (err: any) {
+      setErroMensagem(err?.message || 'Falha ao organizar pontuação do texto.');
+    } finally {
+      setPontuandoTexto(false);
+    }
+  };
+
   // Permite adotar o rascunho de voz local do navegador caso o usuário prefira
   const handleUsarRascunhoNavegador = () => {
     if (!rascunhoVozNavegador.trim()) return;
@@ -637,6 +806,26 @@ export default function GravadorSessao({
           const callSource = audioCtx.createMediaStreamSource(displayStream);
           callSource.connect(destination);
 
+          // Se modo local (Vosk) estiver ativo, também alimenta o reconhecedor ao vivo com ambos os áudios sem eco
+          if (motorTranscricaoRef.current === 'local_vosk' && typeof audioCtx.createScriptProcessor === 'function') {
+            const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+            const silentGain = audioCtx.createGain();
+            silentGain.gain.value = 0;
+
+            micSource.connect(processor);
+            callSource.connect(processor);
+            processor.connect(silentGain);
+            silentGain.connect(audioCtx.destination);
+
+            processor.onaudioprocess = (event) => {
+              if (estadoRef.current === 'gravando' && voskSessaoRef.current) {
+                voskSessaoRef.current.enviarPcm(event.inputBuffer.getChannelData(0), audioCtx.sampleRate);
+              }
+            };
+            scriptProcessorRef.current = processor;
+            silentGainRef.current = silentGain;
+          }
+
           stream = destination.stream;
         } else {
           stream = new MediaStream([
@@ -644,9 +833,35 @@ export default function GravadorSessao({
             ...callAudioTracks
           ]);
         }
+      } else if (motorTranscricaoRef.current === 'local_vosk') {
+        // Modo Presencial com Motor Local (Vosk): conecta microfone ao ScriptProcessor silencioso
+        const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioCtxClass) {
+          const audioCtx = new AudioCtxClass();
+          audioContextRef.current = audioCtx;
+          if (typeof audioCtx.createScriptProcessor === 'function') {
+            const micSource = audioCtx.createMediaStreamSource(micStream);
+            const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+            const silentGain = audioCtx.createGain();
+            silentGain.gain.value = 0;
+
+            micSource.connect(processor);
+            processor.connect(silentGain);
+            silentGain.connect(audioCtx.destination);
+
+            processor.onaudioprocess = (event) => {
+              if (estadoRef.current === 'gravando' && voskSessaoRef.current) {
+                voskSessaoRef.current.enviarPcm(event.inputBuffer.getChannelData(0), audioCtx.sampleRate);
+              }
+            };
+            scriptProcessorRef.current = processor;
+            silentGainRef.current = silentGain;
+          }
+        }
       }
 
       streamRef.current = stream;
+      voskTextoAoVivoRef.current = '';
 
       // Seleção de melhor formato compatível para MediaRecorder
       let options: MediaRecorderOptions | undefined = undefined;
@@ -687,6 +902,25 @@ export default function GravadorSessao({
       };
 
       mediaRecorder.onstop = async () => {
+        const sessaoVosk = voskSessaoRef.current;
+        voskSessaoRef.current = null;
+
+        if (scriptProcessorRef.current) {
+          try {
+            scriptProcessorRef.current.onaudioprocess = null;
+            scriptProcessorRef.current.disconnect();
+          } catch (_) {}
+          scriptProcessorRef.current = null;
+        }
+        if (silentGainRef.current) {
+          try { silentGainRef.current.disconnect(); } catch (_) {}
+          silentGainRef.current = null;
+        }
+        if (audioContextRef.current) {
+          try { audioContextRef.current.close().catch(() => {}); } catch (_) {}
+          audioContextRef.current = null;
+        }
+
         if (audioChunksRef.current.length > 0) {
           const mime = audioChunksRef.current[0]?.type || options?.mimeType || 'audio/webm';
           const blob = new Blob(audioChunksRef.current, { type: mime });
@@ -694,9 +928,44 @@ export default function GravadorSessao({
           setAudioBlob(blob);
           setAudioUrl(url);
 
-          // Dispara a transcrição clínica oficial por IA do arquivo gravado
-          await processarTranscricaoServidor(blob, url, false);
+          if (motorTranscricaoRef.current === 'local_vosk') {
+            if (sessaoVosk) {
+              try {
+                const textoVosk = (await sessaoVosk.finalizar()).trim();
+                const textoFinal = textoVosk || voskTextoAoVivoRef.current.trim();
+                if (textoFinal) {
+                  setTranscricaoTexto(textoFinal);
+                  transcricaoTextoRef.current = textoFinal;
+                  textoFinalAcumuladoRef.current = textoFinal;
+                  setOrigemTranscricao('local_vosk');
+                  setStatusMotorLocal(null);
+                  setProgressoTrechos(null);
+                  setEstado('concluido');
+                  estadoRef.current = 'concluido';
+                  setErroMensagem(null);
+                  if (onAudioGravado) {
+                    onAudioGravado(blob, url, textoFinal);
+                  }
+                  onInserirTexto(textoFinal);
+                  return;
+                }
+              } catch (errVosk) {
+                console.warn('[Vosk ao vivo finalizar aviso]:', errVosk);
+              }
+            }
+            // Se o modelo ainda estava baixando ou não captou ao vivo, processa o arquivo gravado localmente
+            await processarTranscricaoLocalArquivo(blob, url);
+          } else {
+            if (sessaoVosk) {
+              try { sessaoVosk.descartar(); } catch (_) {}
+            }
+            // Modelo Antigo: Dispara a transcrição clínica oficial por IA Gemini no servidor
+            await processarTranscricaoServidor(blob, url, false);
+          }
         } else {
+          if (sessaoVosk) {
+            try { sessaoVosk.descartar(); } catch (_) {}
+          }
           setEstado('falha');
           estadoRef.current = 'falha';
           setErroMensagem('Nenhum dado de áudio foi capturado pelo gravador.');
@@ -709,8 +978,43 @@ export default function GravadorSessao({
       setEstado('gravando');
       estadoRef.current = 'gravando';
 
-      // Dispara transcrição de fala contínua em tempo real
-      iniciarFalaAoVivo();
+      if (motorTranscricaoRef.current === 'local_vosk') {
+        const sr = audioContextRef.current?.sampleRate || 16000;
+        criarReconhecedorAoVivoVosk(sr, {
+          onStatus: (st) => setStatusMotorLocal(st),
+          onResultadoFinal: (_frase, acumulado) => {
+            if (estadoRef.current !== 'gravando' && estadoRef.current !== 'pausado') return;
+            voskTextoAoVivoRef.current = acumulado;
+            setTranscricaoTexto(acumulado);
+            transcricaoTextoRef.current = acumulado;
+            setOrigemTranscricao('local_vosk');
+          },
+          onParcial: (_parcial, visualCompleto) => {
+            if (estadoRef.current !== 'gravando') return;
+            if (visualCompleto) {
+              setTranscricaoTexto(visualCompleto);
+              transcricaoTextoRef.current = visualCompleto;
+            }
+          },
+          onErro: (msg) => setStatusMotorLocal(msg)
+        })
+          .then((sessao) => {
+            if (estadoRef.current === 'gravando' || estadoRef.current === 'pausado' || estadoRef.current === 'processando') {
+              voskSessaoRef.current = sessao;
+              setModeloLocalPronto(true);
+              setStatusMotorLocal(null);
+            } else {
+              sessao.descartar();
+            }
+          })
+          .catch((errVosk) => {
+            console.warn('[Vosk ao vivo erro inicialização]:', errVosk);
+            setStatusMotorLocal(null);
+          });
+      } else {
+        // Modelo Antigo: rascunho de fala contínua via Web Speech API
+        iniciarFalaAoVivo();
+      }
 
       // Inicia cronômetro
       timerRef.current = setInterval(() => {
@@ -767,7 +1071,9 @@ export default function GravadorSessao({
       if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'paused') {
         try { mediaRecorderRef.current.resume(); } catch (_) {}
       }
-      iniciarFalaAoVivo();
+      if (motorTranscricaoRef.current !== 'local_vosk') {
+        iniciarFalaAoVivo();
+      }
       timerRef.current = setInterval(() => {
         setTempoSegundos(prev => prev + 1);
       }, 1000);
@@ -814,7 +1120,8 @@ export default function GravadorSessao({
       displayStreamRef.current = null;
     }
 
-    if (audioContextRef.current) {
+    // No modo ia_gemini fecha o AudioContext imediatamente; no modo local_vosk o onstop fecha após finalizar o buffer
+    if (motorTranscricaoRef.current !== 'local_vosk' && audioContextRef.current) {
       try {
         audioContextRef.current.close().catch(() => {});
       } catch (_) {}
@@ -836,6 +1143,7 @@ export default function GravadorSessao({
     audioChunksRef.current = [];
     trechosArmazenadosRef.current = [];
     trechosResultadosRef.current = {};
+    voskTextoAoVivoRef.current = '';
     setTranscricaoTexto('');
     transcricaoTextoRef.current = '';
     setRascunhoVozNavegador('');
@@ -844,6 +1152,7 @@ export default function GravadorSessao({
     setTempoSegundos(0);
     setErroMensagem(null);
     setProgressoTrechos(null);
+    setStatusMotorLocal(null);
     setOrigemTranscricao(null);
     setEstado('ocioso');
     estadoRef.current = 'ocioso';
@@ -860,8 +1169,11 @@ export default function GravadorSessao({
     setAudioBlob(file);
     setAudioUrl(url);
 
-    // Dispara transcrição automática via Gemini no servidor
-    await processarTranscricaoServidor(file, url);
+    if (motorTranscricaoRef.current === 'local_vosk') {
+      await processarTranscricaoLocalArquivo(file, url);
+    } else {
+      await processarTranscricaoServidor(file, url);
+    }
 
     // Reseta o input para permitir selecionar o mesmo arquivo novamente se desejar
     if (fileInputRef.current) {
@@ -955,31 +1267,84 @@ export default function GravadorSessao({
             {estado === 'solicitando' && 'Aguardando microfone...'}
             {estado === 'gravando' && `Gravando (${formatarTempo(tempoSegundos)})`}
             {estado === 'pausado' && `Pausado (${formatarTempo(tempoSegundos)})`}
-            {estado === 'processando' && (progressoTrechos && progressoTrechos.total > 1 ? `Transcrevendo (${progressoTrechos.atual}/${progressoTrechos.total})` : 'Transcrevendo com IA...')}
-            {estado === 'concluido' && (origemTranscricao === 'ia_gemini' ? 'Transcrição IA Concluída' : origemTranscricao === 'rascunho_navegador' ? 'Rascunho Local' : 'Gravação & Transcrição Concluídas')}
+            {estado === 'processando' && (progressoTrechos && progressoTrechos.total > 1 ? `Transcrevendo (${progressoTrechos.atual}/${progressoTrechos.total})` : motorTranscricao === 'local_vosk' ? 'Finalizando Local...' : 'Transcrevendo com IA...')}
+            {estado === 'concluido' && (origemTranscricao === 'ia_gemini' ? 'Transcrição IA Concluída' : origemTranscricao === 'local_vosk' ? 'Transcrição Local Concluída' : origemTranscricao === 'rascunho_navegador' ? 'Rascunho Local' : 'Gravação & Transcrição Concluídas')}
             {estado === 'falha' && 'Transcrição Pendente'}
           </span>
         </div>
       </div>
 
-      {/* Informativo de Tecnologia e Privacidade */}
-      <div className="p-3 rounded-xl bg-muted/30 border border-border/60 text-xs text-muted-foreground flex items-start gap-2.5 leading-relaxed">
-        <Info className="size-4 text-primary shrink-0 mt-0.5" />
-        <div className="space-y-0.5">
-          <p>
-            {suportaFalaAoVivo
-              ? 'Transcrição contínua em tempo real ativada: conforme você e o paciente falam, o diálogo é transcrito e salvo no prontuário.'
-              : 'Gravação estéreo com inteligência artificial para transcrição clínica automática ao concluir a sessão.'
-            }
-          </p>
-          <span className="text-[11px] text-muted-foreground block">
-            Armazenamento seguro, isolado e confidencial sob tutela do psicólogo/psicanalista responsável.
-          </span>
+      {/* Seletor de Motor de Transcrição (Local Offline vs Nuvem IA) */}
+      <div className="p-3 rounded-xl bg-muted/30 border border-border/60 text-xs space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Cpu className="size-4 text-primary shrink-0" />
+            <span className="font-bold text-foreground">
+              {motorTranscricao === 'local_vosk'
+                ? 'Transcrição Offline (Processamento Local)'
+                : 'Transcrição em Nuvem (IA Clínica)'}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {motorTranscricao === 'local_vosk' ? (
+              <>
+                {!modeloLocalPronto && (estado === 'ocioso' || estado === 'concluido' || estado === 'falha') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      obterModeloVoskLocal((st) => setStatusMotorLocal(st))
+                        .then(() => {
+                          setModeloLocalPronto(true);
+                          setStatusMotorLocal(null);
+                        })
+                        .catch((err) => setErroMensagem(err?.message || 'Erro ao carregar modelo local.'));
+                    }}
+                    className="px-2.5 py-1 rounded-lg border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 cursor-pointer"
+                  >
+                    Preparar Motor Offline
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={estado === 'gravando' || estado === 'processando'}
+                  onClick={() => alterarMotorTranscricao('ia_gemini')}
+                  className="px-2.5 py-1 rounded-lg border border-primary/40 bg-primary/10 hover:bg-primary/20 disabled:opacity-50 text-[11px] font-bold text-primary flex items-center gap-1 cursor-pointer"
+                  title="Alternar para transcrição em nuvem com pontuação automática"
+                >
+                  <RotateCcw className="size-3" />
+                  <span>Usar Transcrição em Nuvem</span>
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                disabled={estado === 'gravando' || estado === 'processando'}
+                onClick={() => alterarMotorTranscricao('local_vosk')}
+                className="px-2.5 py-1 rounded-lg border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 disabled:opacity-50 text-[11px] font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1 cursor-pointer"
+              >
+                <Cpu className="size-3" />
+                <span>Usar Transcrição Offline (Local)</span>
+              </button>
+            )}
+          </div>
         </div>
+
+        <p className="text-[11px] text-muted-foreground leading-relaxed">
+          {motorTranscricao === 'local_vosk'
+            ? 'Transcrição automática em tempo real processada localmente no navegador (Presencial, Teleconsulta com fones e Áudio Importado), garantindo privacidade. Após concluir, você pode organizar a pontuação se desejar.'
+            : 'Transcrição clínica em nuvem com pontuação e parágrafos automáticos. Armazenamento isolado e confidencial sob tutela do profissional responsável.'}
+        </p>
+
+        {statusMotorLocal && (
+          <div className="flex items-center gap-2 text-[11px] font-semibold text-primary bg-primary/10 px-2.5 py-1.5 rounded-lg">
+            <Loader2 className="size-3.5 animate-spin shrink-0" />
+            <span>{statusMotorLocal}</span>
+          </div>
+        )}
       </div>
 
-      {/* Rascunho de voz ao vivo do navegador durante a gravação */}
-      {estado === 'gravando' && rascunhoVozNavegador.trim() && (
+      {/* Rascunho de voz ao vivo do navegador durante a gravação (Modo Nuvem) */}
+      {motorTranscricao === 'ia_gemini' && estado === 'gravando' && rascunhoVozNavegador.trim() && (
         <div className="p-3 rounded-xl bg-muted/40 border border-border/60 space-y-1.5">
           <div className="flex items-center gap-2 text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
             <Radio className="size-3 text-emerald-500 animate-pulse" />
@@ -1041,11 +1406,29 @@ export default function GravadorSessao({
             {audioBlob && (
               <button
                 type="button"
-                onClick={() => processarTranscricaoServidor(audioBlob, undefined, false)}
+                onClick={() =>
+                  motorTranscricao === 'local_vosk'
+                    ? processarTranscricaoLocalArquivo(audioBlob)
+                    : processarTranscricaoServidor(audioBlob, undefined, false)
+                }
                 className="px-3 py-1.5 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 text-xs font-bold text-primary flex items-center gap-1.5 cursor-pointer"
               >
                 <Sparkles className="size-3.5" />
-                <span>Tentar Transcrever Novamente</span>
+                <span>{motorTranscricao === 'local_vosk' ? 'Tentar Transcrever Localmente' : 'Tentar Transcrever Novamente'}</span>
+              </button>
+            )}
+
+            {audioBlob && motorTranscricao === 'local_vosk' && (
+              <button
+                type="button"
+                onClick={() => {
+                  alterarMotorTranscricao('ia_gemini');
+                  processarTranscricaoServidor(audioBlob, undefined, false);
+                }}
+                className="px-3 py-1.5 rounded-lg border border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/25 text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5 cursor-pointer"
+              >
+                <RotateCcw className="size-3.5" />
+                <span>Transcrever em Nuvem (IA)</span>
               </button>
             )}
 
@@ -1305,11 +1688,35 @@ export default function GravadorSessao({
             {audioBlob && (
               <button
                 type="button"
-                onClick={() => processarTranscricaoServidor(audioBlob, undefined, false)}
+                onClick={() =>
+                  motorTranscricao === 'local_vosk'
+                    ? processarTranscricaoLocalArquivo(audioBlob)
+                    : processarTranscricaoServidor(audioBlob, undefined, false)
+                }
                 className="px-4 py-2 rounded-xl border border-primary/30 bg-primary/5 hover:bg-primary/10 text-xs font-bold text-primary transition-colors flex items-center gap-1.5 cursor-pointer"
               >
                 <Sparkles className="size-3.5" />
-                <span>{origemTranscricao === 'ia_gemini' ? 'Retranscrever com IA Gemini' : 'Refinar com IA Gemini'}</span>
+                <span>
+                  {motorTranscricao === 'local_vosk'
+                    ? 'Retranscrever Localmente'
+                    : origemTranscricao === 'ia_gemini'
+                    ? 'Retranscrever com IA Gemini'
+                    : 'Refinar com IA Gemini'}
+                </span>
+              </button>
+            )}
+
+            {audioBlob && motorTranscricao === 'local_vosk' && (
+              <button
+                type="button"
+                onClick={() => {
+                  alterarMotorTranscricao('ia_gemini');
+                  processarTranscricaoServidor(audioBlob, undefined, false);
+                }}
+                className="px-4 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <RotateCcw className="size-3.5" />
+                <span>Processar em Nuvem (IA)</span>
               </button>
             )}
           </div>
@@ -1353,7 +1760,12 @@ export default function GravadorSessao({
             </label>
             {origemTranscricao === 'ia_gemini' && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-                <Sparkles className="size-3" /> Transcrição Clínica por IA (Gemini)
+                <Sparkles className="size-3" /> Transcrição Clínica por IA
+              </span>
+            )}
+            {origemTranscricao === 'local_vosk' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                <Cpu className="size-3" /> Transcrição Local (Offline)
               </span>
             )}
             {origemTranscricao === 'rascunho_navegador' && (
@@ -1363,7 +1775,19 @@ export default function GravadorSessao({
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-3">
+            {transcricaoTexto.trim() && origemTranscricao === 'local_vosk' && estado !== 'gravando' && estado !== 'processando' && (
+              <button
+                type="button"
+                disabled={pontuandoTexto}
+                onClick={handlePontuarTextoComGemini}
+                className="text-xs font-semibold text-primary hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                title="Adiciona pontuação e parágrafos automáticos ao texto transcrito"
+              >
+                {pontuandoTexto ? <Loader2 className="size-3.5 animate-spin" /> : <Wand2 className="size-3.5" />}
+                <span>{pontuandoTexto ? 'Organizando...' : 'Organizar Pontuação e Parágrafos'}</span>
+              </button>
+            )}
             {origemTranscricao === 'rascunho_navegador' && audioBlob && estado !== 'processando' && (
               <button
                 type="button"
@@ -1401,7 +1825,9 @@ export default function GravadorSessao({
             }}
             placeholder={
               estado === 'gravando'
-                ? 'Gravando... As falas da sessão estão sendo captadas e o áudio preservado com máxima fidelidade...'
+                ? motorTranscricao === 'local_vosk'
+                  ? 'Gravando e transcrevendo localmente em tempo real... Conforme vocês falam, o texto aparece aqui.'
+                  : 'Gravando... As falas da sessão estão sendo captadas e o áudio preservado com máxima fidelidade...'
                 : 'A transcrição automática da gravação de áudio aparecerá aqui. Você poderá editar o texto livremente antes de salvá-lo no prontuário do paciente.'
             }
             className={`w-full rounded-xl border border-border p-3.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring leading-relaxed resize-y font-mono transition-colors ${

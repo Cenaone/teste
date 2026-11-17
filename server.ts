@@ -1,6 +1,5 @@
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
 import path from 'path';
 import fs from 'fs';
@@ -716,10 +715,11 @@ function salvarUsuariosServidor(lista: any[]): void {
 
   server.on('error', (err: any) => {
     if (err.code === 'EADDRINUSE') {
-      console.warn(`[WARN] Porta ${port} em uso, tentando porta alternativa...`);
+      console.error(`[ERRO] Porta ${port} já está em uso.`);
     } else {
       console.error('[ERRO] Falha no servidor HTTP:', err);
     }
+    process.exit(1);
   });
 }
 

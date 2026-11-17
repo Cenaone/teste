@@ -69,4 +69,51 @@ test('processa múltiplos trechos sequenciais e permite recuperar trecho com fal
   assert.equal(resultados.join('\n\n'), 'Trecho um transcrito.\n\nTrecho dois transcrito.');
 });
 
+test('identifica chave inválida (API_KEY_INVALID) e modelo indisponível (404) com mensagens claras', async () => {
+  const rChave = await executar({ falha: { status: 400, message: 'API key not valid. API_KEY_INVALID' } });
+  assert.equal(rChave.status, 502);
+  assert.match(rChave.resposta.erro, /chave/i);
+
+  const rModelo = await executar({ falha: { status: 404, message: 'models/foo is not found NOT_FOUND' } });
+  assert.equal(rModelo.status, 502);
+  assert.match(rModelo.resposta.erro, /modelo/i);
+});
+
+test('api/transcrever-audio.ts usa apenas modelos ativos oficiais e User-Agent aistudio-build', async () => {
+  const fs = await import('node:fs');
+  const conteudo = fs.readFileSync(new URL('../api/transcrever-audio.ts', import.meta.url), 'utf8');
+  assert.match(conteudo, /gemini-3\.5-transcribe/);
+  assert.match(conteudo, /gemini-4-hydrogen/);
+  assert.match(conteudo, /gemini-3\.1-flash-lite/);
+  assert.match(conteudo, /'User-Agent':\s*'aistudio-build'/);
+  assert.doesNotMatch(conteudo, /gemini-3\.5-flash/);
+  assert.doesNotMatch(conteudo, /gemini-3\.8-flash/);
+});
+
+test('suporta acao opcional pontuar_texto sem enviar áudio e valida entrada vazia', async () => {
+  let status = 0;
+  let resposta: any;
+  const handler = criarHandler({
+    autenticar: async () => true,
+    transcrever: async () => { throw new Error('não deveria chamar transcrição de áudio'); },
+    pontuarTexto: async (texto) => `${texto}.`
+  });
+  const reqOk = { method: 'POST', headers: { authorization: 'Bearer tok' }, body: { acao: 'pontuar_texto', texto: 'olá tudo bem' } };
+  const resOk = { setHeader() {}, set statusCode(v: number) { status = v; }, end(s: string) { resposta = JSON.parse(s); } };
+  await handler(reqOk as any, resOk as any);
+  assert.equal(status, 200);
+  assert.equal(resposta.transcricao, 'olá tudo bem.');
+
+  const reqVazio = { method: 'POST', headers: { authorization: 'Bearer tok' }, body: { acao: 'pontuar_texto', texto: '   ' } };
+  await handler(reqVazio as any, resOk as any);
+  assert.equal(status, 400);
+});
+
+test('modelo local Vosk PT-BR e ponto de restauração do modelo antigo estão presentes', async () => {
+  const fs = await import('node:fs');
+  assert.equal(fs.existsSync(new URL('../public/models/vosk-model-small-pt-0.3.tar.gz', import.meta.url)), true);
+  assert.equal(fs.existsSync(new URL('../backups/ponto-restauracao-modelo-antigo/GravadorSessao.tsx.bak', import.meta.url)), true);
+  assert.equal(fs.existsSync(new URL('../backups/ponto-restauracao-modelo-antigo/transcrever-audio.ts.bak', import.meta.url)), true);
+  assert.equal(fs.existsSync(new URL('../backups/ponto-restauracao-modelo-antigo/RESTAURAR.md', import.meta.url)), true);
+});
 
