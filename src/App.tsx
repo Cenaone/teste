@@ -315,6 +315,14 @@ export default function App() {
   const [sessaoForm, setSessaoForm] = useState<SessaoClinica | null>(null);
   const [sessaoOrigemAgendamentoId, setSessaoOrigemAgendamentoId] = useState<string | null>(null);
   const [sessaoOrigemPacienteId, setSessaoOrigemPacienteId] = useState<string | null>(null);
+  const [novaSessaoKey, setNovaSessaoKey] = useState(0);
+
+  const abrirNovaSessao = (opcoes?: { agendamentoId?: string | null; pacienteId?: string | null }) => {
+    setSessaoOrigemAgendamentoId(opcoes?.agendamentoId ?? null);
+    setSessaoOrigemPacienteId(opcoes?.pacienteId ?? null);
+    setNovaSessaoKey(prev => prev + 1);
+    setSecaoAtiva('nova_sessao');
+  };
   const [mostrarFormModalidade, setMostrarFormModalidade] = useState(false);
   const [modalidadeForm, setModalidadeForm] = useState<ModalidadeAtendimento | null>(null);
   const [mostrarFormHonorario, setMostrarFormHonorario] = useState(false);
@@ -1250,7 +1258,11 @@ export default function App() {
                           <button
                             key={item.id}
                             onClick={() => {
-                              setSecaoAtiva(item.id);
+                              if (item.id === 'nova_sessao') {
+                                abrirNovaSessao();
+                              } else {
+                                setSecaoAtiva(item.id);
+                              }
                               setMenuCelularAberto(false);
                             }}
                             className={`flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold tracking-tight transition-all active:scale-95 duration-100 ${
@@ -1373,7 +1385,13 @@ export default function App() {
                       return (
                         <button
                           key={item.id}
-                          onClick={() => setSecaoAtiva(item.id)}
+                          onClick={() => {
+                            if (item.id === 'nova_sessao') {
+                              abrirNovaSessao();
+                            } else {
+                              setSecaoAtiva(item.id);
+                            }
+                          }}
                           className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-all ${
                             ativo
                               ? 'bg-primary text-primary-foreground shadow-md'
@@ -1799,55 +1817,57 @@ export default function App() {
           {/* NOVA SESSÃO (MENU CLÍNICA COM TRANSCRIÇÃO & MP3) */}
           {/* ======================================================== */}
           {secaoAtiva === 'nova_sessao' && (
-            <SecaoNovaSessao
-              analisandos={analisandos}
-              modalidades={modalidades}
-              sessoes={sessoes}
-              agendamentos={agendamentos}
-              agendamentoInicialId={sessaoOrigemAgendamentoId}
-              pacienteInicialId={sessaoOrigemPacienteId}
-              contaUsuario={contaUsuario}
-              onSalvarSessao={(novaSessao, agendamentoRetorno) => {
-                const novasSessoes = [novaSessao, ...sessoes];
-                atualizarSessoes(novasSessoes);
+            <div key={novaSessaoKey}>
+              <SecaoNovaSessao
+                analisandos={analisandos}
+                modalidades={modalidades}
+                sessoes={sessoes}
+                agendamentos={agendamentos}
+                agendamentoInicialId={sessaoOrigemAgendamentoId}
+                pacienteInicialId={sessaoOrigemPacienteId}
+                contaUsuario={contaUsuario}
+                onSalvarSessao={(novaSessao, agendamentoRetorno) => {
+                  const novasSessoes = [novaSessao, ...sessoes];
+                  atualizarSessoes(novasSessoes);
 
-                let agendamentosAtualizados = [...agendamentos];
-                if (novaSessao.agendamentoOrigemId) {
-                  agendamentosAtualizados = agendamentosAtualizados.map(ag =>
-                    ag.id === novaSessao.agendamentoOrigemId
-                      ? { ...ag, status: 'realizado' as const, sessaoRealizadaId: novaSessao.id }
-                      : ag
-                  );
-                }
-                if (agendamentoRetorno) {
-                  agendamentosAtualizados = [agendamentoRetorno, ...agendamentosAtualizados];
-                }
-                if (novaSessao.agendamentoOrigemId || agendamentoRetorno) {
-                  atualizarAgendamentos(agendamentosAtualizados);
-                }
+                  let agendamentosAtualizados = [...agendamentos];
+                  if (novaSessao.agendamentoOrigemId) {
+                    agendamentosAtualizados = agendamentosAtualizados.map(ag =>
+                      ag.id === novaSessao.agendamentoOrigemId
+                        ? { ...ag, status: 'realizado' as const, sessaoRealizadaId: novaSessao.id }
+                        : ag
+                    );
+                  }
+                  if (agendamentoRetorno) {
+                    agendamentosAtualizados = [agendamentoRetorno, ...agendamentosAtualizados];
+                  }
+                  if (novaSessao.agendamentoOrigemId || agendamentoRetorno) {
+                    atualizarAgendamentos(agendamentosAtualizados);
+                  }
 
-                setSessaoOrigemAgendamentoId(null);
-                setSessaoOrigemPacienteId(null);
-              }}
-              onNavegarSessoes={() => setSecaoAtiva('sessoes')}
-              onCadastrarPaciente={() => {
-                setAnalisandoForm({
-                  id: `p_${Date.now()}`,
-                  nome: '',
-                  whatsapp: '',
-                  email: '',
-                  nascimento: '',
-                  cidade: '',
-                  status: 'novo',
-                  vip: false,
-                  tags: [],
-                  observacoes: '',
-                  criadoEm: new Date().toISOString(),
-                  mensagensEnviadas: []
-                });
-                setMostrarFormAnalisando(true);
-              }}
-            />
+                  setSessaoOrigemAgendamentoId(null);
+                  setSessaoOrigemPacienteId(null);
+                }}
+                onNavegarSessoes={() => setSecaoAtiva('sessoes')}
+                onCadastrarPaciente={() => {
+                  setAnalisandoForm({
+                    id: `p_${Date.now()}`,
+                    nome: '',
+                    whatsapp: '',
+                    email: '',
+                    nascimento: '',
+                    cidade: '',
+                    status: 'novo',
+                    vip: false,
+                    tags: [],
+                    observacoes: '',
+                    criadoEm: new Date().toISOString(),
+                    mensagensEnviadas: []
+                  });
+                  setMostrarFormAnalisando(true);
+                }}
+              />
+            </div>
           )}
 
           {/* ======================================================== */}
@@ -2061,7 +2081,7 @@ export default function App() {
                   Registro completo de sessões de análise e supervisões concluídas.
                 </p>
                 <button
-                  onClick={() => setSecaoAtiva('nova_sessao')}
+                  onClick={() => abrirNovaSessao()}
                   className="px-4 py-2 text-sm font-semibold text-white gradient-emerald rounded-xl shadow-md hover:opacity-95 transition-all flex items-center gap-1.5 cursor-pointer"
                 >
                   <Plus className="size-4" />
@@ -2551,7 +2571,7 @@ export default function App() {
                 });
                 setMostrarFormHonorario(true);
               }}
-              onNovaSessaoClick={() => setSecaoAtiva('nova_sessao')}
+              onNovaSessaoClick={() => abrirNovaSessao()}
             />
           )}
 
@@ -3202,9 +3222,7 @@ export default function App() {
                 }
               }}
               onIniciarSessao={(agId, analisandoId) => {
-                setSessaoOrigemAgendamentoId(agId);
-                setSessaoOrigemPacienteId(analisandoId);
-                setSecaoAtiva('nova_sessao');
+                abrirNovaSessao({ agendamentoId: agId, pacienteId: analisandoId });
               }}
               onAbrirProntuario={(paciente) => {
                 setProntuarioSelecionado(paciente);
@@ -3484,9 +3502,7 @@ export default function App() {
           }}
           onNovaSessaoRapida={analisandoId => {
             setProntuarioSelecionado(null);
-            setSessaoOrigemAgendamentoId(null);
-            setSessaoOrigemPacienteId(analisandoId);
-            setSecaoAtiva('nova_sessao');
+            abrirNovaSessao({ pacienteId: analisandoId });
           }}
         />
       )}
@@ -3626,25 +3642,27 @@ export default function App() {
                 <label className="text-xs font-semibold text-muted-foreground uppercase">Notas confidenciais de evolução terapêutica</label>
                 
                 {/* Gravador & Transcritor de Áudio da Sessão */}
-                <GravadorSessao
-                  nomePaciente={analisandos.find(a => a.id === sessaoForm.analisandoId)?.nome || 'Paciente'}
-                  textoAtual={sessaoForm.notasSessao || ''}
-                  onInserirTexto={(novoTexto) => {
-                    setSessaoForm(prev => prev ? {
-                      ...prev,
-                      notasSessao: novoTexto,
-                      transcricao: novoTexto
-                    } : null);
-                  }}
-                  onAudioGravado={(blob, url, transcricao) => {
-                    setSessaoForm(prev => prev ? {
-                      ...prev,
-                      audioUrl: url,
-                      transcricao: transcricao || prev.transcricao,
-                      notasSessao: prev.notasSessao?.trim() ? prev.notasSessao : transcricao
-                    } : null);
-                  }}
-                />
+                <div key={sessaoForm.id}>
+                  <GravadorSessao
+                    nomePaciente={analisandos.find(a => a.id === sessaoForm.analisandoId)?.nome || 'Paciente'}
+                    textoAtual={sessaoForm.notasSessao || ''}
+                    onInserirTexto={(novoTexto) => {
+                      setSessaoForm(prev => prev ? {
+                        ...prev,
+                        notasSessao: novoTexto,
+                        transcricao: novoTexto
+                      } : null);
+                    }}
+                    onAudioGravado={(blob, url, transcricao) => {
+                      setSessaoForm(prev => prev ? {
+                        ...prev,
+                        audioUrl: url,
+                        transcricao: transcricao || prev.transcricao,
+                        notasSessao: prev.notasSessao?.trim() ? prev.notasSessao : transcricao
+                      } : null);
+                    }}
+                  />
+                </div>
 
                 <textarea
                   value={sessaoForm.notasSessao || ''}
@@ -4189,7 +4207,13 @@ export default function App() {
           setTemNovidadesTour(false);
           setBannerNovidadesVisivel(false);
         }}
-        onNavegarSecao={(secaoId) => setSecaoAtiva(secaoId)}
+        onNavegarSecao={(secaoId) => {
+          if (secaoId === 'nova_sessao') {
+            abrirNovaSessao();
+          } else {
+            setSecaoAtiva(secaoId);
+          }
+        }}
         onAbrirManual={() => {
           setMostrarTour(false);
           setMostrarManual(true);

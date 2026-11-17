@@ -109,6 +109,8 @@ export default function SecaoNovaSessao({
   const [valorPago, setValorPago] = useState<number>(0);
   const [meioPagamento, setMeioPagamento] = useState<'pix' | 'dinheiro' | 'transferencia' | 'cartao'>('pix');
 
+  const [sessaoResetKey, setSessaoResetKey] = useState(0);
+
   // Estados de controle e feedback
   const [sucessoSalvo, setSucessoSalvo] = useState(false);
   const [detalhesSucesso, setDetalhesSucesso] = useState<{
@@ -120,6 +122,56 @@ export default function SecaoNovaSessao({
   } | null>(null);
   const [erroValidacao, setErroValidacao] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
+
+  const obterHoraAtual = () => {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+
+  const reiniciarNovaSessao = (opcoes?: {
+    analisandoId?: string;
+    modalidadeId?: string;
+    data?: string;
+    hora?: string;
+    manterSucessoModal?: boolean;
+  }) => {
+    const proxModalidadeId = opcoes?.modalidadeId ?? (modalidades[0]?.id || '');
+    const modAlvo = modalidades.find(m => m.id === proxModalidadeId);
+    const proxData = opcoes?.data ?? new Date().toISOString().slice(0, 10);
+    const proxHora = opcoes?.hora ?? obterHoraAtual();
+
+    setAnalisandoId(opcoes?.analisandoId ?? '');
+    setModalidadeId(proxModalidadeId);
+    setDataSessao(proxData);
+    setHoraSessao(proxHora);
+    setTranscricaoSessao('');
+    setAudioBlobSessao(null);
+    setAudioUrlSessao(prevUrl => {
+      if (prevUrl && prevUrl.startsWith('blob:')) {
+        try {
+          URL.revokeObjectURL(prevUrl);
+        } catch (_) {}
+      }
+      return null;
+    });
+    setNotasSessao('');
+    setReservarNaAgenda(false);
+    setHoraRetornoAgenda(proxHora || '09:00');
+    setAvisoConflitoRetorno(null);
+    setValorCobrado(modAlvo?.preco || 0);
+    setPagamentoStatus('pendente');
+    setValorPago(0);
+    setMeioPagamento('pix');
+    setErroValidacao(null);
+    if (!opcoes?.manterSucessoModal) {
+      setSucessoSalvo(false);
+      setDetalhesSucesso(null);
+    }
+    setSessaoResetKey(prev => prev + 1);
+    try {
+      localStorage.removeItem(RASCUNHO_STORAGE_KEY);
+    } catch (_) {}
+  };
 
   // Analisando e Modalidade Selecionados
   const analisandoSelecionado = analisandos.find(a => a.id === analisandoId);
@@ -164,37 +216,28 @@ export default function SecaoNovaSessao({
     }
   }, [reservarNaAgenda, proximaSessaoData, horaRetornoAgenda, modalidadeSelecionada, agendamentos]);
 
-  // Recupera rascunho salvo do localStorage se existir
+  // Purga qualquer rascunho antigo no carregamento para que cada nova sessão inicie com o prontuário limpo
   useEffect(() => {
-    if (!agendamentoInicialId && !pacienteInicialId) {
-      try {
-        const rascunho = localStorage.getItem(RASCUNHO_STORAGE_KEY);
-        if (rascunho) {
-          const dados = JSON.parse(rascunho);
-          if (dados.notasSessao && !notasSessao) {
-            setNotasSessao(dados.notasSessao);
-          }
-          if (dados.analisandoId && !analisandoId) {
-            setAnalisandoId(dados.analisandoId);
-          }
-        }
-      } catch (_) {}
-    }
+    try {
+      localStorage.removeItem(RASCUNHO_STORAGE_KEY);
+    } catch (_) {}
   }, []);
 
-  // Salva rascunho automaticamente para proteção contra falhas e perdas
+  // Sincroniza quando um novo vínculo de agendamento/paciente for passado e limpa notas anteriores
+  const origemInicialMountRef = useRef(true);
   useEffect(() => {
-    if (notasSessao.trim() || analisandoId) {
-      try {
-        localStorage.setItem(RASCUNHO_STORAGE_KEY, JSON.stringify({
-          analisandoId,
-          modalidadeId,
-          dataSessao,
-          notasSessao
-        }));
-      } catch (_) {}
+    if (origemInicialMountRef.current) {
+      origemInicialMountRef.current = false;
+      return;
     }
-  }, [notasSessao, analisandoId, modalidadeId, dataSessao]);
+    const ag = agendamentos.find(a => a.id === agendamentoInicialId);
+    reiniciarNovaSessao({
+      analisandoId: ag ? ag.analisandoId : (pacienteInicialId || ''),
+      modalidadeId: ag ? ag.modalidadeId : (modalidades[0]?.id || ''),
+      data: ag ? ag.data : new Date().toISOString().slice(0, 10),
+      hora: ag ? ag.hora : obterHoraAtual()
+    });
+  }, [agendamentoInicialId, pacienteInicialId]);
 
   // Aviso antes de sair com conteúdo não salvo (beforeunload)
   useEffect(() => {
@@ -304,9 +347,8 @@ export default function SecaoNovaSessao({
       setSucessoSalvo(true);
       setSalvando(false);
 
-      // Limpa notas
-      setNotasSessao('');
-      setTranscricaoSessao('');
+      // Limpa completamente o formulário e o gravador para a próxima sessão mantendo o modal de confirmação visível
+      reiniciarNovaSessao({ manterSucessoModal: true });
 
     } catch (err: any) {
       console.error('[Salvar Sessão]:', err);
@@ -316,18 +358,10 @@ export default function SecaoNovaSessao({
   };
 
   const handleLimpar = () => {
-    if (notasSessao.trim() && !window.confirm('Deseja descartar as anotações desta sessão?')) {
+    if ((notasSessao.trim() || transcricaoSessao.trim() || audioBlobSessao) && !window.confirm('Deseja descartar os dados e anotações desta sessão?')) {
       return;
     }
-    setNotasSessao('');
-    setTranscricaoSessao('');
-    setAudioUrlSessao(null);
-    setAudioBlobSessao(null);
-    setSucessoSalvo(false);
-    setErroValidacao(null);
-    try {
-      localStorage.removeItem(RASCUNHO_STORAGE_KEY);
-    } catch (_) {}
+    reiniciarNovaSessao();
   };
 
   return (
@@ -494,24 +528,26 @@ export default function SecaoNovaSessao({
             </h3>
           </div>
 
-          <GravadorSessao
-            nomePaciente={analisandoSelecionado?.nome || 'Paciente'}
-            textoAtual={notasSessao}
-            onInserirTexto={(novoTexto) => {
-              setTranscricaoSessao(novoTexto);
-              if (!notasSessao.trim()) {
-                setNotasSessao(novoTexto);
-              }
-            }}
-            onAudioGravado={(blob, url, transcricao) => {
-              setAudioBlobSessao(blob);
-              setAudioUrlSessao(url);
-              setTranscricaoSessao(transcricao);
-              if (!notasSessao.trim() && transcricao.trim()) {
-                setNotasSessao(transcricao.trim());
-              }
-            }}
-          />
+          <div key={sessaoResetKey}>
+            <GravadorSessao
+              nomePaciente={analisandoSelecionado?.nome || 'Paciente'}
+              textoAtual={notasSessao}
+              onInserirTexto={(novoTexto) => {
+                setTranscricaoSessao(novoTexto);
+                if (!notasSessao.trim()) {
+                  setNotasSessao(novoTexto);
+                }
+              }}
+              onAudioGravado={(blob, url, transcricao) => {
+                setAudioBlobSessao(blob);
+                setAudioUrlSessao(url);
+                setTranscricaoSessao(transcricao);
+                if (!notasSessao.trim() && transcricao.trim()) {
+                  setNotasSessao(transcricao.trim());
+                }
+              }}
+            />
+          </div>
         </div>
 
         {/* ======================================================== */}
@@ -554,7 +590,7 @@ export default function SecaoNovaSessao({
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-muted-foreground uppercase flex items-center justify-between">
               <span>Notas de Setting, Hipóteses & Significantes *</span>
-              <span className="text-[11px] text-muted-foreground lowercase">rascunho preservado automaticamente</span>
+              <span className="text-[11px] text-muted-foreground lowercase">campo limpo a cada nova sessão</span>
             </label>
             <textarea
               required={!transcricaoSessao.trim()}
@@ -748,7 +784,7 @@ export default function SecaoNovaSessao({
             onClick={handleLimpar}
             className="px-4 py-2.5 rounded-xl border border-border hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
           >
-            Limpar Rascunho
+            Limpar Campos
           </button>
 
           <div className="flex items-center gap-3">
@@ -843,7 +879,7 @@ export default function SecaoNovaSessao({
               <button
                 type="button"
                 onClick={() => {
-                  setSucessoSalvo(false);
+                  reiniciarNovaSessao();
                 }}
                 className="py-3 px-4 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-foreground transition-all cursor-pointer"
               >

@@ -1404,32 +1404,31 @@ export default function GravadorSessao({
             )}
 
             {audioBlob && (
-              <button
-                type="button"
-                onClick={() =>
-                  motorTranscricao === 'local_vosk'
-                    ? processarTranscricaoLocalArquivo(audioBlob)
-                    : processarTranscricaoServidor(audioBlob, undefined, false)
-                }
-                className="px-3 py-1.5 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 text-xs font-bold text-primary flex items-center gap-1.5 cursor-pointer"
-              >
-                <Sparkles className="size-3.5" />
-                <span>{motorTranscricao === 'local_vosk' ? 'Tentar Transcrever Localmente' : 'Tentar Transcrever Novamente'}</span>
-              </button>
-            )}
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    alterarMotorTranscricao('local_vosk');
+                    processarTranscricaoLocalArquivo(audioBlob);
+                  }}
+                  className="px-3 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-xs font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Cpu className="size-3.5" />
+                  <span>{motorTranscricao === 'local_vosk' ? 'Tentar Novamente Offline (Local)' : 'Retranscrever Offline (Local)'}</span>
+                </button>
 
-            {audioBlob && motorTranscricao === 'local_vosk' && (
-              <button
-                type="button"
-                onClick={() => {
-                  alterarMotorTranscricao('ia_gemini');
-                  processarTranscricaoServidor(audioBlob, undefined, false);
-                }}
-                className="px-3 py-1.5 rounded-lg border border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/25 text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5 cursor-pointer"
-              >
-                <RotateCcw className="size-3.5" />
-                <span>Transcrever em Nuvem (IA)</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    alterarMotorTranscricao('ia_gemini');
+                    processarTranscricaoServidor(audioBlob, undefined, false);
+                  }}
+                  className="px-3 py-1.5 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 text-xs font-bold text-primary flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Sparkles className="size-3.5" />
+                  <span>{motorTranscricao === 'ia_gemini' ? 'Tentar Novamente em Nuvem (IA)' : 'Transcrever em Nuvem (IA)'}</span>
+                </button>
+              </>
             )}
 
             {rascunhoVozNavegador.trim() && (
@@ -1563,7 +1562,7 @@ export default function GravadorSessao({
 
                 <div className="p-2 rounded bg-card/80 border border-border/60">
                   <strong className="text-foreground block mb-0.5">3. Gravação Nativa da Plataforma (Importar Áudio Externo):</strong>
-                  Se você costuma gravar direto pelo Zoom, Teams ou por um gravador digital, basta usar o botão <strong>&quot;Importar Áudio Externo&quot;</strong> abaixo. A IA Gemini processa o arquivo (.mp3, .m4a, .wav) e gera a transcrição e o prontuário completo do mesmo jeito!
+                  Se você costuma gravar direto pelo Zoom, Teams ou por um gravador digital, basta usar o botão <strong>&quot;Importar Áudio Externo&quot;</strong> abaixo. O arquivo (.mp3, .m4a, .wav) pode ser transcrito Offline (Local) ou em Nuvem (IA), com opção de retranscrição a qualquer momento!
                 </div>
               </div>
             </div>
@@ -1645,7 +1644,11 @@ export default function GravadorSessao({
               <Loader2 className="size-4 animate-spin text-primary shrink-0" />
               <span>
                 {progressoTrechos && progressoTrechos.total > 1
-                  ? `Transcrevendo trecho ${progressoTrechos.atual} de ${progressoTrechos.total} com IA Gemini...`
+                  ? motorTranscricao === 'local_vosk'
+                    ? `Transcrevendo offline trecho ${progressoTrechos.atual} de ${progressoTrechos.total}...`
+                    : `Transcrevendo trecho ${progressoTrechos.atual} de ${progressoTrechos.total} com IA...`
+                  : motorTranscricao === 'local_vosk'
+                  ? 'Processando áudio offline no navegador...'
                   : 'Processando áudio e gerando transcrição fiel com IA...'}
               </span>
             </div>
@@ -1686,38 +1689,41 @@ export default function GravadorSessao({
             </button>
 
             {audioBlob && (
-              <button
-                type="button"
-                onClick={() =>
-                  motorTranscricao === 'local_vosk'
-                    ? processarTranscricaoLocalArquivo(audioBlob)
-                    : processarTranscricaoServidor(audioBlob, undefined, false)
-                }
-                className="px-4 py-2 rounded-xl border border-primary/30 bg-primary/5 hover:bg-primary/10 text-xs font-bold text-primary transition-colors flex items-center gap-1.5 cursor-pointer"
-              >
-                <Sparkles className="size-3.5" />
-                <span>
-                  {motorTranscricao === 'local_vosk'
-                    ? 'Retranscrever Localmente'
-                    : origemTranscricao === 'ia_gemini'
-                    ? 'Retranscrever com IA Gemini'
-                    : 'Refinar com IA Gemini'}
-                </span>
-              </button>
-            )}
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    alterarMotorTranscricao('local_vosk');
+                    processarTranscricaoLocalArquivo(audioBlob);
+                  }}
+                  className={`px-4 py-2 rounded-xl border text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer ${
+                    motorTranscricao === 'local_vosk'
+                      ? 'border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+                      : 'border-emerald-500/30 bg-card hover:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                  }`}
+                  title="Processar ou refazer a transcrição do áudio localmente no navegador sem enviar à nuvem"
+                >
+                  <Cpu className="size-3.5" />
+                  <span>Retranscrever Offline (Local)</span>
+                </button>
 
-            {audioBlob && motorTranscricao === 'local_vosk' && (
-              <button
-                type="button"
-                onClick={() => {
-                  alterarMotorTranscricao('ia_gemini');
-                  processarTranscricaoServidor(audioBlob, undefined, false);
-                }}
-                className="px-4 py-2 rounded-xl border border-border bg-card hover:bg-muted text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1.5 cursor-pointer"
-              >
-                <RotateCcw className="size-3.5" />
-                <span>Processar em Nuvem (IA)</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    alterarMotorTranscricao('ia_gemini');
+                    processarTranscricaoServidor(audioBlob, undefined, false);
+                  }}
+                  className="px-4 py-2 rounded-xl border border-primary/30 bg-primary/5 hover:bg-primary/10 text-xs font-bold text-primary transition-colors flex items-center gap-1.5 cursor-pointer"
+                  title="Processar ou refazer a transcrição do áudio em nuvem com pontuação automática"
+                >
+                  <Sparkles className="size-3.5" />
+                  <span>
+                    {origemTranscricao === 'ia_gemini'
+                      ? 'Retranscrever em Nuvem (IA)'
+                      : 'Processar em Nuvem (IA)'}
+                  </span>
+                </button>
+              </>
             )}
           </div>
         )}
