@@ -32,6 +32,7 @@ import {
   arredondarMoeda, 
   verificarConflitoHorario 
 } from '../utils/helpers';
+import { montarReferenciaAudioLocal, salvarAudioSessaoLocal } from '../lib/audioStorage';
 
 interface SecaoNovaSessaoProps {
   analisandos: Analisando[];
@@ -252,7 +253,7 @@ export default function SecaoNovaSessao({
   }, [notasSessao, sucessoSalvo]);
 
   // Salvar Sessão
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErroValidacao(null);
 
@@ -295,6 +296,27 @@ export default function SecaoNovaSessao({
       const textoFinalNotas = notasSessao.trim() || transcricaoSessao.trim() || undefined;
       const textoFinalTranscricao = transcricaoSessao.trim() || undefined;
 
+      let audioReferenciaPersistente = audioUrlSessao || undefined;
+      if (audioBlobSessao) {
+        audioReferenciaPersistente = await salvarAudioSessaoLocal(
+          sessaoId,
+          audioBlobSessao,
+          contaUsuario?.id
+        );
+      } else if (audioReferenciaPersistente && audioReferenciaPersistente.startsWith('blob:')) {
+        try {
+          const resp = await fetch(audioReferenciaPersistente);
+          if (resp.ok) {
+            const blobRecuperado = await resp.blob();
+            audioReferenciaPersistente = await salvarAudioSessaoLocal(
+              sessaoId,
+              blobRecuperado,
+              contaUsuario?.id
+            );
+          }
+        } catch (_) {}
+      }
+
       const novaSessao: SessaoClinica = {
         id: sessaoId,
         analisandoId,
@@ -311,7 +333,7 @@ export default function SecaoNovaSessao({
         proximaSessaoAgendada: reservarNaAgenda,
         notasSessao: textoFinalNotas,
         transcricao: textoFinalTranscricao,
-        audioUrl: audioUrlSessao || undefined,
+        audioUrl: audioReferenciaPersistente || (audioBlobSessao ? montarReferenciaAudioLocal(sessaoId) : undefined),
         criadoEm: new Date().toISOString()
       };
 

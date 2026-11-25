@@ -44,6 +44,21 @@ test('GravadorSessao disponibiliza retranscrição offline e em nuvem sempre que
   const blocoUpload = conteudo.match(/const handleUploadAudioArquivo = async[\s\S]*?const handleInserirNasNotas/)?.[0] || '';
   assert.ok(blocoUpload.length > 0);
   assert.doesNotMatch(blocoUpload, /processarTranscricaoServidor/);
+  assert.match(blocoUpload, /alterarMotorTranscricao\('local_vosk'\)/);
+  assert.match(blocoUpload, /processarTranscricaoLocalArquivo\(file,\s*url\)/);
+});
+
+test('ProntuarioModal permite recolher qualquer sessão (incluindo a primeira) e excluir complementos', () => {
+  const conteudo = fs.readFileSync(new URL('../src/components/ProntuarioModal.tsx', import.meta.url), 'utf8');
+
+  // Não deve travar a primeira sessão aberta com `|| index === 0`
+  assert.doesNotMatch(conteudo, /sessaoExpandidaId === sessao\.id \|\| index === 0/);
+  assert.match(conteudo, /sessoesExpandidas\[sessao\.id\] \?\? \(index === 0\)/);
+
+  // Deve possuir função de excluir complemento e controles de confirmação
+  assert.match(conteudo, /const handleExcluirComplemento/);
+  assert.match(conteudo, /Confirmar Exclusão/);
+  assert.match(conteudo, /Excluir<\/span>/);
 });
 
 test('GravadorSessao e transcricaoLocalVosk não expõem textos internos de teste ou preços', () => {
@@ -56,4 +71,32 @@ test('GravadorSessao e transcricaoLocalVosk não expõem textos internos de test
     assert.doesNotMatch(texto, /Baixo Custo/i);
     assert.doesNotMatch(texto, /\bGrátis\b/i);
   }
+});
+
+test('áudio da sessão é persistido em audioStorage e reproduzido via PlayerAudioProntuario no Prontuário', async () => {
+  const {
+    registrarAudioEmMemoria,
+    carregarAudioSessaoLocal,
+    extrairSessaoIdDeReferenciaAudio,
+    excluirAudioSessaoLocal,
+    PREFIXO_AUDIO_LOCAL
+  } = await import('../src/lib/audioStorage');
+
+  const blobTeste = new Blob(['conteudo-audio-teste'], { type: 'audio/webm' });
+  const ref = registrarAudioEmMemoria('sess_audio_teste', blobTeste);
+  assert.equal(ref, `${PREFIXO_AUDIO_LOCAL}sess_audio_teste`);
+  assert.equal(extrairSessaoIdDeReferenciaAudio(ref), 'sess_audio_teste');
+
+  const recuperado = await carregarAudioSessaoLocal('sess_audio_teste');
+  assert.ok(recuperado);
+  assert.equal(await recuperado.text(), 'conteudo-audio-teste');
+  await excluirAudioSessaoLocal('sess_audio_teste');
+
+  const secao = fs.readFileSync(new URL('../src/components/SecaoNovaSessao.tsx', import.meta.url), 'utf8');
+  assert.match(secao, /salvarAudioSessaoLocal/);
+
+  const prontuario = fs.readFileSync(new URL('../src/components/ProntuarioModal.tsx', import.meta.url), 'utf8');
+  assert.match(prontuario, /function PlayerAudioProntuario/);
+  assert.match(prontuario, /carregarAudioSessaoLocal/);
+  assert.match(prontuario, /<PlayerAudioProntuario/);
 });

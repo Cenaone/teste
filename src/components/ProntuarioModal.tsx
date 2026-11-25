@@ -42,8 +42,15 @@ import {
   Sparkles,
   ChevronDown,
   ChevronUp,
-  ClipboardList
+  ClipboardList,
+  Trash2,
+  Download
 } from 'lucide-react';
+import {
+  carregarAudioSessaoLocal,
+  extrairSessaoIdDeReferenciaAudio,
+  PREFIXO_AUDIO_LOCAL
+} from '../lib/audioStorage';
 
 interface ProntuarioModalProps {
   analisando: Analisando;
@@ -58,6 +65,149 @@ interface ProntuarioModalProps {
   onNovaSessaoRapida?: (analisandoId: string) => void;
   onEditarPaciente?: (analisando: Analisando) => void;
   onAbrirModelosClinicos?: (analisandoId: string) => void;
+}
+
+function PlayerAudioProntuario({
+  sessaoId,
+  audioUrl,
+  pacienteNome,
+  dataSessao
+}: {
+  sessaoId: string;
+  audioUrl?: string;
+  pacienteNome: string;
+  dataSessao: string;
+}) {
+  const [srcPlayable, setSrcPlayable] = useState<string | null>(null);
+  const [carregando, setCarregando] = useState(true);
+  const [erroCarga, setErroCarga] = useState(false);
+
+  React.useEffect(() => {
+    let ativo = true;
+    let urlObjetoCriada: string | null = null;
+    setCarregando(true);
+    setErroCarga(false);
+
+    const resolverAudio = async () => {
+      try {
+        const targetId = extrairSessaoIdDeReferenciaAudio(audioUrl, sessaoId);
+        if (targetId) {
+          const blob = await carregarAudioSessaoLocal(targetId);
+          if (!ativo) return;
+          if (blob) {
+            urlObjetoCriada = URL.createObjectURL(blob);
+            setSrcPlayable(urlObjetoCriada);
+            setCarregando(false);
+            return;
+          }
+        }
+
+        if (!ativo) return;
+        if (audioUrl && audioUrl.startsWith('blob:')) {
+          try {
+            const resp = await fetch(audioUrl);
+            if (!ativo) return;
+            if (resp.ok) {
+              const blobRecuperado = await resp.blob();
+              if (!ativo) return;
+              if (blobRecuperado.size > 0) {
+                urlObjetoCriada = URL.createObjectURL(blobRecuperado);
+                setSrcPlayable(urlObjetoCriada);
+                setCarregando(false);
+                return;
+              }
+            }
+          } catch (_) {
+            // Blob URL expirada/revogada
+          }
+          setSrcPlayable(null);
+          setErroCarga(true);
+          setCarregando(false);
+          return;
+        }
+
+        if (audioUrl && !audioUrl.startsWith(PREFIXO_AUDIO_LOCAL)) {
+          setSrcPlayable(audioUrl);
+          setCarregando(false);
+          return;
+        }
+
+        setSrcPlayable(null);
+        setErroCarga(true);
+        setCarregando(false);
+      } catch {
+        if (!ativo) return;
+        setSrcPlayable(null);
+        setErroCarga(true);
+        setCarregando(false);
+      }
+    };
+
+    void resolverAudio();
+
+    return () => {
+      ativo = false;
+      if (urlObjetoCriada) {
+        try {
+          URL.revokeObjectURL(urlObjetoCriada);
+        } catch (_) {}
+      }
+    };
+  }, [sessaoId, audioUrl]);
+
+  if (carregando) {
+    return (
+      <div className="space-y-1">
+        <span className="text-[10px] text-muted-foreground uppercase font-semibold">
+          Gravação de Voz da Sessão:
+        </span>
+        <div className="h-9 px-3 rounded-lg bg-card border border-border flex items-center text-xs text-muted-foreground">
+          Carregando áudio da sessão...
+        </div>
+      </div>
+    );
+  }
+
+  if (erroCarga || !srcPlayable) {
+    return (
+      <div className="space-y-1">
+        <span className="text-[10px] text-muted-foreground uppercase font-semibold">
+          Gravação de Voz da Sessão:
+        </span>
+        <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-900 dark:text-amber-200 flex items-start gap-2">
+          <AlertCircle className="size-3.5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+          <span>
+            Este áudio foi salvo em sessão temporária anterior e não está mais armazenado neste navegador. Novos áudios gravados ou importados permanecem disponíveis no prontuário mesmo após recarregar.
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] text-muted-foreground uppercase font-semibold">
+          Gravação de Voz da Sessão:
+        </span>
+        <a
+          href={srcPlayable}
+          download={`sessao_${pacienteNome.replace(/\s+/g, '_')}_${dataSessao.slice(0, 10)}.webm`}
+          className="text-[10px] text-primary hover:underline flex items-center gap-1 font-bold"
+        >
+          <Download className="size-3" />
+          <span>Baixar Áudio</span>
+        </a>
+      </div>
+      <audio
+        controls
+        preload="metadata"
+        src={srcPlayable}
+        onError={() => setErroCarga(true)}
+        className="w-full h-9 rounded-lg"
+      />
+    </div>
+  );
 }
 
 export default function ProntuarioModal({
@@ -87,12 +237,13 @@ export default function ProntuarioModal({
   const [filtroDataInicio, setFiltroDataInicio] = useState('');
   const [filtroDataFim, setFiltroDataFim] = useState('');
 
-  // Sessão expandida para visualização de conteúdo completo e complementos
-  const [sessaoExpandidaId, setSessaoExpandidaId] = useState<string | null>(null);
+  // Controle individual de expansão/recolhimento das sessões no prontuário
+  const [sessoesExpandidas, setSessoesExpandidas] = useState<Record<string, boolean>>({});
 
-  // Estado para inserção de novo complemento / adendo clínico
+  // Estado para inserção e exclusão de complemento / adendo clínico
   const [sessaoIdAdicionandoComplemento, setSessaoIdAdicionandoComplemento] = useState<string | null>(null);
   const [textoComplemento, setTextoComplemento] = useState('');
+  const [complementoExcluindoId, setComplementoExcluindoId] = useState<string | null>(null);
   const [copiadoId, setCopiadoId] = useState<string | null>(null);
 
   // Estatísticas do paciente
@@ -197,6 +348,22 @@ export default function ProntuarioModal({
     onAtualizarSessoes(sessoesAtualizadas);
     setTextoComplemento('');
     setSessaoIdAdicionandoComplemento(null);
+  };
+
+  // Exclui um complemento específico da sessão sem alterar o registro original
+  const handleExcluirComplemento = (sessaoId: string, complementoId: string) => {
+    const sessoesAtualizadas = sessoes.map(s => {
+      if (s.id === sessaoId) {
+        return {
+          ...s,
+          complementos: (s.complementos || []).filter(c => c.id !== complementoId)
+        };
+      }
+      return s;
+    });
+
+    onAtualizarSessoes(sessoesAtualizadas);
+    setComplementoExcluindoId(null);
   };
 
   const copiarTexto = (texto: string, id: string) => {
@@ -435,7 +602,7 @@ export default function ProntuarioModal({
                 <div className="space-y-4">
                   {sessoesFiltradas.map((sessao, index) => {
                     const modalidade = modalidades.find(m => m.id === sessao.modalidadeId);
-                    const estaExpandida = sessaoExpandidaId === sessao.id || index === 0; // Primeira sessão sempre aberta para leitura
+                    const estaExpandida = sessoesExpandidas[sessao.id] ?? (index === 0);
                     const temAudio = Boolean(sessao.audioUrl);
                     const temTranscricao = Boolean(sessao.transcricao);
                     const complementos = sessao.complementos || [];
@@ -485,8 +652,13 @@ export default function ProntuarioModal({
                           <div className="flex items-center gap-2 self-end sm:self-auto">
                             <button
                               type="button"
-                              onClick={() => setSessaoExpandidaId(estaExpandida ? null : sessao.id)}
-                              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 font-semibold cursor-pointer"
+                              onClick={() =>
+                                setSessoesExpandidas(prev => ({
+                                  ...prev,
+                                  [sessao.id]: !estaExpandida
+                                }))
+                              }
+                              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 font-semibold cursor-pointer px-2 py-1 rounded-lg hover:bg-muted/60 transition-colors"
                             >
                               <span>{estaExpandida ? 'Recolher' : 'Ler Completo'}</span>
                               {estaExpandida ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
@@ -494,8 +666,20 @@ export default function ProntuarioModal({
                           </div>
                         </div>
 
-                        {/* Conteúdo Clínico Original (Imutável e Distinto) */}
-                        <div className="space-y-2">
+                        {/* Conteúdo Clínico Original (Resumo compacto quando recolhido / completo quando expandido) */}
+                        {!estaExpandida ? (
+                          <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                            <p className="truncate flex-1">
+                              {sessao.notasSessao || sessao.transcricao || 'Nenhum texto clínico registrado nesta sessão.'}
+                            </p>
+                            {complementos.length > 0 && (
+                              <span className="shrink-0 text-[11px] font-semibold text-primary">
+                                {complementos.length} {complementos.length === 1 ? 'complemento' : 'complementos'}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                               <FileText className="size-3.5 text-primary" />
@@ -541,6 +725,7 @@ export default function ProntuarioModal({
                             )}
                           </div>
                         </div>
+                        )}
 
                         {/* Bloco de Áudio e Transcrição Salva no Prontuário */}
                         {(temAudio || temTranscricao) && estaExpandida && (
@@ -552,18 +737,14 @@ export default function ProntuarioModal({
                               </span>
                             </div>
 
-                            {/* Player de Áudio Nativo */}
+                            {/* Player de Áudio Persistente */}
                             {temAudio && (
-                              <div className="space-y-1">
-                                <span className="text-[10px] text-muted-foreground uppercase font-semibold">
-                                  Gravação de Voz da Sessão:
-                                </span>
-                                <audio
-                                  controls
-                                  src={sessao.audioUrl}
-                                  className="w-full h-9 rounded-lg"
-                                />
-                              </div>
+                              <PlayerAudioProntuario
+                                sessaoId={sessao.id}
+                                audioUrl={sessao.audioUrl}
+                                pacienteNome={analisando.nome}
+                                dataSessao={sessao.data}
+                              />
                             )}
 
                             {/* Transcrição de Fala */}
@@ -623,12 +804,42 @@ export default function ProntuarioModal({
                                     key={comp.id}
                                     className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/20 text-xs space-y-1.5"
                                   >
-                                    <div className="flex items-center justify-between text-[11px] text-amber-900 dark:text-amber-300 font-semibold">
+                                    <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-amber-900 dark:text-amber-300 font-semibold">
                                       <span className="flex items-center gap-1">
                                         <UserCheck className="size-3" />
                                         Autor: {comp.autorNome}
                                       </span>
-                                      <span>{formatarDataHora(comp.criadoEm)}</span>
+                                      <div className="flex items-center gap-2.5">
+                                        <span>{formatarDataHora(comp.criadoEm)}</span>
+                                        {complementoExcluindoId === comp.id ? (
+                                          <div className="flex items-center gap-1.5">
+                                            <button
+                                              type="button"
+                                              onClick={() => handleExcluirComplemento(sessao.id, comp.id)}
+                                              className="px-2 py-0.5 rounded bg-destructive text-destructive-foreground text-[10px] font-bold hover:opacity-90 cursor-pointer"
+                                            >
+                                              Confirmar Exclusão
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => setComplementoExcluindoId(null)}
+                                              className="px-2 py-0.5 rounded border border-border bg-card text-muted-foreground text-[10px] font-semibold hover:text-foreground cursor-pointer"
+                                            >
+                                              Cancelar
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            onClick={() => setComplementoExcluindoId(comp.id)}
+                                            className="text-rose-600 dark:text-rose-400 hover:underline flex items-center gap-1 font-bold cursor-pointer"
+                                            title="Excluir este complemento"
+                                          >
+                                            <Trash2 className="size-3" />
+                                            <span>Excluir</span>
+                                          </button>
+                                        )}
+                                      </div>
                                     </div>
                                     <p className="text-foreground whitespace-pre-wrap leading-relaxed">
                                       {comp.texto}
@@ -946,7 +1157,7 @@ export default function ProntuarioModal({
                           </tr>
                         ) : (
                           sessoesPaciente.map(s => {
-                            const mod = modalidades.find(m => m.id === sessaoIdAdicionandoComplemento);
+                            const mod = modalidades.find(m => m.id === s.modalidadeId);
                             return (
                               <tr key={s.id} className="hover:bg-muted/20">
                                 <td className="p-3 font-mono">{formatarData(s.data)}</td>

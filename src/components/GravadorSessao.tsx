@@ -60,6 +60,7 @@ export default function GravadorSessao({
   const [rascunhoVozNavegador, setRascunhoVozNavegador] = useState('');
   const [origemTranscricao, setOrigemTranscricao] = useState<OrigemTranscricao>(null);
   const [progressoTrechos, setProgressoTrechos] = useState<{ atual: number; total: number } | null>(null);
+  const [processandoMotor, setProcessandoMotor] = useState<'local' | 'ia' | null>(null);
   const [statusMotorLocal, setStatusMotorLocal] = useState<string | null>(null);
   const [modeloLocalPronto, setModeloLocalPronto] = useState<boolean>(() => modeloVoskEstaCarregado());
   const [pontuandoTexto, setPontuandoTexto] = useState(false);
@@ -114,6 +115,13 @@ export default function GravadorSessao({
   useEffect(() => {
     motorTranscricaoRef.current = motorTranscricao;
   }, [motorTranscricao]);
+
+  // Purga preferência antiga para garantir início sempre em modo offline local
+  useEffect(() => {
+    try {
+      localStorage.removeItem('psi4_motor_transcricao');
+    } catch (_) {}
+  }, []);
 
   // Verifica suporte da API de Fala contínua e status de permissão de microfone
   useEffect(() => {
@@ -443,6 +451,7 @@ export default function GravadorSessao({
     }
     setAudioBlob(blob);
 
+    setProcessandoMotor('ia');
     setEstado('processando');
     estadoRef.current = 'processando';
     setErroMensagem(null);
@@ -528,6 +537,7 @@ export default function GravadorSessao({
       textoFinalAcumuladoRef.current = textoConsolidado;
       setOrigemTranscricao('ia_gemini');
       setProgressoTrechos(null);
+      setProcessandoMotor(null);
       setEstado('concluido');
       estadoRef.current = 'concluido';
       setErroMensagem(null);
@@ -539,6 +549,7 @@ export default function GravadorSessao({
 
     } catch (err: any) {
       console.warn('[Erro transcrição servidor]:', err);
+      setProcessandoMotor(null);
       setEstado('falha');
       estadoRef.current = 'falha';
       setProgressoTrechos(null);
@@ -555,6 +566,7 @@ export default function GravadorSessao({
       setAudioUrl(finalUrl);
     }
     setAudioBlob(blob);
+    setProcessandoMotor('local');
     setEstado('processando');
     estadoRef.current = 'processando';
     setErroMensagem(null);
@@ -575,6 +587,7 @@ export default function GravadorSessao({
       setModeloLocalPronto(modeloVoskEstaCarregado());
       setStatusMotorLocal(null);
       setProgressoTrechos(null);
+      setProcessandoMotor(null);
 
       if (!textoLocal) {
         setEstado('falha');
@@ -599,6 +612,7 @@ export default function GravadorSessao({
       console.warn('[Erro transcrição local Vosk]:', err);
       setStatusMotorLocal(null);
       setProgressoTrechos(null);
+      setProcessandoMotor(null);
       setEstado('falha');
       estadoRef.current = 'falha';
       setErroMensagem(
@@ -942,7 +956,10 @@ export default function GravadorSessao({
                 console.warn('[Vosk ao vivo finalizar aviso]:', errVosk);
               }
             }
-            // Se o modelo ainda estava baixando ou não captou ao vivo, processa o arquivo gravado localmente
+            // Se o modelo ainda estava baixando ou não captou ao vivo, preserva o blob no formulário e processa localmente
+            if (onAudioGravado) {
+              onAudioGravado(blob, url, '');
+            }
             await processarTranscricaoLocalArquivo(blob, url);
           } else {
             if (sessaoVosk) {
@@ -1165,27 +1182,22 @@ export default function GravadorSessao({
     estadoRef.current = 'ocioso';
   };
 
-  // 5. Upload manual de arquivo de áudio gravado em outro dispositivo (celular/whatsapp)
+  // 5. Upload manual de arquivo de áudio gravado em outro dispositivo (sempre transcreve offline localmente)
   const handleUploadAudioArquivo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     descartarGravacao();
+    alterarMotorTranscricao('local_vosk');
 
     const url = URL.createObjectURL(file);
     setAudioBlob(file);
     setAudioUrl(url);
-
-    if (motorTranscricaoRef.current === 'local_vosk') {
-      await processarTranscricaoLocalArquivo(file, url);
-    } else {
-      // No modo Nuvem (IA), apenas carrega o áudio no player e aguarda clique explícito do usuário
-      setProgressoTrechos(null);
-      setErroMensagem(null);
-      setOrigemTranscricao(null);
-      setEstado('concluido');
-      estadoRef.current = 'concluido';
+    if (onAudioGravado) {
+      onAudioGravado(file, url, '');
     }
+
+    await processarTranscricaoLocalArquivo(file, url);
 
     // Reseta o input para permitir selecionar o mesmo arquivo novamente se desejar
     if (fileInputRef.current) {
@@ -1279,7 +1291,7 @@ export default function GravadorSessao({
             {estado === 'solicitando' && 'Aguardando microfone...'}
             {estado === 'gravando' && `Gravando (${formatarTempo(tempoSegundos)})`}
             {estado === 'pausado' && `Pausado (${formatarTempo(tempoSegundos)})`}
-            {estado === 'processando' && (progressoTrechos && progressoTrechos.total > 1 ? `Transcrevendo (${progressoTrechos.atual}/${progressoTrechos.total})` : motorTranscricao === 'local_vosk' ? 'Finalizando Local...' : 'Transcrevendo com IA...')}
+            {estado === 'processando' && (progressoTrechos && progressoTrechos.total > 1 ? (processandoMotor === 'ia' ? `Transcrevendo em Nuvem (${progressoTrechos.atual}/${progressoTrechos.total})` : `Transcrevendo Offline (${progressoTrechos.atual}/${progressoTrechos.total})`) : processandoMotor === 'ia' ? 'Transcrevendo com IA...' : 'Processando Offline...')}
             {estado === 'concluido' && (origemTranscricao === 'ia_gemini' ? 'Transcrição IA Concluída' : origemTranscricao === 'local_vosk' ? 'Transcrição Local Concluída' : origemTranscricao === 'rascunho_navegador' ? 'Áudio Gravado (Aguardando Transcrição)' : 'Áudio Pronto (Clique para Transcrever)')}
             {estado === 'falha' && 'Transcrição Pendente'}
           </span>
@@ -1668,12 +1680,12 @@ export default function GravadorSessao({
               <Loader2 className="size-4 animate-spin text-primary shrink-0" />
               <span>
                 {progressoTrechos && progressoTrechos.total > 1
-                  ? motorTranscricao === 'local_vosk'
-                    ? `Transcrevendo offline trecho ${progressoTrechos.atual} de ${progressoTrechos.total}...`
-                    : `Transcrevendo trecho ${progressoTrechos.atual} de ${progressoTrechos.total} com IA...`
-                  : motorTranscricao === 'local_vosk'
-                  ? 'Processando áudio offline no navegador...'
-                  : 'Processando áudio e gerando transcrição fiel com IA...'}
+                  ? processandoMotor === 'ia'
+                    ? `Transcrevendo trecho ${progressoTrechos.atual} de ${progressoTrechos.total} com IA...`
+                    : `Transcrevendo offline trecho ${progressoTrechos.atual} de ${progressoTrechos.total}...`
+                  : processandoMotor === 'ia'
+                  ? 'Processando áudio e gerando transcrição fiel com IA...'
+                  : 'Processando áudio offline no navegador...'}
               </span>
             </div>
             {progressoTrechos && progressoTrechos.total > 1 && (

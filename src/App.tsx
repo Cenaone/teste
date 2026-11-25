@@ -52,6 +52,7 @@ import ModalCadastroPaciente from './components/ModalCadastroPaciente';
 import { AgendaClinica } from './components/AgendaClinica';
 import TelaAutenticacao from './components/TelaAutenticacao';
 import TelaRedefinirSenha from './components/TelaRedefinirSenha';
+import { montarReferenciaAudioLocal, salvarAudioSessaoLocal } from './lib/audioStorage';
 import { Card, Badge } from './components/ui-compact';
 import {
   Sparkles,
@@ -3654,9 +3655,15 @@ export default function App() {
                       } : null);
                     }}
                     onAudioGravado={(blob, url, transcricao) => {
+                      const refAudio = sessaoForm.id
+                        ? montarReferenciaAudioLocal(sessaoForm.id)
+                        : url;
+                      if (sessaoForm.id) {
+                        void salvarAudioSessaoLocal(sessaoForm.id, blob, contaUsuario?.id);
+                      }
                       setSessaoForm(prev => prev ? {
                         ...prev,
-                        audioUrl: url,
+                        audioUrl: refAudio,
                         transcricao: transcricao || prev.transcricao,
                         notasSessao: prev.notasSessao?.trim() ? prev.notasSessao : transcricao
                       } : null);
